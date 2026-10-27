@@ -1,0 +1,219 @@
+package com.marketbot.core.strategies.rewards
+
+import com.marketbot.core.polymarket.PM_MAKER_THETA
+import com.marketbot.core.polymarket.PmBook
+import com.marketbot.core.polymarket.PolymarketClient
+import com.marketbot.core.polymarket.pmTradeFee
+import com.marketbot.core.provenance.Source
+import com.marketbot.core.provenance.Sourced
+import com.marketbot.core.provenance.ValueUnavailable
+import com.marketbot.core.util.JSON
+import kotlinx.serialization.Serializable
+import java.time.Instant
+import java.util.UUID
+import kotlin.math.abs
+
+data class FarmBalance(
+    /** Equity for risk: cash + positions valued at what they would fetch now (longs at the bid, shorts at the ask). */
+    val equity: Sourced<Double>,
+    val freeCash: Sourced<Double>,
+    /** The exchange's own valuation (cash + cashValue), shown beside equity for comparison. */
+    val exchangeEquity: Sourced<Double>?,
+)
+
+data class FarmPosition(val slug: String, val qty: Double, val avgPx: Double)
+data class FarmOrder(val id: String, val slug: String, val side: String, val price: Double, val qtyLeft: Double, val intent: String)
+data class FarmFill(val slug: String, val side: String, val price: Double, val qty: Double, val why: String)
+
+interface FarmBroker {
+    val live: Boolean
+    suspend fun balance(books: Map<String, PmBook>): FarmBalance
+    suspend fun positions(): Map<String, FarmPosition>
+    suspend fun openOrders(): List<FarmOrder>
+    suspend fun place(slug: String, side: String, price: Double, qty: Double, intent: String, expires: Instant?, queueAhead: Double): String?
+    suspend fun cancel(slug: String, id: String): Boolean
+    suspend fun cancelAll()
+    /** Paper only: apply a fresh book (marks, queue progress, fills). */
+    fun onBook(book: PmBook): List<FarmFill> = emptyList()
+    fun settle(slug: String, value: Double): Double? = null
+}
+
+/** Real orders through the Polymarket US API. Equity values each position at the public book, never at a guess. */
+class LiveFarmBroker(private val pm: PolymarketClient) : FarmBroker {
+    override val live = true
+    private val lastMarks = mutableMapOf<String, Pair<Double?, Double?>>()
+
+    override suspend fun balance(books: Map<String, PmBook>): FarmBalance {
+        val b = pm.balance()
+        val pos = pm.positions()
+        var held = 0.0
+        for (p in pos) {
+            val book = books[p.slug] ?: runCatching { pm.book(p.slug) }.getOrNull()
+            val prev = lastMarks[p.slug] ?: (null to null)
+            val bid = book?.bestBid ?: prev.first; val ask = book?.bestAsk ?: prev.second
+            lastMarks[p.slug] = bid to ask
+            val mark = (if (p.qty.value > 0) bid else ask) ?: throw ValueUnavailable("mark for ${p.slug}", "no ${if (p.qty.value > 0) "bid" else "ask"} ever seen")
+            held += p.qty.value * mark
+        }
+        val cashValue = if (pos.all { it.cashValue != null }) pos.sumOf { it.cashValue!!.value } else null
+        val free = minOf(b.buyingPower.value + (b.openOrders?.value ?: 0.0), b.currentBalance.value)
+        return FarmBalance(
+            Sourced.derived(b.currentBalance.value + held, "currentBalance + sum(qty x bid|ask from the public book)",
+                "liquidation value; the exchange's cashValue marks every position at the ask, which overstates longs by the spread"),
+            Sourced.derived(free, "min(buyingPower + openOrders, currentBalance)", "buying power semantics are partly undocumented; clamped so a misread can only under-size"),
+            cashValue?.let { Sourced(b.currentBalance.value + it, Source.POLYMARKET_API, "GET /v1/account/balances#currentBalance + positions#cashValue") },
+        )
+    }
+
+    override suspend fun positions() = pm.positions().associate {
+        it.slug to FarmPosition(it.slug, it.qty.value, it.avgPx?.value ?: throw ValueUnavailable("avgPx ${it.slug}", "missing"))
+    }
+
+    override suspend fun openOrders() = pm.openOrders().map { FarmOrder(it.id, it.slug, it.side, it.price, it.qtyLeft, it.intent) }
+
+    override suspend fun place(slug: String, side: String, price: Double, qty: Double, intent: String, expires: Instant?, queueAhead: Double): String? =
+        runCatching { pm.placeOrder(slug, intent, price, qty, expires) }.getOrNull()
+
+    override suspend fun cancel(slug: String, id: String) = runCatching { pm.cancel(id, slug) }.isSuccess
+    override suspend fun cancelAll() { pm.cancelAll() }
+}
+
+@Serializable
+data class PaperOrder(val slug: String, val side: String, val price: Double, var qty: Double, val intent: String,
+                      val ts: Long, var ahead: Double, var level: Double)
+
+@Serializable
+data class PaperPos(var qty: Double, var avgPx: Double)
+
+@Serializable
+data class PaperFarmState(
+    var cash: Double,
+    val orders: MutableMap<String, PaperOrder> = mutableMapOf(),
+    val positions: MutableMap<String, PaperPos> = mutableMapOf(),
+    val marks: MutableMap<String, Pair<Double?, Double?>> = mutableMapOf(),
+    var realized: Double = 0.0,
+    var rebates: Double = 0.0,
+    var startingCash: Double = 0.0,
+)
+
+/**
+ * Simulated maker orders against live public books, with queue position.
+ * Port of pmfarm `PaperBroker` (book-snapshot branch: no trade prints are
+ * public on Polymarket US). Positions are valued at their liquidation side;
+ * an opening fill that cash cannot fund cancels the order, as the exchange does.
+ */
+class PaperFarmBroker(var s: PaperFarmState, private val clockMs: () -> Long = { System.currentTimeMillis() }) : FarmBroker {
+    override val live = false
+
+    fun toJson(): String = JSON.encodeToString(PaperFarmState.serializer(), s)
+
+    companion object {
+        fun fromJson(text: String?, startingCash: Double): PaperFarmBroker =
+            PaperFarmBroker(text?.let { runCatching { JSON.decodeFromString(PaperFarmState.serializer(), it) }.getOrNull() }
+                ?: PaperFarmState(startingCash, startingCash = startingCash))
+    }
+
+    private fun freeCash() = s.cash - s.positions.values.sumOf { maxOf(-it.qty, 0.0) }
+    private fun locked(): Double {
+        val per = mutableMapOf<String, Double>()
+        for (o in s.orders.values) {
+            var unit = if (o.side == "bid") o.price else 1 - o.price
+            if ("SELL_LONG" in o.intent || "SELL_SHORT" in o.intent) unit = 0.0
+            per[o.slug] = maxOf(per[o.slug] ?: 0.0, unit * o.qty)
+        }
+        return per.values.maxOrNull() ?: 0.0
+    }
+
+    override suspend fun balance(books: Map<String, PmBook>): FarmBalance {
+        var pv = 0.0
+        for ((slug, p) in s.positions) {
+            if (abs(p.qty) <= 1e-9) continue
+            val m = s.marks[slug] ?: throw ValueUnavailable("paper mark $slug", "never priced")
+            val px = (if (p.qty > 0) m.first else m.second) ?: throw ValueUnavailable("paper mark $slug", "side never priced")
+            pv += p.qty * px
+        }
+        return FarmBalance(Sourced.paper(s.cash + pv, "paper cash + positions at bid/ask"),
+            Sourced.paper(freeCash() - locked(), "paper cash - short margin - locked"), null)
+    }
+
+    override suspend fun positions() = s.positions.filter { abs(it.value.qty) > 1e-9 }.mapValues { FarmPosition(it.key, it.value.qty, it.value.avgPx) }
+    override suspend fun openOrders() = s.orders.map { (id, o) -> FarmOrder(id, o.slug, o.side, o.price, o.qty, o.intent) }
+
+    override suspend fun place(slug: String, side: String, price: Double, qty: Double, intent: String, expires: Instant?, queueAhead: Double): String {
+        val id = UUID.randomUUID().toString().take(12)
+        s.orders[id] = PaperOrder(slug, side, price, qty, intent, clockMs(), maxOf(0.0, queueAhead), maxOf(0.0, queueAhead))
+        return id
+    }
+
+    override suspend fun cancel(slug: String, id: String): Boolean { s.orders.remove(id); return true }
+    override suspend fun cancelAll() { s.orders.clear() }
+
+    private fun openCost(o: PaperOrder, qty: Double) = qty * if (o.side == "bid") o.price else 1 - o.price
+
+    private fun fill(id: String, o: PaperOrder, q0: Double, why: String, out: MutableList<FarmFill>) {
+        val qty = minOf(q0, o.qty)
+        if (qty <= 1e-9) return
+        val cur = s.positions[o.slug]?.qty ?: 0.0
+        val after = cur + if (o.side == "bid") qty else -qty
+        val m = s.marks[o.slug]
+        if (abs(after) > 1e-9 && (if (after > 0) m?.first else m?.second) == null) return
+        if ("SELL_" !in o.intent && openCost(o, qty) > freeCash() + 1e-9) { s.orders.remove(id); return }
+        apply(o, qty)
+        out += FarmFill(o.slug, o.side, o.price, qty, why)
+        o.qty -= qty
+        if (o.qty <= 1e-9) s.orders.remove(id)
+    }
+
+    private fun apply(o: PaperOrder, q: Double) {
+        val qty = if (o.side == "bid") q else -q
+        val p = s.positions.getOrPut(o.slug) { PaperPos(0.0, o.price) }
+        s.cash -= qty * o.price
+        val fee = pmTradeFee(PM_MAKER_THETA, q, o.price)
+        s.cash -= fee; s.rebates -= fee
+        val new = p.qty + qty
+        if (p.qty == 0.0 || (p.qty > 0) == (qty > 0)) {
+            p.avgPx = if (new != 0.0) (p.qty * p.avgPx + qty * o.price) / new else o.price
+        } else {
+            val closed = minOf(abs(qty), abs(p.qty))
+            s.realized += closed * (o.price - p.avgPx) * (if (p.qty > 0) 1 else -1)
+            if (abs(qty) > abs(p.qty)) p.avgPx = o.price
+        }
+        p.qty = new
+    }
+
+    override fun onBook(book: PmBook): List<FarmFill> {
+        val live = s.positions.filter { abs(it.value.qty) > 1e-9 }.keys + s.orders.values.map { it.slug }
+        if (book.slug in live) {
+            val prev = s.marks[book.slug]
+            s.marks[book.slug] = (book.bestBid ?: prev?.first) to (book.bestAsk ?: prev?.second)
+        }
+        val fills = mutableListOf<FarmFill>()
+        for ((id, o) in s.orders.entries.toList()) {
+            if (o.slug != book.slug || id !in s.orders) continue
+            val crossed = (o.side == "bid" && book.bestAsk != null && book.bestAsk!! <= o.price + 1e-9) ||
+                (o.side == "ask" && book.bestBid != null && book.bestBid!! >= o.price - 1e-9)
+            if (crossed) { fill(id, o, o.qty, "cross", fills); continue }
+            val level = (if (o.side == "bid") book.bids else book.asks).filter { abs(it.price - o.price) < 1e-9 }.sumOf { it.qty }
+            val shrink = maxOf(0.0, o.level - level)
+            if (shrink > 0) {
+                val used = minOf(o.ahead, shrink)
+                o.ahead -= used
+                fill(id, o, shrink - used, "queue", fills)
+            }
+            if (id in s.orders) o.level = level
+        }
+        val keep = s.positions.filter { abs(it.value.qty) > 1e-9 }.keys + s.orders.values.map { it.slug }
+        s.marks.keys.retainAll(keep)
+        return fills
+    }
+
+    override fun settle(slug: String, value: Double): Double? {
+        s.orders.entries.removeIf { it.value.slug == slug }
+        val p = s.positions.remove(slug); s.marks.remove(slug)
+        if (p == null || abs(p.qty) < 1e-9) return null
+        val pnl = p.qty * (value - p.avgPx)
+        s.cash += p.qty * value
+        s.realized += pnl
+        return pnl
+    }
+}

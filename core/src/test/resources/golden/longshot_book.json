@@ -1,0 +1,54 @@
+[
+ {
+  "ask": 0.04,
+  "bid": 0.03,
+  "payload": {
+   "yes_ask_dollars": "0.0400",
+   "yes_bid_dollars": "0.0300"
+  }
+ },
+ {
+  "ask": 0.04,
+  "bid": 0.03,
+  "payload": {
+   "yes_ask": 4,
+   "yes_bid": 3
+  }
+ },
+ {
+  "ask": 0.050000000000000044,
+  "bid": 0.03,
+  "payload": {
+   "no_bid_dollars": "0.9500",
+   "yes_bid_dollars": "0.0300"
+  }
+ },
+ {
+  "ask": null,
+  "bid": null,
+  "payload": {
+   "yes_bid_dollars": "0.0300"
+  }
+ },
+ {
+  "ask": null,
+  "bid": null,
+  "payload": {
+   "yes_ask_dollars": "0.04",
+   "yes_bid_dollars": "abc"
+  }
+ },
+ {
+  "ask": 1.0,
+  "bid": 0.0,
+  "payload": {
+   "yes_ask_dollars": "1.0000",
+   "yes_bid_dollars": "0.0000"
+  }
+ },
+ {
+  "ask": null,
+  "bid": null,
+  "payload": {}
+ }
+]

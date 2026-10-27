@@ -1,0 +1,2102 @@
+[
+ {
+  "budget": 449.2425,
+  "cash": 434.89,
+  "committed_book": 55.08,
+  "committed_live": 262.44,
+  "portfolio_value": 237.54
+ },
+ {
+  "budget": 577.9075,
+  "cash": 743.09,
+  "committed_book": 94.49,
+  "committed_live": 153.44,
+  "portfolio_value": null
+ },
+ {
+  "budget": 612.7974999999999,
+  "cash": 797.51,
+  "committed_book": 17.96,
+  "committed_live": 230.74,
+  "portfolio_value": 43.5
+ },
+ {
+  "budget": 128.245,
+  "cash": 17.97,
+  "committed_book": 47.45,
+  "committed_live": 68.54,
+  "portfolio_value": 216.29
+ },
+ {
+  "budget": 172.07750000000001,
+  "cash": 276.65,
+  "committed_book": 211.54,
+  "committed_live": 234.84,
+  "portfolio_value": null
+ },
+ {
+  "budget": 129.06500000000005,
+  "cash": 60.37,
+  "committed_book": 149.26,
+  "committed_live": 310.73,
+  "portfolio_value": null
+ },
+ {
+  "budget": 101.64499999999998,
+  "cash": 40.28,
+  "committed_book": 267.37,
+  "committed_live": 451.74,
+  "portfolio_value": null
+ },
+ {
+  "budget": 493.35,
+  "cash": 477.1,
+  "committed_book": 40.23,
+  "committed_live": 234.34,
+  "portfolio_value": null
+ },
+ {
+  "budget": -158.7025,
+  "cash": 91.4,
+  "committed_book": 268.99,
+  "committed_live": 386.06,
+  "portfolio_value": 55.65
+ },
+ {
+  "budget": 33.05999999999999,
+  "cash": 53.86,
+  "committed_book": 39.39,
+  "committed_live": 42.74,
+  "portfolio_value": null
+ },
+ {
+  "budget": 122.66749999999999,
+  "cash": 241.33,
+  "committed_book": 165.91,
+  "committed_live": 174.15,
+  "portfolio_value": 143.44
+ },
+ {
+  "budget": 745.9875,
+  "cash": 769.68,
+  "committed_book": 53.52,
+  "committed_live": 443.46,
+  "portfolio_value": 296.33
+ },
+ {
+  "budget": 792.9300000000001,
+  "cash": 767.77,
+  "committed_book": 59.25,
+  "committed_live": 97.49,
+  "portfolio_value": 368.47
+ },
+ {
+  "budget": 254.90750000000003,
+  "cash": 486.74,
+  "committed_book": 153.43,
+  "committed_live": 162.16,
+  "portfolio_value": 57.71
+ },
+ {
+  "budget": 368.00250000000005,
+  "cash": 418.95,
+  "committed_book": 155.49,
+  "committed_live": 279.04,
+  "portfolio_value": null
+ },
+ {
+  "budget": 232.52499999999998,
+  "cash": 346.5,
+  "committed_book": 288.02,
+  "committed_live": 333.96,
+  "portfolio_value": 347.56
+ },
+ {
+  "budget": 673.0074999999998,
+  "cash": 660.05,
+  "committed_book": 111.08,
+  "committed_live": 385.4,
+  "portfolio_value": null
+ },
+ {
+  "budget": 580.9000000000001,
+  "cash": 758.01,
+  "committed_book": 5.3,
+  "committed_live": 23.59,
+  "portfolio_value": null
+ },
+ {
+  "budget": 577.68,
+  "cash": 673.28,
+  "committed_book": 62.82,
+  "committed_live": 101.59,
+  "portfolio_value": 180.72
+ },
+ {
+  "budget": 353.6175,
+  "cash": 404.83,
+  "committed_book": 95.79,
+  "committed_live": 111.04,
+  "portfolio_value": 194.38
+ },
+ {
+  "budget": 627.5175,
+  "cash": 757.09,
+  "committed_book": 107.34,
+  "committed_live": 222.72,
+  "portfolio_value": null
+ },
+ {
+  "budget": -133.305,
+  "cash": 184.39,
+  "committed_book": 288.27,
+  "committed_live": 389.08,
+  "portfolio_value": 22.23
+ },
+ {
+  "budget": 459.745,
+  "cash": 454.5,
+  "committed_book": 221.96,
+  "committed_live": 454.44,
+  "portfolio_value": null
+ },
+ {
+  "budget": 30.519999999999982,
+  "cash": 92.12,
+  "committed_book": 163.55,
+  "committed_live": 166.64,
+  "portfolio_value": null
+ },
+ {
+  "budget": 492.4274999999999,
+  "cash": 673.66,
+  "committed_book": 234.96,
+  "committed_live": 296.19,
+  "portfolio_value": null
+ },
+ {
+  "budget": 148.6825,
+  "cash": 225.79,
+  "committed_book": 276.74,
+  "committed_live": 341.44,
+  "portfolio_value": null
+ },
+ {
+  "budget": 683.5425,
+  "cash": 701.81,
+  "committed_book": 131.82,
+  "committed_live": 368.55,
+  "portfolio_value": 385.34
+ },
+ {
+  "budget": 267.2225,
+  "cash": 171.21,
+  "committed_book": 13.03,
+  "committed_live": 202.46,
+  "portfolio_value": null
+ },
+ {
+  "budget": 182.465,
+  "cash": 395.59,
+  "committed_book": 209.23,
+  "committed_live": 419.0,
+  "portfolio_value": 126.67
+ },
+ {
+  "budget": 237.2325,
+  "cash": 304.64,
+  "committed_book": 9.54,
+  "committed_live": 24.39,
+  "portfolio_value": null
+ },
+ {
+  "budget": 78.01750000000004,
+  "cash": 604.61,
+  "committed_book": 428.96,
+  "committed_live": 490.92,
+  "portfolio_value": 71.36
+ },
+ {
+  "budget": 632.545,
+  "cash": 544.32,
+  "committed_book": 60.62,
+  "committed_live": 223.1,
+  "portfolio_value": 379.9
+ },
+ {
+  "budget": 212.79000000000002,
+  "cash": 260.67,
+  "committed_book": 9.48,
+  "committed_live": 35.69,
+  "portfolio_value": null
+ },
+ {
+  "budget": 160.13000000000002,
+  "cash": 62.93,
+  "committed_book": 209.23,
+  "committed_live": 429.55,
+  "portfolio_value": null
+ },
+ {
+  "budget": 15.050000000000002,
+  "cash": 22.44,
+  "committed_book": 12.58,
+  "committed_live": 14.4,
+  "portfolio_value": null
+ },
+ {
+  "budget": 493.83500000000004,
+  "cash": 619.58,
+  "committed_book": 20.47,
+  "committed_live": 66.16,
+  "portfolio_value": null
+ },
+ {
+  "budget": 160.36749999999998,
+  "cash": 115.26,
+  "committed_book": 159.71,
+  "committed_live": 187.91,
+  "portfolio_value": 311.51
+ },
+ {
+  "budget": 213.355,
+  "cash": 149.23,
+  "committed_book": 55.79,
+  "committed_live": 209.63,
+  "portfolio_value": null
+ },
+ {
+  "budget": 178.64999999999998,
+  "cash": 93.51,
+  "committed_book": 88.62,
+  "committed_live": 262.85,
+  "portfolio_value": null
+ },
+ {
+  "budget": 417.8525,
+  "cash": 589.38,
+  "committed_book": 304.45,
+  "committed_live": 327.95,
+  "portfolio_value": 373.69
+ },
+ {
+  "budget": 346.66749999999996,
+  "cash": 498.58,
+  "committed_book": 271.94,
+  "committed_live": 326.23,
+  "portfolio_value": null
+ },
+ {
+  "budget": 485.7575,
+  "cash": 424.73,
+  "committed_book": 13.36,
+  "committed_live": 240.76,
+  "portfolio_value": null
+ },
+ {
+  "budget": 587.73,
+  "cash": 787.36,
+  "committed_book": 17.43,
+  "committed_live": 19.52,
+  "portfolio_value": null
+ },
+ {
+  "budget": 758.5999999999999,
+  "cash": 788.9,
+  "committed_book": 181.0,
+  "committed_live": 463.9,
+  "portfolio_value": null
+ },
+ {
+  "budget": 560.6975,
+  "cash": 319.04,
+  "committed_book": 1.69,
+  "committed_live": 430.81,
+  "portfolio_value": null
+ },
+ {
+  "budget": 250.63750000000002,
+  "cash": 362.79,
+  "committed_book": 166.79,
+  "committed_live": 193.78,
+  "portfolio_value": null
+ },
+ {
+  "budget": 735.22,
+  "cash": 783.72,
+  "committed_book": 24.83,
+  "committed_live": 33.42,
+  "portfolio_value": 229.68
+ },
+ {
+  "budget": 627.2125,
+  "cash": 732.8,
+  "committed_book": 138.14,
+  "committed_live": 287.67,
+  "portfolio_value": null
+ },
+ {
+  "budget": 357.62000000000006,
+  "cash": 317.05,
+  "committed_book": 144.25,
+  "committed_live": 149.46,
+  "portfolio_value": 352.11
+ },
+ {
+  "budget": 470.65000000000003,
+  "cash": 631.55,
+  "committed_book": 128.81,
+  "committed_live": 167.73,
+  "portfolio_value": null
+ },
+ {
+  "budget": 201.79,
+  "cash": 71.3,
+  "committed_book": 7.55,
+  "committed_live": 77.73,
+  "portfolio_value": 207.82
+ },
+ {
+  "budget": 95.27499999999998,
+  "cash": 78.06,
+  "committed_book": 151.97,
+  "committed_live": 320.66,
+  "portfolio_value": 251.6
+ },
+ {
+  "budget": 293.59749999999997,
+  "cash": 628.99,
+  "committed_book": 300.62,
+  "committed_live": 438.62,
+  "portfolio_value": 163.3
+ },
+ {
+  "budget": 498.36,
+  "cash": 543.84,
+  "committed_book": 10.29,
+  "committed_live": 134.36,
+  "portfolio_value": null
+ },
+ {
+  "budget": 451.72,
+  "cash": 569.57,
+  "committed_book": 123.53,
+  "committed_live": 197.43,
+  "portfolio_value": null
+ },
+ {
+  "budget": 559.3475,
+  "cash": 660.62,
+  "committed_book": 72.97,
+  "committed_live": 182.47,
+  "portfolio_value": null
+ },
+ {
+  "budget": 741.5625000000001,
+  "cash": 709.64,
+  "committed_book": 19.68,
+  "committed_live": 327.69,
+  "portfolio_value": 305.35
+ },
+ {
+  "budget": 473.9625,
+  "cash": 550.89,
+  "committed_book": 185.88,
+  "committed_live": 389.75,
+  "portfolio_value": 328.9
+ },
+ {
+  "budget": 577.4175,
+  "cash": 619.64,
+  "committed_book": 24.39,
+  "committed_live": 182.77,
+  "portfolio_value": null
+ },
+ {
+  "budget": 269.03499999999997,
+  "cash": 24.13,
+  "committed_book": 35.6,
+  "committed_live": 298.97,
+  "portfolio_value": 382.05
+ },
+ {
+  "budget": 571.9375,
+  "cash": 769.73,
+  "committed_book": 135.26,
+  "committed_live": 198.03,
+  "portfolio_value": 173.2
+ },
+ {
+  "budget": 561.0675,
+  "cash": 598.06,
+  "committed_book": 48.39,
+  "committed_live": 89.24,
+  "portfolio_value": 214.55
+ },
+ {
+  "budget": 127.70250000000001,
+  "cash": 235.19,
+  "committed_book": 148.08,
+  "committed_live": 415.33,
+  "portfolio_value": 132.52
+ },
+ {
+  "budget": 449.0275,
+  "cash": 631.87,
+  "committed_book": 109.19,
+  "committed_live": 112.42,
+  "portfolio_value": null
+ },
+ {
+  "budget": 629.0,
+  "cash": 703.57,
+  "committed_book": 207.76,
+  "committed_live": 412.11,
+  "portfolio_value": null
+ },
+ {
+  "budget": 116.9025,
+  "cash": 234.63,
+  "committed_book": 68.85,
+  "committed_live": 460.33,
+  "portfolio_value": 13.04
+ },
+ {
+  "budget": 517.385,
+  "cash": 554.5,
+  "committed_book": 11.26,
+  "committed_live": 119.68,
+  "portfolio_value": 150.36
+ },
+ {
+  "budget": 151.39000000000004,
+  "cash": 297.55,
+  "committed_book": 84.92,
+  "committed_live": 316.23,
+  "portfolio_value": 17.53
+ },
+ {
+  "budget": 155.10250000000005,
+  "cash": 29.35,
+  "committed_book": 183.92,
+  "committed_live": 422.68,
+  "portfolio_value": null
+ },
+ {
+  "budget": 283.4575,
+  "cash": 144.26,
+  "committed_book": 54.95,
+  "committed_live": 78.35,
+  "portfolio_value": 306.95
+ },
+ {
+  "budget": 117.20249999999999,
+  "cash": 449.46,
+  "committed_book": 319.14,
+  "committed_live": 487.58,
+  "portfolio_value": 132.33
+ },
+ {
+  "budget": 395.17249999999996,
+  "cash": 450.08,
+  "committed_book": 16.63,
+  "committed_live": 98.99,
+  "portfolio_value": null
+ },
+ {
+  "budget": 457.8099999999999,
+  "cash": 573.65,
+  "committed_book": 239.57,
+  "committed_live": 319.02,
+  "portfolio_value": 356.19
+ },
+ {
+  "budget": 340.15999999999997,
+  "cash": 609.54,
+  "committed_book": 337.39,
+  "committed_live": 499.74,
+  "portfolio_value": 293.86
+ },
+ {
+  "budget": 639.6700000000001,
+  "cash": 777.24,
+  "committed_book": 216.38,
+  "committed_live": 364.16,
+  "portfolio_value": null
+ },
+ {
+  "budget": 339.29999999999995,
+  "cash": 231.81,
+  "committed_book": 196.5,
+  "committed_live": 482.59,
+  "portfolio_value": null
+ },
+ {
+  "budget": 610.9825000000001,
+  "cash": 485.96,
+  "committed_book": 26.51,
+  "committed_live": 364.03,
+  "portfolio_value": null
+ },
+ {
+  "budget": 52.46750000000001,
+  "cash": 71.51,
+  "committed_book": 42.73,
+  "committed_live": 55.42,
+  "portfolio_value": null
+ },
+ {
+  "budget": 236.84500000000003,
+  "cash": 430.57,
+  "committed_book": 457.4,
+  "committed_live": 495.09,
+  "portfolio_value": null
+ },
+ {
+  "budget": 25.627500000000026,
+  "cash": 14.19,
+  "committed_book": 175.02,
+  "committed_live": 206.77,
+  "portfolio_value": 253.34
+ },
+ {
+  "budget": 45.464999999999975,
+  "cash": 203.24,
+  "committed_book": 440.07,
+  "committed_live": 444.14,
+  "portfolio_value": null
+ },
+ {
+  "budget": 621.9449999999999,
+  "cash": 690.81,
+  "committed_book": 64.23,
+  "committed_live": 224.09,
+  "portfolio_value": null
+ },
+ {
+  "budget": 730.885,
+  "cash": 675.08,
+  "committed_book": 60.71,
+  "committed_live": 216.93,
+  "portfolio_value": 380.38
+ },
+ {
+  "budget": 529.6125,
+  "cash": 574.17,
+  "committed_book": 4.2,
+  "committed_live": 13.77,
+  "portfolio_value": 137.58
+ },
+ {
+  "budget": 499.395,
+  "cash": 573.53,
+  "committed_book": 286.23,
+  "committed_live": 473.97,
+  "portfolio_value": null
+ },
+ {
+  "budget": 654.5625,
+  "cash": 746.59,
+  "committed_book": 2.52,
+  "committed_live": 2.65,
+  "portfolio_value": 129.52
+ },
+ {
+  "budget": 94.58999999999997,
+  "cash": 131.39,
+  "committed_book": 197.7,
+  "committed_live": 258.33,
+  "portfolio_value": null
+ },
+ {
+  "budget": 919.9924999999998,
+  "cash": 795.28,
+  "committed_book": 5.2,
+  "committed_live": 438.31,
+  "portfolio_value": null
+ },
+ {
+  "budget": 31.93,
+  "cash": 29.21,
+  "committed_book": 37.85,
+  "committed_live": 429.91,
+  "portfolio_value": 63.83
+ },
+ {
+  "budget": 38.264999999999986,
+  "cash": 173.29,
+  "committed_book": 340.02,
+  "committed_live": 369.64,
+  "portfolio_value": 331.09
+ },
+ {
+  "budget": 290.0075,
+  "cash": 324.57,
+  "committed_book": 122.89,
+  "committed_live": 225.96,
+  "portfolio_value": null
+ },
+ {
+  "budget": 733.0675,
+  "cash": 673.59,
+  "committed_book": 38.9,
+  "committed_live": 355.7,
+  "portfolio_value": null
+ },
+ {
+  "budget": 383.92999999999995,
+  "cash": 409.01,
+  "committed_book": 38.74,
+  "committed_live": 319.75,
+  "portfolio_value": 154.55
+ },
+ {
+  "budget": 123.83250000000001,
+  "cash": 177.46,
+  "committed_book": 152.85,
+  "committed_live": 191.45,
+  "portfolio_value": null
+ },
+ {
+  "budget": 315.23750000000007,
+  "cash": 491.95,
+  "committed_book": 218.29,
+  "committed_live": 219.42,
+  "portfolio_value": null
+ },
+ {
+  "budget": -135.92249999999999,
+  "cash": 137.82,
+  "committed_book": 246.45,
+  "committed_live": 249.6,
+  "portfolio_value": 9.55
+ },
+ {
+  "budget": 556.185,
+  "cash": 616.14,
+  "committed_book": 141.24,
+  "committed_live": 190.44,
+  "portfolio_value": 313.76
+ },
+ {
+  "budget": 236.8875,
+  "cash": 375.75,
+  "committed_book": 189.18,
+  "committed_live": 192.34,
+  "portfolio_value": null
+ },
+ {
+  "budget": 788.775,
+  "cash": 734.24,
+  "committed_book": 3.6,
+  "committed_live": 108.38,
+  "portfolio_value": 322.26
+ },
+ {
+  "budget": 283.98499999999996,
+  "cash": 312.55,
+  "committed_book": 4.3,
+  "committed_live": 7.6,
+  "portfolio_value": 71.83
+ },
+ {
+  "budget": 313.0575,
+  "cash": 747.35,
+  "committed_book": 415.86,
+  "committed_live": 492.02,
+  "portfolio_value": 224.54
+ },
+ {
+  "budget": 114.64749999999998,
+  "cash": 379.07,
+  "committed_book": 175.37,
+  "committed_live": 207.54,
+  "portfolio_value": 7.62
+ },
+ {
+  "budget": 440.01750000000004,
+  "cash": 317.4,
+  "committed_book": 56.07,
+  "committed_live": 344.05,
+  "portfolio_value": null
+ },
+ {
+  "budget": 396.5575,
+  "cash": 538.88,
+  "committed_book": 72.35,
+  "committed_live": 173.13,
+  "portfolio_value": 86.33
+ },
+ {
+  "budget": 495.24500000000006,
+  "cash": 680.98,
+  "committed_book": 126.31,
+  "committed_live": 374.61,
+  "portfolio_value": 147.76
+ },
+ {
+  "budget": 491.7100000000001,
+  "cash": 634.69,
+  "committed_book": 60.2,
+  "committed_live": 101.19,
+  "portfolio_value": null
+ },
+ {
+  "budget": 564.3399999999999,
+  "cash": 777.27,
+  "committed_book": 88.04,
+  "committed_live": 92.57,
+  "portfolio_value": null
+ },
+ {
+  "budget": 282.275,
+  "cash": 135.39,
+  "committed_book": 15.82,
+  "committed_live": 262.07,
+  "portfolio_value": null
+ },
+ {
+  "budget": 183.8925,
+  "cash": 251.65,
+  "committed_book": 29.19,
+  "committed_live": 30.24,
+  "portfolio_value": 32.46
+ },
+ {
+  "budget": 495.46,
+  "cash": 617.66,
+  "committed_book": 272.81,
+  "committed_live": 406.7,
+  "portfolio_value": null
+ },
+ {
+  "budget": 555.2825,
+  "cash": 684.21,
+  "committed_book": 106.27,
+  "committed_live": 197.86,
+  "portfolio_value": null
+ },
+ {
+  "budget": 438.5874999999999,
+  "cash": 718.48,
+  "committed_book": 390.92,
+  "committed_live": 495.46,
+  "portfolio_value": 387.53
+ },
+ {
+  "budget": 571.2975,
+  "cash": 446.99,
+  "committed_book": 57.75,
+  "committed_live": 286.41,
+  "portfolio_value": 391.74
+ },
+ {
+  "budget": 479.5925,
+  "cash": 665.33,
+  "committed_book": 247.99,
+  "committed_live": 304.78,
+  "portfolio_value": null
+ },
+ {
+  "budget": 346.7775,
+  "cash": 388.17,
+  "committed_book": 8.04,
+  "committed_live": 84.92,
+  "portfolio_value": null
+ },
+ {
+  "budget": 774.9050000000001,
+  "cash": 677.73,
+  "committed_book": 102.34,
+  "committed_live": 491.93,
+  "portfolio_value": null
+ },
+ {
+  "budget": 813.87,
+  "cash": 708.45,
+  "committed_book": 37.02,
+  "committed_live": 426.07,
+  "portfolio_value": null
+ },
+ {
+  "budget": 712.4825,
+  "cash": 709.43,
+  "committed_book": 101.47,
+  "committed_live": 282.16,
+  "portfolio_value": 375.84
+ },
+ {
+  "budget": 451.2875000000001,
+  "cash": 574.89,
+  "committed_book": 65.05,
+  "committed_live": 230.31,
+  "portfolio_value": 113.56
+ },
+ {
+  "budget": 610.56,
+  "cash": 786.41,
+  "committed_book": 4.89,
+  "committed_live": 34.19,
+  "portfolio_value": null
+ },
+ {
+  "budget": 37.97500000000002,
+  "cash": 199.11,
+  "committed_book": 126.68,
+  "committed_live": 275.9,
+  "portfolio_value": 20.43
+ },
+ {
+  "budget": 370.88749999999993,
+  "cash": 415.07,
+  "committed_book": 210.37,
+  "committed_live": 357.53,
+  "portfolio_value": 359.94
+ },
+ {
+  "budget": 322.79499999999996,
+  "cash": 506.5,
+  "committed_book": 331.64,
+  "committed_live": 365.04,
+  "portfolio_value": 366.08
+ },
+ {
+  "budget": 298.4150000000001,
+  "cash": 491.28,
+  "committed_book": 327.61,
+  "committed_live": 332.9,
+  "portfolio_value": 343.42
+ },
+ {
+  "budget": 262.605,
+  "cash": 393.1,
+  "committed_book": 131.91,
+  "committed_live": 132.92,
+  "portfolio_value": null
+ },
+ {
+  "budget": 371.79499999999996,
+  "cash": 521.66,
+  "committed_book": 84.73,
+  "committed_live": 87.04,
+  "portfolio_value": null
+ },
+ {
+  "budget": 459.525,
+  "cash": 502.9,
+  "committed_book": 90.84,
+  "committed_live": 230.92,
+  "portfolio_value": null
+ },
+ {
+  "budget": 324.8725,
+  "cash": 184.94,
+  "committed_book": 0.02,
+  "committed_live": 250.75,
+  "portfolio_value": 248.25
+ },
+ {
+  "budget": 158.58249999999998,
+  "cash": 377.99,
+  "committed_book": 377.51,
+  "committed_live": 393.75,
+  "portfolio_value": 336.8
+ },
+ {
+  "budget": 433.91749999999996,
+  "cash": 373.55,
+  "committed_book": 1.3,
+  "committed_live": 206.74,
+  "portfolio_value": null
+ },
+ {
+  "budget": 336.57500000000005,
+  "cash": 262.12,
+  "committed_book": 137.14,
+  "committed_live": 369.5,
+  "portfolio_value": null
+ },
+ {
+  "budget": 150.55,
+  "cash": 264.68,
+  "committed_book": 87.74,
+  "committed_live": 310.92,
+  "portfolio_value": 53.04
+ },
+ {
+  "budget": 298.0975,
+  "cash": 351.97,
+  "committed_book": 9.68,
+  "committed_live": 117.56,
+  "portfolio_value": 58.4
+ },
+ {
+  "budget": 578.0925,
+  "cash": 474.01,
+  "committed_book": 77.07,
+  "committed_live": 399.54,
+  "portfolio_value": null
+ },
+ {
+  "budget": 800.4799999999999,
+  "cash": 792.31,
+  "committed_book": 25.84,
+  "committed_live": 97.64,
+  "portfolio_value": 309.45
+ },
+ {
+  "budget": 55.197500000000105,
+  "cash": 654.34,
+  "committed_book": 461.89,
+  "committed_live": 482.42,
+  "portfolio_value": 35.11
+ },
+ {
+  "budget": 335.4675,
+  "cash": 63.39,
+  "committed_book": 1.5,
+  "committed_live": 122.41,
+  "portfolio_value": 385.9
+ },
+ {
+  "budget": 89.71,
+  "cash": 96.76,
+  "committed_book": 46.61,
+  "committed_live": 85.0,
+  "portfolio_value": null
+ },
+ {
+  "budget": 352.43000000000006,
+  "cash": 361.11,
+  "committed_book": 109.63,
+  "committed_live": 161.15,
+  "portfolio_value": 254.97
+ },
+ {
+  "budget": 523.425,
+  "cash": 561.1,
+  "committed_book": 8.55,
+  "committed_live": 162.73,
+  "portfolio_value": 148.2
+ },
+ {
+  "budget": 43.680000000000035,
+  "cash": 132.69,
+  "committed_book": 185.79,
+  "committed_live": 216.86,
+  "portfolio_value": 173.27
+ },
+ {
+  "budget": 373.8725,
+  "cash": 54.13,
+  "committed_book": 35.29,
+  "committed_live": 491.42,
+  "portfolio_value": null
+ },
+ {
+  "budget": 24.62999999999999,
+  "cash": 17.91,
+  "committed_book": 57.96,
+  "committed_live": 325.1,
+  "portfolio_value": 92.21
+ },
+ {
+  "budget": 401.83250000000004,
+  "cash": 616.63,
+  "committed_book": 290.44,
+  "committed_live": 391.39,
+  "portfolio_value": 306.4
+ },
+ {
+  "budget": 395.75500000000005,
+  "cash": 464.31,
+  "committed_book": 186.05,
+  "committed_live": 395.47,
+  "portfolio_value": 311.43
+ },
+ {
+  "budget": 613.0925,
+  "cash": 614.67,
+  "committed_book": 119.98,
+  "committed_live": 362.76,
+  "portfolio_value": null
+ },
+ {
+  "budget": 5.602499999999999,
+  "cash": 22.15,
+  "committed_book": 47.34,
+  "committed_live": 57.4,
+  "portfolio_value": 48.44
+ },
+ {
+  "budget": 67.03250000000001,
+  "cash": 41.54,
+  "committed_book": 60.58,
+  "committed_live": 128.61,
+  "portfolio_value": null
+ },
+ {
+  "budget": 185.04749999999996,
+  "cash": 251.31,
+  "committed_book": 158.55,
+  "committed_live": 206.82,
+  "portfolio_value": null
+ },
+ {
+  "budget": 435.02250000000004,
+  "cash": 549.58,
+  "committed_book": 333.75,
+  "committed_live": 475.45,
+  "portfolio_value": null
+ },
+ {
+  "budget": 41.99249999999999,
+  "cash": 133.09,
+  "committed_book": 65.79,
+  "committed_live": 364.13,
+  "portfolio_value": 10.62
+ },
+ {
+  "budget": 328.4575,
+  "cash": 278.87,
+  "committed_book": 27.5,
+  "committed_live": 195.74,
+  "portfolio_value": null
+ },
+ {
+  "budget": 522.52,
+  "cash": 688.8,
+  "committed_book": 89.54,
+  "committed_live": 332.58,
+  "portfolio_value": 127.28
+ },
+ {
+  "budget": 545.28,
+  "cash": 484.75,
+  "committed_book": 113.94,
+  "committed_live": 333.98,
+  "portfolio_value": 394.21
+ },
+ {
+  "budget": 263.31500000000005,
+  "cash": 495.0,
+  "committed_book": 441.25,
+  "committed_live": 444.42,
+  "portfolio_value": null
+ },
+ {
+  "budget": 530.2475000000001,
+  "cash": 653.25,
+  "committed_book": 146.62,
+  "committed_live": 211.41,
+  "portfolio_value": 249.24
+ },
+ {
+  "budget": 519.0075,
+  "cash": 697.06,
+  "committed_book": 95.91,
+  "committed_live": 122.83,
+  "portfolio_value": null
+ },
+ {
+  "budget": -250.35999999999996,
+  "cash": 85.86,
+  "committed_book": 406.03,
+  "committed_live": 465.84,
+  "portfolio_value": 121.7
+ },
+ {
+  "budget": 570.495,
+  "cash": 707.59,
+  "committed_book": 2.64,
+  "committed_live": 56.59,
+  "portfolio_value": null
+ },
+ {
+  "budget": 494.40999999999997,
+  "cash": 395.11,
+  "committed_book": 56.36,
+  "committed_live": 216.69,
+  "portfolio_value": 339.25
+ },
+ {
+  "budget": 84.42750000000001,
+  "cash": 108.73,
+  "committed_book": 4.83,
+  "committed_live": 10.28,
+  "portfolio_value": null
+ },
+ {
+  "budget": 459.63749999999993,
+  "cash": 682.27,
+  "committed_book": 56.85,
+  "committed_live": 285.34,
+  "portfolio_value": 6.38
+ },
+ {
+  "budget": 554.8050000000001,
+  "cash": 753.88,
+  "committed_book": 231.9,
+  "committed_live": 309.12,
+  "portfolio_value": 295.06
+ },
+ {
+  "budget": 363.05500000000006,
+  "cash": 502.58,
+  "committed_book": 182.75,
+  "committed_live": 225.16,
+  "portfolio_value": null
+ },
+ {
+  "budget": 555.705,
+  "cash": 740.19,
+  "committed_book": 17.4,
+  "committed_live": 23.95,
+  "portfolio_value": null
+ },
+ {
+  "budget": -93.1825,
+  "cash": 168.82,
+  "committed_book": 239.71,
+  "committed_live": 482.54,
+  "portfolio_value": 26.55
+ },
+ {
+  "budget": 477.0275,
+  "cash": 567.77,
+  "committed_book": 88.69,
+  "committed_live": 186.52,
+  "portfolio_value": null
+ },
+ {
+  "budget": -22.349999999999994,
+  "cash": 271.6,
+  "committed_book": 238.8,
+  "committed_live": 491.5,
+  "portfolio_value": 17.0
+ },
+ {
+  "budget": -6.572499999999991,
+  "cash": 130.85,
+  "committed_book": 224.53,
+  "committed_live": 366.07,
+  "portfolio_value": 159.76
+ },
+ {
+  "budget": 263.65,
+  "cash": 345.81,
+  "committed_book": 27.29,
+  "committed_live": 404.18,
+  "portfolio_value": 42.11
+ },
+ {
+  "budget": 365.22249999999997,
+  "cash": 198.12,
+  "committed_book": 21.62,
+  "committed_live": 49.87,
+  "portfolio_value": 317.67
+ },
+ {
+  "budget": 442.88500000000005,
+  "cash": 582.19,
+  "committed_book": 244.19,
+  "committed_live": 275.6,
+  "portfolio_value": 333.91
+ },
+ {
+  "budget": 620.0675,
+  "cash": 787.67,
+  "committed_book": 14.56,
+  "committed_live": 58.5,
+  "portfolio_value": null
+ },
+ {
+  "budget": 523.0625,
+  "cash": 618.99,
+  "committed_book": 0.34,
+  "committed_live": 105.76,
+  "portfolio_value": 78.88
+ },
+ {
+  "budget": 577.8499999999999,
+  "cash": 778.63,
+  "committed_book": 256.96,
+  "committed_live": 268.56,
+  "portfolio_value": 334.45
+ },
+ {
+  "budget": 780.1125000000001,
+  "cash": 773.08,
+  "committed_book": 30.6,
+  "committed_live": 133.71,
+  "portfolio_value": 307.87
+ },
+ {
+  "budget": 269.12,
+  "cash": 164.09,
+  "committed_book": 33.55,
+  "committed_live": 239.47,
+  "portfolio_value": null
+ },
+ {
+  "budget": 586.1900000000002,
+  "cash": 638.94,
+  "committed_book": 17.65,
+  "committed_live": 166.18,
+  "portfolio_value": null
+ },
+ {
+  "budget": 506.84500000000014,
+  "cash": 625.7,
+  "committed_book": 47.15,
+  "committed_live": 112.96,
+  "portfolio_value": null
+ },
+ {
+  "budget": 249.94,
+  "cash": 273.85,
+  "committed_book": 113.42,
+  "committed_live": 210.63,
+  "portfolio_value": null
+ },
+ {
+  "budget": 504.13750000000005,
+  "cash": 274.71,
+  "committed_book": 36.41,
+  "committed_live": 446.02,
+  "portfolio_value": null
+ },
+ {
+  "budget": 724.2650000000001,
+  "cash": 794.65,
+  "committed_book": 15.79,
+  "committed_live": 418.69,
+  "portfolio_value": 192.09
+ },
+ {
+  "budget": 419.09999999999997,
+  "cash": 233.27,
+  "committed_book": 7.92,
+  "committed_live": 85.4,
+  "portfolio_value": 336.09
+ },
+ {
+  "budget": 441.0475,
+  "cash": 417.95,
+  "committed_book": 58.64,
+  "committed_live": 248.3,
+  "portfolio_value": null
+ },
+ {
+  "budget": 599.7575,
+  "cash": 523.41,
+  "committed_book": 62.83,
+  "committed_live": 360.04,
+  "portfolio_value": null
+ },
+ {
+  "budget": 514.8325,
+  "cash": 639.71,
+  "committed_book": 262.55,
+  "committed_live": 396.8,
+  "portfolio_value": null
+ },
+ {
+  "budget": 503.26499999999993,
+  "cash": 661.55,
+  "committed_book": 350.7,
+  "committed_live": 477.07,
+  "portfolio_value": null
+ },
+ {
+  "budget": 208.03249999999997,
+  "cash": 14.15,
+  "committed_book": 47.05,
+  "committed_live": 325.96,
+  "portfolio_value": null
+ },
+ {
+  "budget": -178.8,
+  "cash": 62.43,
+  "committed_book": 314.49,
+  "committed_live": 316.65,
+  "portfolio_value": 118.49
+ },
+ {
+  "budget": 150.4575,
+  "cash": 7.8,
+  "committed_book": 1.71,
+  "committed_live": 8.25,
+  "portfolio_value": 195.09
+ },
+ {
+  "budget": 235.59500000000003,
+  "cash": 314.39,
+  "committed_book": 12.7,
+  "committed_live": 16.67,
+  "portfolio_value": null
+ },
+ {
+  "budget": 573.6575,
+  "cash": 434.66,
+  "committed_book": 64.51,
+  "committed_live": 416.23,
+  "portfolio_value": null
+ },
+ {
+  "budget": 160.655,
+  "cash": 133.77,
+  "committed_book": 61.99,
+  "committed_live": 163.09,
+  "portfolio_value": null
+ },
+ {
+  "budget": 123.05,
+  "cash": 67.72,
+  "committed_book": 0.94,
+  "committed_live": 496.86,
+  "portfolio_value": 97.6
+ },
+ {
+  "budget": 642.5450000000001,
+  "cash": 552.08,
+  "committed_book": 37.51,
+  "committed_live": 362.0,
+  "portfolio_value": 354.66
+ },
+ {
+  "budget": 295.875,
+  "cash": 387.19,
+  "committed_book": 9.99,
+  "committed_live": 20.63,
+  "portfolio_value": null
+ },
+ {
+  "budget": 499.72500000000014,
+  "cash": 616.75,
+  "committed_book": 313.02,
+  "committed_live": 466.91,
+  "portfolio_value": null
+ },
+ {
+  "budget": 518.75,
+  "cash": 735.13,
+  "committed_book": 388.69,
+  "committed_live": 474.79,
+  "portfolio_value": null
+ },
+ {
+  "budget": -2.375,
+  "cash": 135.3,
+  "committed_book": 336.32,
+  "committed_live": 422.81,
+  "portfolio_value": 309.96
+ },
+ {
+  "budget": 553.6200000000001,
+  "cash": 760.05,
+  "committed_book": 276.84,
+  "committed_live": 400.01,
+  "portfolio_value": 347.23
+ },
+ {
+  "budget": 760.2,
+  "cash": 754.79,
+  "committed_book": 1.02,
+  "committed_live": 260.17,
+  "portfolio_value": null
+ },
+ {
+  "budget": 561.6924999999999,
+  "cash": 606.74,
+  "committed_book": 3.47,
+  "committed_live": 146.81,
+  "portfolio_value": null
+ },
+ {
+  "budget": 109.34499999999998,
+  "cash": 181.75,
+  "committed_book": 88.01,
+  "committed_live": 91.33,
+  "portfolio_value": 81.39
+ },
+ {
+  "budget": 183.69500000000005,
+  "cash": 554.33,
+  "committed_book": 466.48,
+  "committed_live": 469.1,
+  "portfolio_value": 312.57
+ },
+ {
+  "budget": 129.51250000000002,
+  "cash": 6.94,
+  "committed_book": 63.41,
+  "committed_live": 194.73,
+  "portfolio_value": 250.29
+ },
+ {
+  "budget": 486.4525000000001,
+  "cash": 683.57,
+  "committed_book": 29.51,
+  "committed_live": 50.11,
+  "portfolio_value": 4.38
+ },
+ {
+  "budget": 497.11500000000007,
+  "cash": 465.66,
+  "committed_book": 0.27,
+  "committed_live": 285.72,
+  "portfolio_value": 197.52
+ },
+ {
+  "budget": 195.10500000000002,
+  "cash": 23.67,
+  "committed_book": 166.44,
+  "committed_live": 458.39,
+  "portfolio_value": null
+ },
+ {
+  "budget": 130.94000000000005,
+  "cash": 496.38,
+  "committed_book": 400.24,
+  "committed_live": 403.6,
+  "portfolio_value": 211.86
+ },
+ {
+  "budget": 326.74500000000006,
+  "cash": 461.13,
+  "committed_book": 255.57,
+  "committed_live": 456.94,
+  "portfolio_value": 315.29
+ },
+ {
+  "budget": 355.24000000000007,
+  "cash": 615.88,
+  "committed_book": 275.09,
+  "committed_live": 457.44,
+  "portfolio_value": 224.56
+ },
+ {
+  "budget": 275.5675000000001,
+  "cash": 419.72,
+  "committed_book": 256.28,
+  "committed_live": 314.17,
+  "portfolio_value": 289.41
+ },
+ {
+  "budget": 124.255,
+  "cash": 209.72,
+  "committed_book": 52.34,
+  "committed_live": 130.31,
+  "portfolio_value": 25.74
+ },
+ {
+  "budget": 339.3775,
+  "cash": 473.68,
+  "committed_book": 67.88,
+  "committed_live": 374.85,
+  "portfolio_value": 69.33
+ },
+ {
+  "budget": 753.5374999999999,
+  "cash": 752.85,
+  "committed_book": 0.22,
+  "committed_live": 0.82,
+  "portfolio_value": 252.16
+ },
+ {
+  "budget": 318.54,
+  "cash": 286.04,
+  "committed_book": 61.26,
+  "committed_live": 236.99,
+  "portfolio_value": 220.36
+ },
+ {
+  "budget": 376.4624999999999,
+  "cash": 741.67,
+  "committed_book": 430.05,
+  "committed_live": 479.81,
+  "portfolio_value": 333.68
+ },
+ {
+  "budget": 282.7725,
+  "cash": 242.95,
+  "committed_book": 86.25,
+  "committed_live": 119.22,
+  "portfolio_value": 249.08
+ },
+ {
+  "budget": 465.7125,
+  "cash": 569.38,
+  "committed_book": 1.38,
+  "committed_live": 53.41,
+  "portfolio_value": null
+ },
+ {
+  "budget": 137.0675,
+  "cash": 220.63,
+  "committed_book": 92.14,
+  "committed_live": 225.28,
+  "portfolio_value": 84.98
+ },
+ {
+  "budget": 76.77250000000001,
+  "cash": 124.02,
+  "committed_book": 140.9,
+  "committed_live": 166.21,
+  "portfolio_value": null
+ },
+ {
+  "budget": 288.26000000000005,
+  "cash": 242.29,
+  "committed_book": 11.53,
+  "committed_live": 37.7,
+  "portfolio_value": 157.43
+ },
+ {
+  "budget": 309.7224999999999,
+  "cash": 382.0,
+  "committed_book": 211.94,
+  "committed_live": 313.55,
+  "portfolio_value": null
+ },
+ {
+  "budget": 479.11749999999995,
+  "cash": 269.23,
+  "committed_book": 17.06,
+  "committed_live": 392.34,
+  "portfolio_value": null
+ },
+ {
+  "budget": 532.1925000000001,
+  "cash": 350.71,
+  "committed_book": 5.55,
+  "committed_live": 110.54,
+  "portfolio_value": 366.28
+ },
+ {
+  "budget": 469.31500000000005,
+  "cash": 625.51,
+  "committed_book": 80.9,
+  "committed_live": 108.11,
+  "portfolio_value": null
+ },
+ {
+  "budget": 144.5,
+  "cash": 177.04,
+  "committed_book": 22.63,
+  "committed_live": 45.8,
+  "portfolio_value": null
+ },
+ {
+  "budget": 249.09500000000003,
+  "cash": 151.51,
+  "committed_book": 153.43,
+  "committed_live": 385.19,
+  "portfolio_value": null
+ },
+ {
+  "budget": 448.1349999999999,
+  "cash": 585.3,
+  "committed_book": 8.6,
+  "committed_live": 23.68,
+  "portfolio_value": null
+ },
+ {
+  "budget": 95.16749999999999,
+  "cash": 7.44,
+  "committed_book": 13.29,
+  "committed_live": 137.17,
+  "portfolio_value": null
+ },
+ {
+  "budget": 616.565,
+  "cash": 768.82,
+  "committed_book": 96.25,
+  "committed_live": 237.53,
+  "portfolio_value": 181.6
+ },
+ {
+  "budget": 480.12249999999995,
+  "cash": 624.45,
+  "committed_book": 235.22,
+  "committed_live": 329.34,
+  "portfolio_value": null
+ },
+ {
+  "budget": 716.1275,
+  "cash": 720.58,
+  "committed_book": 26.02,
+  "committed_live": 75.47,
+  "portfolio_value": 268.95
+ },
+ {
+  "budget": 420.5325,
+  "cash": 639.87,
+  "committed_book": 336.39,
+  "committed_live": 369.36,
+  "portfolio_value": null
+ },
+ {
+  "budget": 431.3349999999999,
+  "cash": 571.03,
+  "committed_book": 46.37,
+  "committed_live": 65.91,
+  "portfolio_value": null
+ },
+ {
+  "budget": 612.045,
+  "cash": 467.53,
+  "committed_book": 3.39,
+  "committed_live": 4.89,
+  "portfolio_value": 353.05
+ },
+ {
+  "budget": 740.86,
+  "cash": 691.09,
+  "committed_book": 143.12,
+  "committed_live": 487.55,
+  "portfolio_value": null
+ },
+ {
+  "budget": 217.05499999999995,
+  "cash": 228.21,
+  "committed_book": 265.42,
+  "committed_live": 415.09,
+  "portfolio_value": null
+ },
+ {
+  "budget": 550.0775,
+  "cash": 645.57,
+  "committed_book": 48.82,
+  "committed_live": 432.13,
+  "portfolio_value": 152.96
+ },
+ {
+  "budget": 563.5649999999999,
+  "cash": 671.36,
+  "committed_book": 2.88,
+  "committed_live": 83.9,
+  "portfolio_value": null
+ },
+ {
+  "budget": 425.6475,
+  "cash": 537.6,
+  "committed_book": 83.82,
+  "committed_live": 139.52,
+  "portfolio_value": 141.69
+ },
+ {
+  "budget": 496.205,
+  "cash": 584.84,
+  "committed_book": 247.81,
+  "committed_live": 407.18,
+  "portfolio_value": null
+ },
+ {
+  "budget": 351.57250000000005,
+  "cash": 500.75,
+  "committed_book": 256.19,
+  "committed_live": 309.6,
+  "portfolio_value": null
+ },
+ {
+  "budget": 502.95750000000004,
+  "cash": 526.97,
+  "committed_book": 28.44,
+  "committed_live": 105.68,
+  "portfolio_value": 181.56
+ },
+ {
+  "budget": 497.06249999999994,
+  "cash": 677.11,
+  "committed_book": 119.79,
+  "committed_live": 214.62,
+  "portfolio_value": 145.36
+ },
+ {
+  "budget": 557.475,
+  "cash": 733.01,
+  "committed_book": 244.86,
+  "committed_live": 336.77,
+  "portfolio_value": null
+ },
+ {
+  "budget": 380.36249999999995,
+  "cash": 552.59,
+  "committed_book": 160.59,
+  "committed_live": 222.84,
+  "portfolio_value": 168.68
+ },
+ {
+  "budget": 523.675,
+  "cash": 397.56,
+  "committed_book": 34.73,
+  "committed_live": 471.9,
+  "portfolio_value": 346.98
+ },
+ {
+  "budget": 82.125,
+  "cash": 208.56,
+  "committed_book": 398.61,
+  "committed_live": 432.42,
+  "portfolio_value": null
+ },
+ {
+  "budget": -64.67500000000001,
+  "cash": 239.85,
+  "committed_book": 247.12,
+  "committed_live": 335.87,
+  "portfolio_value": 3.41
+ },
+ {
+  "budget": 535.3,
+  "cash": 366.63,
+  "committed_book": 1.7,
+  "committed_live": 68.98,
+  "portfolio_value": 349.37
+ },
+ {
+  "budget": 37.05999999999999,
+  "cash": 84.03,
+  "committed_book": 102.14,
+  "committed_live": 153.37,
+  "portfolio_value": 101.57
+ },
+ {
+  "budget": 607.1700000000001,
+  "cash": 771.67,
+  "committed_book": 59.31,
+  "committed_live": 116.97,
+  "portfolio_value": null
+ },
+ {
+  "budget": 598.3075,
+  "cash": 586.27,
+  "committed_book": 109.97,
+  "committed_live": 358.1,
+  "portfolio_value": null
+ },
+ {
+  "budget": 173.1475,
+  "cash": 239.3,
+  "committed_book": 93.41,
+  "committed_live": 116.11,
+  "portfolio_value": null
+ },
+ {
+  "budget": 473.53749999999997,
+  "cash": 613.28,
+  "committed_book": 109.04,
+  "committed_live": 163.49,
+  "portfolio_value": null
+ },
+ {
+  "budget": 713.4574999999999,
+  "cash": 789.42,
+  "committed_book": 124.99,
+  "committed_live": 454.26,
+  "portfolio_value": 328.51
+ },
+ {
+  "budget": 272.91249999999997,
+  "cash": 337.75,
+  "committed_book": 338.96,
+  "committed_live": 478.08,
+  "portfolio_value": null
+ },
+ {
+  "budget": 159.5125,
+  "cash": 228.06,
+  "committed_book": 176.3,
+  "committed_live": 219.69,
+  "portfolio_value": null
+ },
+ {
+  "budget": 812.8225000000001,
+  "cash": 793.4,
+  "committed_book": 60.89,
+  "committed_live": 371.55,
+  "portfolio_value": null
+ },
+ {
+  "budget": 648.9475,
+  "cash": 760.01,
+  "committed_book": 60.38,
+  "committed_live": 366.39,
+  "portfolio_value": 185.76
+ },
+ {
+  "budget": 382.9375,
+  "cash": 727.71,
+  "committed_book": 246.86,
+  "committed_live": 281.29,
+  "portfolio_value": 112.02
+ },
+ {
+  "budget": 724.7625,
+  "cash": 704.59,
+  "committed_book": 47.88,
+  "committed_live": 50.53,
+  "portfolio_value": 325.6
+ },
+ {
+  "budget": 589.5175,
+  "cash": 744.34,
+  "committed_book": 21.11,
+  "committed_live": 69.83,
+  "portfolio_value": null
+ },
+ {
+  "budget": 78.60999999999996,
+  "cash": 142.24,
+  "committed_book": 217.55,
+  "committed_live": 252.64,
+  "portfolio_value": null
+ },
+ {
+  "budget": 192.515,
+  "cash": 523.87,
+  "committed_book": 303.97,
+  "committed_live": 353.76,
+  "portfolio_value": 138.11
+ },
+ {
+  "budget": 597.0075,
+  "cash": 416.55,
+  "committed_book": 73.77,
+  "committed_live": 477.82,
+  "portfolio_value": null
+ },
+ {
+  "budget": 250.8725,
+  "cash": 192.46,
+  "committed_book": 108.55,
+  "committed_live": 286.77,
+  "portfolio_value": null
+ },
+ {
+  "budget": 344.595,
+  "cash": 466.04,
+  "committed_book": 33.09,
+  "committed_live": 37.54,
+  "portfolio_value": null
+ },
+ {
+  "budget": 258.9875,
+  "cash": 278.45,
+  "committed_book": 11.08,
+  "committed_live": 81.64,
+  "portfolio_value": null
+ },
+ {
+  "budget": 471.81499999999994,
+  "cash": 719.43,
+  "committed_book": 104.26,
+  "committed_live": 251.47,
+  "portfolio_value": 48.67
+ },
+ {
+  "budget": 561.8925,
+  "cash": 741.64,
+  "committed_book": 38.88,
+  "committed_live": 59.39,
+  "portfolio_value": null
+ },
+ {
+  "budget": 153.29250000000002,
+  "cash": 268.44,
+  "committed_book": 78.69,
+  "committed_live": 81.52,
+  "portfolio_value": 40.87
+ },
+ {
+  "budget": 652.795,
+  "cash": 722.75,
+  "committed_book": 58.88,
+  "committed_live": 487.91,
+  "portfolio_value": 226.15
+ },
+ {
+  "budget": 497.02500000000003,
+  "cash": 723.26,
+  "committed_book": 66.57,
+  "committed_live": 79.34,
+  "portfolio_value": 28.2
+ },
+ {
+  "budget": 642.9999999999999,
+  "cash": 746.68,
+  "committed_book": 267.98,
+  "committed_live": 467.96,
+  "portfolio_value": null
+ },
+ {
+  "budget": 384.13749999999993,
+  "cash": 321.28,
+  "committed_book": 5.36,
+  "committed_live": 6.86,
+  "portfolio_value": 198.05
+ },
+ {
+  "budget": 71.69749999999996,
+  "cash": 49.39,
+  "committed_book": 173.35,
+  "committed_live": 280.97,
+  "portfolio_value": 277.34
+ },
+ {
+  "budget": 296.59499999999997,
+  "cash": 220.57,
+  "committed_book": 48.93,
+  "committed_live": 81.38,
+  "portfolio_value": 240.13
+ },
+ {
+  "budget": 603.7600000000001,
+  "cash": 771.7,
+  "committed_book": 245.48,
+  "committed_live": 360.62,
+  "portfolio_value": null
+ },
+ {
+  "budget": 525.1999999999999,
+  "cash": 581.63,
+  "committed_book": 42.58,
+  "committed_live": 336.71,
+  "portfolio_value": 175.41
+ },
+ {
+  "budget": 467.96,
+  "cash": 542.17,
+  "committed_book": 97.93,
+  "committed_live": 325.37,
+  "portfolio_value": 212.35
+ },
+ {
+  "budget": 574.5325,
+  "cash": 628.52,
+  "committed_book": 148.64,
+  "committed_live": 382.22,
+  "portfolio_value": 335.71
+ },
+ {
+  "budget": 423.46500000000015,
+  "cash": 672.46,
+  "committed_book": 328.53,
+  "committed_live": 330.2,
+  "portfolio_value": null
+ },
+ {
+  "budget": 230.37250000000003,
+  "cash": 196.49,
+  "committed_book": 163.34,
+  "committed_live": 353.33,
+  "portfolio_value": 328.46
+ },
+ {
+  "budget": 90.64249999999997,
+  "cash": 120.14,
+  "committed_book": 71.14,
+  "committed_live": 95.57,
+  "portfolio_value": null
+ },
+ {
+  "budget": 285.18499999999995,
+  "cash": 305.65,
+  "committed_book": 82.84,
+  "committed_live": 156.41,
+  "portfolio_value": 185.05
+ },
+ {
+  "budget": 668.0525,
+  "cash": 791.36,
+  "committed_book": 26.05,
+  "committed_live": 134.11,
+  "portfolio_value": null
+ },
+ {
+  "budget": 211.7675,
+  "cash": 167.79,
+  "committed_book": 7.42,
+  "committed_live": 17.1,
+  "portfolio_value": 124.46
+ },
+ {
+  "budget": 613.8225,
+  "cash": 708.5,
+  "committed_book": 118.32,
+  "committed_live": 267.69,
+  "portfolio_value": null
+ },
+ {
+  "budget": 88.29249999999996,
+  "cash": 152.72,
+  "committed_book": 268.82,
+  "committed_live": 411.86,
+  "portfolio_value": 323.43
+ },
+ {
+  "budget": 82.6125,
+  "cash": 132.48,
+  "committed_book": 53.7,
+  "committed_live": 126.09,
+  "portfolio_value": 49.27
+ },
+ {
+  "budget": 324.9175,
+  "cash": 394.9,
+  "committed_book": 72.02,
+  "committed_live": 134.35,
+  "portfolio_value": null
+ },
+ {
+  "budget": 518.9425000000001,
+  "cash": 530.69,
+  "committed_book": 27.77,
+  "committed_live": 402.2,
+  "portfolio_value": 198.26
+ },
+ {
+  "budget": 407.5,
+  "cash": 448.77,
+  "committed_book": 44.96,
+  "committed_live": 154.51,
+  "portfolio_value": null
+ },
+ {
+  "budget": 498.515,
+  "cash": 429.66,
+  "committed_book": 72.28,
+  "committed_live": 469.7,
+  "portfolio_value": 331.4
+ },
+ {
+  "budget": 481.1675,
+  "cash": 622.2,
+  "committed_book": 131.29,
+  "committed_live": 194.41,
+  "portfolio_value": null
+ },
+ {
+  "budget": 296.1550000000001,
+  "cash": 179.8,
+  "committed_book": 150.77,
+  "committed_live": 416.1,
+  "portfolio_value": null
+ },
+ {
+  "budget": 556.8475,
+  "cash": 718.97,
+  "committed_book": 160.88,
+  "committed_live": 238.0,
+  "portfolio_value": null
+ },
+ {
+  "budget": 661.9225,
+  "cash": 527.53,
+  "committed_book": 33.11,
+  "committed_live": 399.18,
+  "portfolio_value": null
+ }
+]

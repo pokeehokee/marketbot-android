@@ -1,0 +1,48 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Core tests (golden comparisons against the Python originals, clients, strategies)
+        run: ./gradlew --no-daemon :core:test
+      - name: App tests (Room stores, vault, screens)
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Build APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketbot-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens-and-test-reports
+          path: |
+            app/build/screens
+            core/build/reports/tests
+            app/build/reports/tests
+      - name: Publish APK as a pre-release (default branch only)
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk marketbot-${{ github.run_number }}.apk
+          gh release create "build-${{ github.run_number }}" marketbot-${{ github.run_number }}.apk \
+            --prerelease --title "Marketbot build ${{ github.run_number }}" \
+            --notes "Debug-signed build of ${{ github.sha }}. Install by opening the APK on your phone."

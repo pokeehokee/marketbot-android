@@ -1,0 +1,52 @@
+{
+ "cases": [
+  {
+   "lead": 20.0,
+   "market": {
+    "close_time": "2026-10-28T16:00:00Z"
+   },
+   "ok": true
+  },
+  {
+   "lead": 19.983333333333334,
+   "market": {
+    "close_time": "2026-10-28T15:59:00Z"
+   },
+   "ok": false
+  },
+  {
+   "lead": 9.0,
+   "market": {
+    "close_time": "2026-10-28T05:00:00Z"
+   },
+   "ok": false
+  },
+  {
+   "lead": null,
+   "market": {
+    "close_time": ""
+   },
+   "ok": true
+  },
+  {
+   "lead": null,
+   "market": {},
+   "ok": true
+  },
+  {
+   "lead": null,
+   "market": {
+    "close_time": "garbage"
+   },
+   "ok": true
+  },
+  {
+   "lead": 20.0,
+   "market": {
+    "close_time": "2026-10-28T16:00:00+00:00"
+   },
+   "ok": true
+  }
+ ],
+ "now": "2026-10-27T20:00:00+00:00"
+}
