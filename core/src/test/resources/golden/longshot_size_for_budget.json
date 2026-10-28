@@ -1,0 +1,3002 @@
+[
+ {
+  "budget": 27.75,
+  "cap": 1,
+  "price": 0.65,
+  "size": 1
+ },
+ {
+  "budget": 10.84,
+  "cap": 5,
+  "price": 0.77,
+  "size": 5
+ },
+ {
+  "budget": 24.0,
+  "cap": 1,
+  "price": 0.43,
+  "size": 1
+ },
+ {
+  "budget": 26.16,
+  "cap": 10,
+  "price": 0.57,
+  "size": 10
+ },
+ {
+  "budget": 17.82,
+  "cap": 10,
+  "price": 0.44,
+  "size": 10
+ },
+ {
+  "budget": 7.39,
+  "cap": 5,
+  "price": 0.33,
+  "size": 5
+ },
+ {
+  "budget": 28.55,
+  "cap": 5,
+  "price": 0.07,
+  "size": 5
+ },
+ {
+  "budget": 4.91,
+  "cap": 5,
+  "price": 0.34,
+  "size": 5
+ },
+ {
+  "budget": 21.42,
+  "cap": 10,
+  "price": 0.71,
+  "size": 10
+ },
+ {
+  "budget": 9.48,
+  "cap": 5,
+  "price": 0.71,
+  "size": 5
+ },
+ {
+  "budget": 13.32,
+  "cap": 10,
+  "price": 0.79,
+  "size": 10
+ },
+ {
+  "budget": 6.36,
+  "cap": 5,
+  "price": 0.6,
+  "size": 5
+ },
+ {
+  "budget": 24.84,
+  "cap": 5,
+  "price": 0.64,
+  "size": 5
+ },
+ {
+  "budget": 20.2,
+  "cap": 10,
+  "price": 0.98,
+  "size": 10
+ },
+ {
+  "budget": 22.57,
+  "cap": 5,
+  "price": 0.79,
+  "size": 5
+ },
+ {
+  "budget": 22.67,
+  "cap": 5,
+  "price": 0.39,
+  "size": 5
+ },
+ {
+  "budget": 7.57,
+  "cap": 10,
+  "price": 0.86,
+  "size": 10
+ },
+ {
+  "budget": 22.38,
+  "cap": 1,
+  "price": 0.44,
+  "size": 1
+ },
+ {
+  "budget": 7.57,
+  "cap": 10,
+  "price": 0.1,
+  "size": 8
+ },
+ {
+  "budget": 8.39,
+  "cap": 5,
+  "price": 0.17,
+  "size": 5
+ },
+ {
+  "budget": 25.21,
+  "cap": 5,
+  "price": 0.81,
+  "size": 5
+ },
+ {
+  "budget": 16.8,
+  "cap": 1,
+  "price": 0.65,
+  "size": 1
+ },
+ {
+  "budget": 6.14,
+  "cap": 10,
+  "price": 0.48,
+  "size": 10
+ },
+ {
+  "budget": 19.29,
+  "cap": 1,
+  "price": 0.24,
+  "size": 1
+ },
+ {
+  "budget": 10.94,
+  "cap": 10,
+  "price": 0.87,
+  "size": 10
+ },
+ {
+  "budget": 27.53,
+  "cap": 5,
+  "price": 0.01,
+  "size": 5
+ },
+ {
+  "budget": 0.4,
+  "cap": 5,
+  "price": 0.42,
+  "size": 0
+ },
+ {
+  "budget": 26.67,
+  "cap": 5,
+  "price": 0.41,
+  "size": 5
+ },
+ {
+  "budget": 17.98,
+  "cap": 1,
+  "price": 0.54,
+  "size": 1
+ },
+ {
+  "budget": 3.42,
+  "cap": 10,
+  "price": 0.11,
+  "size": 3
+ },
+ {
+  "budget": 16.92,
+  "cap": 1,
+  "price": 0.57,
+  "size": 1
+ },
+ {
+  "budget": 22.55,
+  "cap": 1,
+  "price": 0.57,
+  "size": 1
+ },
+ {
+  "budget": 15.87,
+  "cap": 10,
+  "price": 0.9,
+  "size": 10
+ },
+ {
+  "budget": 28.31,
+  "cap": 10,
+  "price": 0.49,
+  "size": 10
+ },
+ {
+  "budget": 28.97,
+  "cap": 10,
+  "price": 0.71,
+  "size": 10
+ },
+ {
+  "budget": 2.49,
+  "cap": 1,
+  "price": 0.63,
+  "size": 1
+ },
+ {
+  "budget": 24.05,
+  "cap": 5,
+  "price": 0.58,
+  "size": 5
+ },
+ {
+  "budget": 9.65,
+  "cap": 1,
+  "price": 0.59,
+  "size": 1
+ },
+ {
+  "budget": 1.98,
+  "cap": 1,
+  "price": 0.57,
+  "size": 1
+ },
+ {
+  "budget": 12.63,
+  "cap": 1,
+  "price": 0.51,
+  "size": 1
+ },
+ {
+  "budget": 23.59,
+  "cap": 5,
+  "price": 0.63,
+  "size": 5
+ },
+ {
+  "budget": 29.95,
+  "cap": 5,
+  "price": 0.8,
+  "size": 5
+ },
+ {
+  "budget": 9.1,
+  "cap": 10,
+  "price": 0.91,
+  "size": 10
+ },
+ {
+  "budget": 0.14,
+  "cap": 5,
+  "price": 0.61,
+  "size": 0
+ },
+ {
+  "budget": 11.66,
+  "cap": 1,
+  "price": 0.06,
+  "size": 1
+ },
+ {
+  "budget": 29.11,
+  "cap": 1,
+  "price": 0.79,
+  "size": 1
+ },
+ {
+  "budget": 24.46,
+  "cap": 1,
+  "price": 0.23,
+  "size": 1
+ },
+ {
+  "budget": 11.46,
+  "cap": 5,
+  "price": 0.14,
+  "size": 5
+ },
+ {
+  "budget": 14.64,
+  "cap": 10,
+  "price": 0.27,
+  "size": 10
+ },
+ {
+  "budget": 9.71,
+  "cap": 10,
+  "price": 0.99,
+  "size": 10
+ },
+ {
+  "budget": 19.41,
+  "cap": 5,
+  "price": 0.74,
+  "size": 5
+ },
+ {
+  "budget": 20.33,
+  "cap": 10,
+  "price": 0.19,
+  "size": 10
+ },
+ {
+  "budget": 1.33,
+  "cap": 10,
+  "price": 0.77,
+  "size": 5
+ },
+ {
+  "budget": 8.2,
+  "cap": 10,
+  "price": 0.12,
+  "size": 9
+ },
+ {
+  "budget": 2.71,
+  "cap": 10,
+  "price": 0.17,
+  "size": 3
+ },
+ {
+  "budget": 27.34,
+  "cap": 10,
+  "price": 0.99,
+  "size": 10
+ },
+ {
+  "budget": 19.36,
+  "cap": 10,
+  "price": 0.98,
+  "size": 10
+ },
+ {
+  "budget": 9.28,
+  "cap": 1,
+  "price": 0.48,
+  "size": 1
+ },
+ {
+  "budget": 9.7,
+  "cap": 10,
+  "price": 0.97,
+  "size": 10
+ },
+ {
+  "budget": 21.64,
+  "cap": 10,
+  "price": 0.15,
+  "size": 10
+ },
+ {
+  "budget": 27.24,
+  "cap": 1,
+  "price": 0.54,
+  "size": 1
+ },
+ {
+  "budget": 9.8,
+  "cap": 5,
+  "price": 0.06,
+  "size": 5
+ },
+ {
+  "budget": 19.19,
+  "cap": 10,
+  "price": 0.62,
+  "size": 10
+ },
+ {
+  "budget": 8.47,
+  "cap": 5,
+  "price": 0.2,
+  "size": 5
+ },
+ {
+  "budget": 16.45,
+  "cap": 10,
+  "price": 0.63,
+  "size": 10
+ },
+ {
+  "budget": 10.02,
+  "cap": 5,
+  "price": 0.79,
+  "size": 5
+ },
+ {
+  "budget": 18.27,
+  "cap": 10,
+  "price": 0.84,
+  "size": 10
+ },
+ {
+  "budget": 23.9,
+  "cap": 5,
+  "price": 0.11,
+  "size": 5
+ },
+ {
+  "budget": 20.32,
+  "cap": 10,
+  "price": 0.1,
+  "size": 10
+ },
+ {
+  "budget": 11.33,
+  "cap": 10,
+  "price": 0.71,
+  "size": 10
+ },
+ {
+  "budget": 6.64,
+  "cap": 5,
+  "price": 0.37,
+  "size": 5
+ },
+ {
+  "budget": 6.89,
+  "cap": 5,
+  "price": 0.22,
+  "size": 5
+ },
+ {
+  "budget": 27.34,
+  "cap": 1,
+  "price": 0.51,
+  "size": 1
+ },
+ {
+  "budget": 14.83,
+  "cap": 1,
+  "price": 0.22,
+  "size": 1
+ },
+ {
+  "budget": 27.67,
+  "cap": 5,
+  "price": 0.15,
+  "size": 5
+ },
+ {
+  "budget": 12.4,
+  "cap": 10,
+  "price": 0.97,
+  "size": 10
+ },
+ {
+  "budget": 15.4,
+  "cap": 1,
+  "price": 0.74,
+  "size": 1
+ },
+ {
+  "budget": 25.13,
+  "cap": 1,
+  "price": 0.55,
+  "size": 1
+ },
+ {
+  "budget": 11.43,
+  "cap": 5,
+  "price": 0.91,
+  "size": 5
+ },
+ {
+  "budget": 13.55,
+  "cap": 1,
+  "price": 0.92,
+  "size": 1
+ },
+ {
+  "budget": 8.57,
+  "cap": 5,
+  "price": 0.06,
+  "size": 5
+ },
+ {
+  "budget": 21.3,
+  "cap": 10,
+  "price": 0.74,
+  "size": 10
+ },
+ {
+  "budget": 26.76,
+  "cap": 1,
+  "price": 0.34,
+  "size": 1
+ },
+ {
+  "budget": 17.82,
+  "cap": 10,
+  "price": 0.22,
+  "size": 10
+ },
+ {
+  "budget": 12.31,
+  "cap": 10,
+  "price": 0.95,
+  "size": 10
+ },
+ {
+  "budget": 22.51,
+  "cap": 1,
+  "price": 0.69,
+  "size": 1
+ },
+ {
+  "budget": 21.91,
+  "cap": 1,
+  "price": 0.62,
+  "size": 1
+ },
+ {
+  "budget": 27.55,
+  "cap": 10,
+  "price": 0.26,
+  "size": 10
+ },
+ {
+  "budget": 29.24,
+  "cap": 10,
+  "price": 0.31,
+  "size": 10
+ },
+ {
+  "budget": 5.31,
+  "cap": 10,
+  "price": 0.1,
+  "size": 5
+ },
+ {
+  "budget": 21.65,
+  "cap": 10,
+  "price": 0.54,
+  "size": 10
+ },
+ {
+  "budget": 23.25,
+  "cap": 10,
+  "price": 0.26,
+  "size": 10
+ },
+ {
+  "budget": 11.55,
+  "cap": 5,
+  "price": 0.19,
+  "size": 5
+ },
+ {
+  "budget": 17.13,
+  "cap": 1,
+  "price": 0.4,
+  "size": 1
+ },
+ {
+  "budget": 3.64,
+  "cap": 5,
+  "price": 0.1,
+  "size": 4
+ },
+ {
+  "budget": 27.0,
+  "cap": 1,
+  "price": 0.84,
+  "size": 1
+ },
+ {
+  "budget": 18.23,
+  "cap": 1,
+  "price": 0.94,
+  "size": 1
+ },
+ {
+  "budget": 20.59,
+  "cap": 1,
+  "price": 0.01,
+  "size": 1
+ },
+ {
+  "budget": 12.31,
+  "cap": 5,
+  "price": 0.6,
+  "size": 5
+ },
+ {
+  "budget": 27.65,
+  "cap": 10,
+  "price": 0.01,
+  "size": 10
+ },
+ {
+  "budget": 11.5,
+  "cap": 10,
+  "price": 0.12,
+  "size": 10
+ },
+ {
+  "budget": 19.13,
+  "cap": 1,
+  "price": 0.96,
+  "size": 1
+ },
+ {
+  "budget": 20.53,
+  "cap": 10,
+  "price": 0.6,
+  "size": 10
+ },
+ {
+  "budget": 24.26,
+  "cap": 5,
+  "price": 0.54,
+  "size": 5
+ },
+ {
+  "budget": 29.75,
+  "cap": 1,
+  "price": 0.74,
+  "size": 1
+ },
+ {
+  "budget": 23.19,
+  "cap": 5,
+  "price": 0.22,
+  "size": 5
+ },
+ {
+  "budget": 25.91,
+  "cap": 5,
+  "price": 0.76,
+  "size": 5
+ },
+ {
+  "budget": 18.86,
+  "cap": 10,
+  "price": 0.48,
+  "size": 10
+ },
+ {
+  "budget": 15.8,
+  "cap": 1,
+  "price": 0.38,
+  "size": 1
+ },
+ {
+  "budget": 8.55,
+  "cap": 5,
+  "price": 0.59,
+  "size": 5
+ },
+ {
+  "budget": 1.19,
+  "cap": 10,
+  "price": 0.52,
+  "size": 2
+ },
+ {
+  "budget": 10.4,
+  "cap": 1,
+  "price": 0.53,
+  "size": 1
+ },
+ {
+  "budget": 15.62,
+  "cap": 10,
+  "price": 0.23,
+  "size": 10
+ },
+ {
+  "budget": 5.54,
+  "cap": 1,
+  "price": 0.71,
+  "size": 1
+ },
+ {
+  "budget": 21.63,
+  "cap": 1,
+  "price": 0.84,
+  "size": 1
+ },
+ {
+  "budget": 12.39,
+  "cap": 1,
+  "price": 0.3,
+  "size": 1
+ },
+ {
+  "budget": 29.53,
+  "cap": 10,
+  "price": 0.85,
+  "size": 10
+ },
+ {
+  "budget": 3.71,
+  "cap": 10,
+  "price": 0.24,
+  "size": 4
+ },
+ {
+  "budget": 10.96,
+  "cap": 5,
+  "price": 0.34,
+  "size": 5
+ },
+ {
+  "budget": 12.34,
+  "cap": 10,
+  "price": 0.85,
+  "size": 10
+ },
+ {
+  "budget": 17.27,
+  "cap": 5,
+  "price": 0.3,
+  "size": 5
+ },
+ {
+  "budget": 23.84,
+  "cap": 5,
+  "price": 0.55,
+  "size": 5
+ },
+ {
+  "budget": 11.3,
+  "cap": 10,
+  "price": 0.52,
+  "size": 10
+ },
+ {
+  "budget": 10.83,
+  "cap": 5,
+  "price": 0.84,
+  "size": 5
+ },
+ {
+  "budget": 23.04,
+  "cap": 1,
+  "price": 0.51,
+  "size": 1
+ },
+ {
+  "budget": 24.96,
+  "cap": 5,
+  "price": 0.97,
+  "size": 5
+ },
+ {
+  "budget": 23.44,
+  "cap": 1,
+  "price": 0.74,
+  "size": 1
+ },
+ {
+  "budget": 17.39,
+  "cap": 10,
+  "price": 0.57,
+  "size": 10
+ },
+ {
+  "budget": 24.98,
+  "cap": 1,
+  "price": 0.73,
+  "size": 1
+ },
+ {
+  "budget": 27.11,
+  "cap": 5,
+  "price": 0.12,
+  "size": 5
+ },
+ {
+  "budget": 28.77,
+  "cap": 10,
+  "price": 0.65,
+  "size": 10
+ },
+ {
+  "budget": 4.23,
+  "cap": 1,
+  "price": 0.74,
+  "size": 1
+ },
+ {
+  "budget": 21.72,
+  "cap": 10,
+  "price": 0.05,
+  "size": 10
+ },
+ {
+  "budget": 1.26,
+  "cap": 5,
+  "price": 0.02,
+  "size": 1
+ },
+ {
+  "budget": 26.32,
+  "cap": 10,
+  "price": 0.47,
+  "size": 10
+ },
+ {
+  "budget": 25.25,
+  "cap": 10,
+  "price": 0.18,
+  "size": 10
+ },
+ {
+  "budget": 11.8,
+  "cap": 10,
+  "price": 0.16,
+  "size": 10
+ },
+ {
+  "budget": 6.5,
+  "cap": 1,
+  "price": 0.17,
+  "size": 1
+ },
+ {
+  "budget": 21.36,
+  "cap": 10,
+  "price": 0.73,
+  "size": 10
+ },
+ {
+  "budget": 8.87,
+  "cap": 5,
+  "price": 0.86,
+  "size": 5
+ },
+ {
+  "budget": 11.08,
+  "cap": 1,
+  "price": 0.76,
+  "size": 1
+ },
+ {
+  "budget": 11.61,
+  "cap": 1,
+  "price": 0.08,
+  "size": 1
+ },
+ {
+  "budget": 15.41,
+  "cap": 10,
+  "price": 0.17,
+  "size": 10
+ },
+ {
+  "budget": 0.95,
+  "cap": 10,
+  "price": 0.41,
+  "size": 1
+ },
+ {
+  "budget": 27.74,
+  "cap": 5,
+  "price": 0.33,
+  "size": 5
+ },
+ {
+  "budget": 26.34,
+  "cap": 10,
+  "price": 0.78,
+  "size": 10
+ },
+ {
+  "budget": 16.41,
+  "cap": 5,
+  "price": 0.79,
+  "size": 5
+ },
+ {
+  "budget": 27.28,
+  "cap": 5,
+  "price": 0.79,
+  "size": 5
+ },
+ {
+  "budget": 2.41,
+  "cap": 1,
+  "price": 0.86,
+  "size": 1
+ },
+ {
+  "budget": 29.61,
+  "cap": 1,
+  "price": 0.25,
+  "size": 1
+ },
+ {
+  "budget": 29.71,
+  "cap": 5,
+  "price": 0.51,
+  "size": 5
+ },
+ {
+  "budget": 25.35,
+  "cap": 1,
+  "price": 0.21,
+  "size": 1
+ },
+ {
+  "budget": 20.98,
+  "cap": 10,
+  "price": 0.81,
+  "size": 10
+ },
+ {
+  "budget": 17.95,
+  "cap": 10,
+  "price": 0.31,
+  "size": 10
+ },
+ {
+  "budget": 27.62,
+  "cap": 10,
+  "price": 0.64,
+  "size": 10
+ },
+ {
+  "budget": 2.24,
+  "cap": 5,
+  "price": 0.23,
+  "size": 2
+ },
+ {
+  "budget": 8.4,
+  "cap": 1,
+  "price": 0.59,
+  "size": 1
+ },
+ {
+  "budget": 5.68,
+  "cap": 5,
+  "price": 0.82,
+  "size": 5
+ },
+ {
+  "budget": 3.75,
+  "cap": 5,
+  "price": 0.57,
+  "size": 5
+ },
+ {
+  "budget": 22.69,
+  "cap": 1,
+  "price": 0.72,
+  "size": 1
+ },
+ {
+  "budget": 16.53,
+  "cap": 5,
+  "price": 0.67,
+  "size": 5
+ },
+ {
+  "budget": 10.27,
+  "cap": 1,
+  "price": 0.92,
+  "size": 1
+ },
+ {
+  "budget": 12.07,
+  "cap": 10,
+  "price": 0.26,
+  "size": 10
+ },
+ {
+  "budget": 18.56,
+  "cap": 5,
+  "price": 0.79,
+  "size": 5
+ },
+ {
+  "budget": 2.03,
+  "cap": 10,
+  "price": 0.92,
+  "size": 10
+ },
+ {
+  "budget": 1.09,
+  "cap": 1,
+  "price": 0.53,
+  "size": 1
+ },
+ {
+  "budget": 17.19,
+  "cap": 1,
+  "price": 0.27,
+  "size": 1
+ },
+ {
+  "budget": 25.87,
+  "cap": 10,
+  "price": 0.54,
+  "size": 10
+ },
+ {
+  "budget": 13.53,
+  "cap": 1,
+  "price": 0.49,
+  "size": 1
+ },
+ {
+  "budget": 3.66,
+  "cap": 5,
+  "price": 0.27,
+  "size": 5
+ },
+ {
+  "budget": 12.81,
+  "cap": 5,
+  "price": 0.15,
+  "size": 5
+ },
+ {
+  "budget": 24.74,
+  "cap": 10,
+  "price": 0.97,
+  "size": 10
+ },
+ {
+  "budget": 17.79,
+  "cap": 5,
+  "price": 0.58,
+  "size": 5
+ },
+ {
+  "budget": 14.76,
+  "cap": 1,
+  "price": 0.35,
+  "size": 1
+ },
+ {
+  "budget": 14.99,
+  "cap": 1,
+  "price": 0.85,
+  "size": 1
+ },
+ {
+  "budget": 5.32,
+  "cap": 5,
+  "price": 0.61,
+  "size": 5
+ },
+ {
+  "budget": 15.65,
+  "cap": 10,
+  "price": 0.58,
+  "size": 10
+ },
+ {
+  "budget": 12.34,
+  "cap": 10,
+  "price": 0.06,
+  "size": 10
+ },
+ {
+  "budget": 1.3,
+  "cap": 1,
+  "price": 0.97,
+  "size": 1
+ },
+ {
+  "budget": 9.4,
+  "cap": 10,
+  "price": 0.52,
+  "size": 10
+ },
+ {
+  "budget": 16.87,
+  "cap": 1,
+  "price": 0.4,
+  "size": 1
+ },
+ {
+  "budget": 29.1,
+  "cap": 5,
+  "price": 0.42,
+  "size": 5
+ },
+ {
+  "budget": 19.77,
+  "cap": 10,
+  "price": 0.98,
+  "size": 10
+ },
+ {
+  "budget": 28.72,
+  "cap": 5,
+  "price": 0.02,
+  "size": 5
+ },
+ {
+  "budget": 14.27,
+  "cap": 10,
+  "price": 0.22,
+  "size": 10
+ },
+ {
+  "budget": 11.57,
+  "cap": 1,
+  "price": 0.33,
+  "size": 1
+ },
+ {
+  "budget": 8.42,
+  "cap": 5,
+  "price": 0.55,
+  "size": 5
+ },
+ {
+  "budget": 0.09,
+  "cap": 1,
+  "price": 0.34,
+  "size": 0
+ },
+ {
+  "budget": 23.35,
+  "cap": 5,
+  "price": 0.47,
+  "size": 5
+ },
+ {
+  "budget": 29.3,
+  "cap": 5,
+  "price": 0.67,
+  "size": 5
+ },
+ {
+  "budget": 4.16,
+  "cap": 10,
+  "price": 0.41,
+  "size": 7
+ },
+ {
+  "budget": 2.72,
+  "cap": 10,
+  "price": 0.42,
+  "size": 4
+ },
+ {
+  "budget": 21.13,
+  "cap": 1,
+  "price": 0.85,
+  "size": 1
+ },
+ {
+  "budget": 12.94,
+  "cap": 5,
+  "price": 0.22,
+  "size": 5
+ },
+ {
+  "budget": 24.4,
+  "cap": 5,
+  "price": 0.36,
+  "size": 5
+ },
+ {
+  "budget": 26.35,
+  "cap": 1,
+  "price": 0.06,
+  "size": 1
+ },
+ {
+  "budget": 2.57,
+  "cap": 5,
+  "price": 0.24,
+  "size": 3
+ },
+ {
+  "budget": 22.1,
+  "cap": 5,
+  "price": 0.82,
+  "size": 5
+ },
+ {
+  "budget": 3.47,
+  "cap": 1,
+  "price": 0.28,
+  "size": 1
+ },
+ {
+  "budget": 18.48,
+  "cap": 5,
+  "price": 0.54,
+  "size": 5
+ },
+ {
+  "budget": 20.94,
+  "cap": 5,
+  "price": 0.31,
+  "size": 5
+ },
+ {
+  "budget": 1.21,
+  "cap": 5,
+  "price": 0.14,
+  "size": 1
+ },
+ {
+  "budget": 15.48,
+  "cap": 1,
+  "price": 0.81,
+  "size": 1
+ },
+ {
+  "budget": 14.3,
+  "cap": 10,
+  "price": 0.56,
+  "size": 10
+ },
+ {
+  "budget": 20.85,
+  "cap": 5,
+  "price": 0.9,
+  "size": 5
+ },
+ {
+  "budget": 13.12,
+  "cap": 1,
+  "price": 0.85,
+  "size": 1
+ },
+ {
+  "budget": 0.21,
+  "cap": 5,
+  "price": 0.12,
+  "size": 0
+ },
+ {
+  "budget": 6.95,
+  "cap": 10,
+  "price": 0.94,
+  "size": 10
+ },
+ {
+  "budget": 11.0,
+  "cap": 5,
+  "price": 0.76,
+  "size": 5
+ },
+ {
+  "budget": 27.92,
+  "cap": 1,
+  "price": 0.83,
+  "size": 1
+ },
+ {
+  "budget": 17.11,
+  "cap": 10,
+  "price": 0.17,
+  "size": 10
+ },
+ {
+  "budget": 20.09,
+  "cap": 5,
+  "price": 0.24,
+  "size": 5
+ },
+ {
+  "budget": 29.06,
+  "cap": 5,
+  "price": 0.49,
+  "size": 5
+ },
+ {
+  "budget": 23.43,
+  "cap": 5,
+  "price": 0.8,
+  "size": 5
+ },
+ {
+  "budget": 23.52,
+  "cap": 10,
+  "price": 0.32,
+  "size": 10
+ },
+ {
+  "budget": 19.76,
+  "cap": 1,
+  "price": 0.28,
+  "size": 1
+ },
+ {
+  "budget": 11.25,
+  "cap": 5,
+  "price": 0.63,
+  "size": 5
+ },
+ {
+  "budget": 25.92,
+  "cap": 1,
+  "price": 0.75,
+  "size": 1
+ },
+ {
+  "budget": 4.18,
+  "cap": 10,
+  "price": 0.6,
+  "size": 10
+ },
+ {
+  "budget": 1.38,
+  "cap": 1,
+  "price": 0.33,
+  "size": 1
+ },
+ {
+  "budget": 19.24,
+  "cap": 5,
+  "price": 0.0,
+  "size": 5
+ },
+ {
+  "budget": 25.29,
+  "cap": 1,
+  "price": 0.74,
+  "size": 1
+ },
+ {
+  "budget": 4.63,
+  "cap": 10,
+  "price": 0.74,
+  "size": 10
+ },
+ {
+  "budget": 4.9,
+  "cap": 1,
+  "price": 0.07,
+  "size": 1
+ },
+ {
+  "budget": 19.7,
+  "cap": 10,
+  "price": 0.13,
+  "size": 10
+ },
+ {
+  "budget": 24.53,
+  "cap": 1,
+  "price": 0.25,
+  "size": 1
+ },
+ {
+  "budget": 24.09,
+  "cap": 5,
+  "price": 1.0,
+  "size": 5
+ },
+ {
+  "budget": 10.81,
+  "cap": 10,
+  "price": 0.56,
+  "size": 10
+ },
+ {
+  "budget": 29.41,
+  "cap": 1,
+  "price": 0.07,
+  "size": 1
+ },
+ {
+  "budget": 18.24,
+  "cap": 1,
+  "price": 0.8,
+  "size": 1
+ },
+ {
+  "budget": 0.44,
+  "cap": 10,
+  "price": 0.7,
+  "size": 1
+ },
+ {
+  "budget": 28.78,
+  "cap": 1,
+  "price": 0.51,
+  "size": 1
+ },
+ {
+  "budget": 17.92,
+  "cap": 10,
+  "price": 0.98,
+  "size": 10
+ },
+ {
+  "budget": 10.75,
+  "cap": 5,
+  "price": 0.52,
+  "size": 5
+ },
+ {
+  "budget": 29.62,
+  "cap": 1,
+  "price": 0.44,
+  "size": 1
+ },
+ {
+  "budget": 22.7,
+  "cap": 1,
+  "price": 0.21,
+  "size": 1
+ },
+ {
+  "budget": 15.22,
+  "cap": 5,
+  "price": 0.54,
+  "size": 5
+ },
+ {
+  "budget": 0.47,
+  "cap": 1,
+  "price": 0.3,
+  "size": 0
+ },
+ {
+  "budget": 27.23,
+  "cap": 5,
+  "price": 0.62,
+  "size": 5
+ },
+ {
+  "budget": 29.92,
+  "cap": 5,
+  "price": 0.05,
+  "size": 5
+ },
+ {
+  "budget": 5.89,
+  "cap": 10,
+  "price": 0.32,
+  "size": 8
+ },
+ {
+  "budget": 0.23,
+  "cap": 1,
+  "price": 0.68,
+  "size": 0
+ },
+ {
+  "budget": 0.08,
+  "cap": 5,
+  "price": 0.65,
+  "size": 0
+ },
+ {
+  "budget": 19.14,
+  "cap": 1,
+  "price": 0.04,
+  "size": 1
+ },
+ {
+  "budget": 19.57,
+  "cap": 10,
+  "price": 0.19,
+  "size": 10
+ },
+ {
+  "budget": 14.57,
+  "cap": 5,
+  "price": 0.86,
+  "size": 5
+ },
+ {
+  "budget": 19.32,
+  "cap": 1,
+  "price": 0.47,
+  "size": 1
+ },
+ {
+  "budget": 12.0,
+  "cap": 10,
+  "price": 0.09,
+  "size": 10
+ },
+ {
+  "budget": 18.87,
+  "cap": 1,
+  "price": 0.03,
+  "size": 1
+ },
+ {
+  "budget": 14.25,
+  "cap": 5,
+  "price": 0.07,
+  "size": 5
+ },
+ {
+  "budget": 15.29,
+  "cap": 1,
+  "price": 0.82,
+  "size": 1
+ },
+ {
+  "budget": 23.32,
+  "cap": 1,
+  "price": 0.43,
+  "size": 1
+ },
+ {
+  "budget": 18.71,
+  "cap": 10,
+  "price": 0.74,
+  "size": 10
+ },
+ {
+  "budget": 6.46,
+  "cap": 5,
+  "price": 0.25,
+  "size": 5
+ },
+ {
+  "budget": 0.09,
+  "cap": 10,
+  "price": 0.35,
+  "size": 0
+ },
+ {
+  "budget": 11.92,
+  "cap": 10,
+  "price": 0.63,
+  "size": 10
+ },
+ {
+  "budget": 22.43,
+  "cap": 5,
+  "price": 0.3,
+  "size": 5
+ },
+ {
+  "budget": 23.48,
+  "cap": 5,
+  "price": 0.94,
+  "size": 5
+ },
+ {
+  "budget": 9.57,
+  "cap": 1,
+  "price": 0.01,
+  "size": 1
+ },
+ {
+  "budget": 7.11,
+  "cap": 10,
+  "price": 0.77,
+  "size": 10
+ },
+ {
+  "budget": 12.08,
+  "cap": 10,
+  "price": 0.31,
+  "size": 10
+ },
+ {
+  "budget": 0.88,
+  "cap": 10,
+  "price": 0.75,
+  "size": 3
+ },
+ {
+  "budget": 6.94,
+  "cap": 10,
+  "price": 0.88,
+  "size": 10
+ },
+ {
+  "budget": 27.73,
+  "cap": 10,
+  "price": 0.4,
+  "size": 10
+ },
+ {
+  "budget": 6.16,
+  "cap": 5,
+  "price": 0.18,
+  "size": 5
+ },
+ {
+  "budget": 11.09,
+  "cap": 10,
+  "price": 0.92,
+  "size": 10
+ },
+ {
+  "budget": 27.99,
+  "cap": 10,
+  "price": 0.97,
+  "size": 10
+ },
+ {
+  "budget": 20.92,
+  "cap": 5,
+  "price": 0.56,
+  "size": 5
+ },
+ {
+  "budget": 12.23,
+  "cap": 10,
+  "price": 0.82,
+  "size": 10
+ },
+ {
+  "budget": 10.58,
+  "cap": 5,
+  "price": 0.29,
+  "size": 5
+ },
+ {
+  "budget": 8.99,
+  "cap": 10,
+  "price": 0.1,
+  "size": 9
+ },
+ {
+  "budget": 25.5,
+  "cap": 5,
+  "price": 0.81,
+  "size": 5
+ },
+ {
+  "budget": 14.56,
+  "cap": 1,
+  "price": 0.71,
+  "size": 1
+ },
+ {
+  "budget": 7.92,
+  "cap": 10,
+  "price": 0.01,
+  "size": 8
+ },
+ {
+  "budget": 10.98,
+  "cap": 1,
+  "price": 0.51,
+  "size": 1
+ },
+ {
+  "budget": 3.67,
+  "cap": 10,
+  "price": 0.87,
+  "size": 10
+ },
+ {
+  "budget": 3.77,
+  "cap": 10,
+  "price": 0.39,
+  "size": 6
+ },
+ {
+  "budget": 10.61,
+  "cap": 5,
+  "price": 0.25,
+  "size": 5
+ },
+ {
+  "budget": 22.2,
+  "cap": 10,
+  "price": 0.6,
+  "size": 10
+ },
+ {
+  "budget": 18.32,
+  "cap": 1,
+  "price": 0.64,
+  "size": 1
+ },
+ {
+  "budget": 14.87,
+  "cap": 1,
+  "price": 0.84,
+  "size": 1
+ },
+ {
+  "budget": 27.34,
+  "cap": 10,
+  "price": 0.5,
+  "size": 10
+ },
+ {
+  "budget": 7.11,
+  "cap": 5,
+  "price": 0.35,
+  "size": 5
+ },
+ {
+  "budget": 25.52,
+  "cap": 1,
+  "price": 0.57,
+  "size": 1
+ },
+ {
+  "budget": 12.66,
+  "cap": 5,
+  "price": 0.37,
+  "size": 5
+ },
+ {
+  "budget": 22.63,
+  "cap": 10,
+  "price": 0.94,
+  "size": 10
+ },
+ {
+  "budget": 1.24,
+  "cap": 1,
+  "price": 0.24,
+  "size": 1
+ },
+ {
+  "budget": 16.26,
+  "cap": 5,
+  "price": 0.1,
+  "size": 5
+ },
+ {
+  "budget": 14.8,
+  "cap": 5,
+  "price": 0.23,
+  "size": 5
+ },
+ {
+  "budget": 13.68,
+  "cap": 10,
+  "price": 0.38,
+  "size": 10
+ },
+ {
+  "budget": 7.97,
+  "cap": 1,
+  "price": 0.45,
+  "size": 1
+ },
+ {
+  "budget": 28.33,
+  "cap": 1,
+  "price": 0.96,
+  "size": 1
+ },
+ {
+  "budget": 13.54,
+  "cap": 10,
+  "price": 0.54,
+  "size": 10
+ },
+ {
+  "budget": 2.87,
+  "cap": 5,
+  "price": 0.78,
+  "size": 5
+ },
+ {
+  "budget": 0.88,
+  "cap": 1,
+  "price": 0.69,
+  "size": 1
+ },
+ {
+  "budget": 2.38,
+  "cap": 5,
+  "price": 0.13,
+  "size": 2
+ },
+ {
+  "budget": 5.67,
+  "cap": 1,
+  "price": 0.19,
+  "size": 1
+ },
+ {
+  "budget": 12.22,
+  "cap": 5,
+  "price": 0.1,
+  "size": 5
+ },
+ {
+  "budget": 18.88,
+  "cap": 5,
+  "price": 0.42,
+  "size": 5
+ },
+ {
+  "budget": 15.86,
+  "cap": 1,
+  "price": 0.1,
+  "size": 1
+ },
+ {
+  "budget": 22.4,
+  "cap": 5,
+  "price": 0.88,
+  "size": 5
+ },
+ {
+  "budget": 9.44,
+  "cap": 10,
+  "price": 0.9,
+  "size": 10
+ },
+ {
+  "budget": 12.93,
+  "cap": 10,
+  "price": 0.81,
+  "size": 10
+ },
+ {
+  "budget": 23.21,
+  "cap": 10,
+  "price": 0.92,
+  "size": 10
+ },
+ {
+  "budget": 4.06,
+  "cap": 1,
+  "price": 0.37,
+  "size": 1
+ },
+ {
+  "budget": 10.98,
+  "cap": 5,
+  "price": 0.31,
+  "size": 5
+ },
+ {
+  "budget": 6.86,
+  "cap": 10,
+  "price": 0.47,
+  "size": 10
+ },
+ {
+  "budget": 19.76,
+  "cap": 1,
+  "price": 0.3,
+  "size": 1
+ },
+ {
+  "budget": 8.19,
+  "cap": 10,
+  "price": 0.34,
+  "size": 10
+ },
+ {
+  "budget": 28.74,
+  "cap": 1,
+  "price": 0.52,
+  "size": 1
+ },
+ {
+  "budget": 21.02,
+  "cap": 1,
+  "price": 0.56,
+  "size": 1
+ },
+ {
+  "budget": 8.19,
+  "cap": 1,
+  "price": 0.52,
+  "size": 1
+ },
+ {
+  "budget": 17.87,
+  "cap": 10,
+  "price": 0.99,
+  "size": 10
+ },
+ {
+  "budget": 8.67,
+  "cap": 5,
+  "price": 0.26,
+  "size": 5
+ },
+ {
+  "budget": 3.2,
+  "cap": 1,
+  "price": 0.75,
+  "size": 1
+ },
+ {
+  "budget": 1.39,
+  "cap": 1,
+  "price": 0.25,
+  "size": 1
+ },
+ {
+  "budget": 20.33,
+  "cap": 5,
+  "price": 0.59,
+  "size": 5
+ },
+ {
+  "budget": 19.16,
+  "cap": 1,
+  "price": 0.7,
+  "size": 1
+ },
+ {
+  "budget": 2.77,
+  "cap": 5,
+  "price": 0.19,
+  "size": 3
+ },
+ {
+  "budget": 21.03,
+  "cap": 1,
+  "price": 0.24,
+  "size": 1
+ },
+ {
+  "budget": 19.06,
+  "cap": 10,
+  "price": 0.54,
+  "size": 10
+ },
+ {
+  "budget": 22.28,
+  "cap": 10,
+  "price": 0.21,
+  "size": 10
+ },
+ {
+  "budget": 0.18,
+  "cap": 1,
+  "price": 0.54,
+  "size": 0
+ },
+ {
+  "budget": 10.04,
+  "cap": 10,
+  "price": 0.58,
+  "size": 10
+ },
+ {
+  "budget": 27.5,
+  "cap": 5,
+  "price": 0.37,
+  "size": 5
+ },
+ {
+  "budget": 5.24,
+  "cap": 10,
+  "price": 0.92,
+  "size": 10
+ },
+ {
+  "budget": 19.1,
+  "cap": 10,
+  "price": 0.61,
+  "size": 10
+ },
+ {
+  "budget": 20.41,
+  "cap": 5,
+  "price": 0.38,
+  "size": 5
+ },
+ {
+  "budget": 10.65,
+  "cap": 10,
+  "price": 0.34,
+  "size": 10
+ },
+ {
+  "budget": 10.49,
+  "cap": 10,
+  "price": 0.12,
+  "size": 10
+ },
+ {
+  "budget": 4.46,
+  "cap": 10,
+  "price": 0.21,
+  "size": 5
+ },
+ {
+  "budget": 25.38,
+  "cap": 1,
+  "price": 0.27,
+  "size": 1
+ },
+ {
+  "budget": 15.85,
+  "cap": 10,
+  "price": 0.91,
+  "size": 10
+ },
+ {
+  "budget": 14.69,
+  "cap": 5,
+  "price": 0.24,
+  "size": 5
+ },
+ {
+  "budget": 28.89,
+  "cap": 10,
+  "price": 0.32,
+  "size": 10
+ },
+ {
+  "budget": 9.41,
+  "cap": 1,
+  "price": 0.6,
+  "size": 1
+ },
+ {
+  "budget": 2.06,
+  "cap": 10,
+  "price": 0.86,
+  "size": 10
+ },
+ {
+  "budget": 13.42,
+  "cap": 5,
+  "price": 0.84,
+  "size": 5
+ },
+ {
+  "budget": 12.6,
+  "cap": 5,
+  "price": 0.19,
+  "size": 5
+ },
+ {
+  "budget": 27.8,
+  "cap": 10,
+  "price": 0.94,
+  "size": 10
+ },
+ {
+  "budget": 12.32,
+  "cap": 10,
+  "price": 0.87,
+  "size": 10
+ },
+ {
+  "budget": 2.25,
+  "cap": 1,
+  "price": 0.58,
+  "size": 1
+ },
+ {
+  "budget": 22.88,
+  "cap": 1,
+  "price": 0.99,
+  "size": 1
+ },
+ {
+  "budget": 18.74,
+  "cap": 10,
+  "price": 0.22,
+  "size": 10
+ },
+ {
+  "budget": 19.44,
+  "cap": 10,
+  "price": 0.41,
+  "size": 10
+ },
+ {
+  "budget": 21.52,
+  "cap": 5,
+  "price": 0.46,
+  "size": 5
+ },
+ {
+  "budget": 7.69,
+  "cap": 5,
+  "price": 0.82,
+  "size": 5
+ },
+ {
+  "budget": 29.61,
+  "cap": 10,
+  "price": 0.39,
+  "size": 10
+ },
+ {
+  "budget": 0.15,
+  "cap": 10,
+  "price": 0.57,
+  "size": 0
+ },
+ {
+  "budget": 25.39,
+  "cap": 1,
+  "price": 0.6,
+  "size": 1
+ },
+ {
+  "budget": 15.41,
+  "cap": 1,
+  "price": 0.86,
+  "size": 1
+ },
+ {
+  "budget": 11.21,
+  "cap": 5,
+  "price": 0.27,
+  "size": 5
+ },
+ {
+  "budget": 16.88,
+  "cap": 10,
+  "price": 0.5,
+  "size": 10
+ },
+ {
+  "budget": 28.78,
+  "cap": 1,
+  "price": 0.66,
+  "size": 1
+ },
+ {
+  "budget": 10.19,
+  "cap": 10,
+  "price": 0.62,
+  "size": 10
+ },
+ {
+  "budget": 19.3,
+  "cap": 5,
+  "price": 0.02,
+  "size": 5
+ },
+ {
+  "budget": 2.2,
+  "cap": 10,
+  "price": 0.52,
+  "size": 4
+ },
+ {
+  "budget": 10.3,
+  "cap": 5,
+  "price": 0.91,
+  "size": 5
+ },
+ {
+  "budget": 11.66,
+  "cap": 5,
+  "price": 0.68,
+  "size": 5
+ },
+ {
+  "budget": 24.11,
+  "cap": 1,
+  "price": 0.59,
+  "size": 1
+ },
+ {
+  "budget": 27.52,
+  "cap": 10,
+  "price": 0.31,
+  "size": 10
+ },
+ {
+  "budget": 29.1,
+  "cap": 5,
+  "price": 0.13,
+  "size": 5
+ },
+ {
+  "budget": 17.14,
+  "cap": 5,
+  "price": 0.18,
+  "size": 5
+ },
+ {
+  "budget": 23.9,
+  "cap": 10,
+  "price": 0.78,
+  "size": 10
+ },
+ {
+  "budget": 14.53,
+  "cap": 10,
+  "price": 0.2,
+  "size": 10
+ },
+ {
+  "budget": 8.83,
+  "cap": 5,
+  "price": 0.57,
+  "size": 5
+ },
+ {
+  "budget": 27.07,
+  "cap": 5,
+  "price": 0.74,
+  "size": 5
+ },
+ {
+  "budget": 14.1,
+  "cap": 1,
+  "price": 0.09,
+  "size": 1
+ },
+ {
+  "budget": 22.02,
+  "cap": 1,
+  "price": 0.64,
+  "size": 1
+ },
+ {
+  "budget": 9.45,
+  "cap": 10,
+  "price": 0.8,
+  "size": 10
+ },
+ {
+  "budget": 5.21,
+  "cap": 1,
+  "price": 0.4,
+  "size": 1
+ },
+ {
+  "budget": 7.29,
+  "cap": 5,
+  "price": 0.88,
+  "size": 5
+ },
+ {
+  "budget": 4.08,
+  "cap": 5,
+  "price": 0.81,
+  "size": 5
+ },
+ {
+  "budget": 22.33,
+  "cap": 10,
+  "price": 0.2,
+  "size": 10
+ },
+ {
+  "budget": 21.03,
+  "cap": 1,
+  "price": 0.92,
+  "size": 1
+ },
+ {
+  "budget": 4.42,
+  "cap": 5,
+  "price": 0.82,
+  "size": 5
+ },
+ {
+  "budget": 19.79,
+  "cap": 5,
+  "price": 0.21,
+  "size": 5
+ },
+ {
+  "budget": 0.4,
+  "cap": 10,
+  "price": 1.0,
+  "size": 10
+ },
+ {
+  "budget": 23.64,
+  "cap": 1,
+  "price": 0.85,
+  "size": 1
+ },
+ {
+  "budget": 23.21,
+  "cap": 10,
+  "price": 0.62,
+  "size": 10
+ },
+ {
+  "budget": 4.76,
+  "cap": 10,
+  "price": 0.29,
+  "size": 6
+ },
+ {
+  "budget": 15.83,
+  "cap": 10,
+  "price": 0.21,
+  "size": 10
+ },
+ {
+  "budget": 20.0,
+  "cap": 1,
+  "price": 0.49,
+  "size": 1
+ },
+ {
+  "budget": 3.44,
+  "cap": 1,
+  "price": 1.0,
+  "size": 1
+ },
+ {
+  "budget": 24.17,
+  "cap": 1,
+  "price": 0.37,
+  "size": 1
+ },
+ {
+  "budget": 22.94,
+  "cap": 5,
+  "price": 0.11,
+  "size": 5
+ },
+ {
+  "budget": 1.18,
+  "cap": 10,
+  "price": 0.14,
+  "size": 1
+ },
+ {
+  "budget": 3.52,
+  "cap": 1,
+  "price": 0.11,
+  "size": 1
+ },
+ {
+  "budget": 5.33,
+  "cap": 5,
+  "price": 0.51,
+  "size": 5
+ },
+ {
+  "budget": 6.97,
+  "cap": 5,
+  "price": 0.67,
+  "size": 5
+ },
+ {
+  "budget": 25.83,
+  "cap": 1,
+  "price": 0.44,
+  "size": 1
+ },
+ {
+  "budget": 18.06,
+  "cap": 1,
+  "price": 0.82,
+  "size": 1
+ },
+ {
+  "budget": 21.61,
+  "cap": 5,
+  "price": 0.63,
+  "size": 5
+ },
+ {
+  "budget": 4.79,
+  "cap": 10,
+  "price": 0.49,
+  "size": 9
+ },
+ {
+  "budget": 16.54,
+  "cap": 1,
+  "price": 0.23,
+  "size": 1
+ },
+ {
+  "budget": 5.64,
+  "cap": 10,
+  "price": 0.69,
+  "size": 10
+ },
+ {
+  "budget": 13.67,
+  "cap": 10,
+  "price": 0.07,
+  "size": 10
+ },
+ {
+  "budget": 14.01,
+  "cap": 10,
+  "price": 0.43,
+  "size": 10
+ },
+ {
+  "budget": 5.92,
+  "cap": 1,
+  "price": 0.36,
+  "size": 1
+ },
+ {
+  "budget": 2.85,
+  "cap": 5,
+  "price": 0.01,
+  "size": 2
+ },
+ {
+  "budget": 3.48,
+  "cap": 10,
+  "price": 0.94,
+  "size": 10
+ },
+ {
+  "budget": 3.58,
+  "cap": 1,
+  "price": 0.38,
+  "size": 1
+ },
+ {
+  "budget": 15.24,
+  "cap": 1,
+  "price": 0.41,
+  "size": 1
+ },
+ {
+  "budget": 28.91,
+  "cap": 1,
+  "price": 0.13,
+  "size": 1
+ },
+ {
+  "budget": 24.97,
+  "cap": 1,
+  "price": 0.53,
+  "size": 1
+ },
+ {
+  "budget": 12.42,
+  "cap": 1,
+  "price": 0.57,
+  "size": 1
+ },
+ {
+  "budget": 4.25,
+  "cap": 5,
+  "price": 0.62,
+  "size": 5
+ },
+ {
+  "budget": 7.57,
+  "cap": 10,
+  "price": 0.57,
+  "size": 10
+ },
+ {
+  "budget": 23.98,
+  "cap": 5,
+  "price": 0.26,
+  "size": 5
+ },
+ {
+  "budget": 12.22,
+  "cap": 10,
+  "price": 0.69,
+  "size": 10
+ },
+ {
+  "budget": 8.16,
+  "cap": 1,
+  "price": 0.25,
+  "size": 1
+ },
+ {
+  "budget": 29.34,
+  "cap": 10,
+  "price": 0.01,
+  "size": 10
+ },
+ {
+  "budget": 7.9,
+  "cap": 5,
+  "price": 0.64,
+  "size": 5
+ },
+ {
+  "budget": 16.51,
+  "cap": 10,
+  "price": 0.62,
+  "size": 10
+ },
+ {
+  "budget": 7.01,
+  "cap": 5,
+  "price": 0.54,
+  "size": 5
+ },
+ {
+  "budget": 9.87,
+  "cap": 5,
+  "price": 0.83,
+  "size": 5
+ },
+ {
+  "budget": 1.22,
+  "cap": 5,
+  "price": 0.7,
+  "size": 4
+ },
+ {
+  "budget": 18.26,
+  "cap": 1,
+  "price": 0.67,
+  "size": 1
+ },
+ {
+  "budget": 3.46,
+  "cap": 5,
+  "price": 0.52,
+  "size": 5
+ },
+ {
+  "budget": 9.82,
+  "cap": 10,
+  "price": 0.29,
+  "size": 10
+ },
+ {
+  "budget": 23.04,
+  "cap": 1,
+  "price": 0.02,
+  "size": 1
+ },
+ {
+  "budget": 28.9,
+  "cap": 1,
+  "price": 0.41,
+  "size": 1
+ },
+ {
+  "budget": 9.8,
+  "cap": 10,
+  "price": 0.42,
+  "size": 10
+ },
+ {
+  "budget": 27.37,
+  "cap": 5,
+  "price": 0.51,
+  "size": 5
+ },
+ {
+  "budget": 17.53,
+  "cap": 10,
+  "price": 1.0,
+  "size": 10
+ },
+ {
+  "budget": 7.97,
+  "cap": 10,
+  "price": 0.51,
+  "size": 10
+ },
+ {
+  "budget": 14.24,
+  "cap": 1,
+  "price": 0.65,
+  "size": 1
+ },
+ {
+  "budget": 14.74,
+  "cap": 1,
+  "price": 0.02,
+  "size": 1
+ },
+ {
+  "budget": 21.28,
+  "cap": 5,
+  "price": 0.95,
+  "size": 5
+ },
+ {
+  "budget": 10.73,
+  "cap": 10,
+  "price": 0.03,
+  "size": 10
+ },
+ {
+  "budget": 3.45,
+  "cap": 10,
+  "price": 0.56,
+  "size": 7
+ },
+ {
+  "budget": 1.26,
+  "cap": 5,
+  "price": 0.81,
+  "size": 5
+ },
+ {
+  "budget": 28.06,
+  "cap": 5,
+  "price": 0.41,
+  "size": 5
+ },
+ {
+  "budget": 14.88,
+  "cap": 5,
+  "price": 0.27,
+  "size": 5
+ },
+ {
+  "budget": 11.82,
+  "cap": 10,
+  "price": 0.57,
+  "size": 10
+ },
+ {
+  "budget": 28.64,
+  "cap": 5,
+  "price": 0.88,
+  "size": 5
+ },
+ {
+  "budget": 0.85,
+  "cap": 1,
+  "price": 0.41,
+  "size": 1
+ },
+ {
+  "budget": 8.05,
+  "cap": 1,
+  "price": 0.02,
+  "size": 1
+ },
+ {
+  "budget": 21.11,
+  "cap": 10,
+  "price": 0.69,
+  "size": 10
+ },
+ {
+  "budget": 21.04,
+  "cap": 1,
+  "price": 0.7,
+  "size": 1
+ },
+ {
+  "budget": 15.92,
+  "cap": 10,
+  "price": 0.12,
+  "size": 10
+ },
+ {
+  "budget": 22.11,
+  "cap": 1,
+  "price": 0.32,
+  "size": 1
+ },
+ {
+  "budget": 24.79,
+  "cap": 10,
+  "price": 0.85,
+  "size": 10
+ },
+ {
+  "budget": 7.23,
+  "cap": 1,
+  "price": 0.83,
+  "size": 1
+ },
+ {
+  "budget": 2.39,
+  "cap": 1,
+  "price": 0.22,
+  "size": 1
+ },
+ {
+  "budget": 29.33,
+  "cap": 10,
+  "price": 0.1,
+  "size": 10
+ },
+ {
+  "budget": 8.87,
+  "cap": 1,
+  "price": 0.84,
+  "size": 1
+ },
+ {
+  "budget": 18.79,
+  "cap": 10,
+  "price": 0.99,
+  "size": 10
+ },
+ {
+  "budget": 17.03,
+  "cap": 1,
+  "price": 0.51,
+  "size": 1
+ },
+ {
+  "budget": 25.57,
+  "cap": 10,
+  "price": 0.08,
+  "size": 10
+ },
+ {
+  "budget": 28.73,
+  "cap": 10,
+  "price": 0.72,
+  "size": 10
+ },
+ {
+  "budget": 7.79,
+  "cap": 1,
+  "price": 0.18,
+  "size": 1
+ },
+ {
+  "budget": 21.04,
+  "cap": 1,
+  "price": 0.39,
+  "size": 1
+ },
+ {
+  "budget": 17.58,
+  "cap": 1,
+  "price": 0.35,
+  "size": 1
+ },
+ {
+  "budget": 29.64,
+  "cap": 1,
+  "price": 0.98,
+  "size": 1
+ },
+ {
+  "budget": 27.13,
+  "cap": 10,
+  "price": 0.9,
+  "size": 10
+ },
+ {
+  "budget": 28.89,
+  "cap": 10,
+  "price": 0.66,
+  "size": 10
+ },
+ {
+  "budget": 17.35,
+  "cap": 5,
+  "price": 0.26,
+  "size": 5
+ },
+ {
+  "budget": 4.12,
+  "cap": 1,
+  "price": 0.84,
+  "size": 1
+ },
+ {
+  "budget": 20.82,
+  "cap": 5,
+  "price": 0.08,
+  "size": 5
+ },
+ {
+  "budget": 22.73,
+  "cap": 1,
+  "price": 0.29,
+  "size": 1
+ },
+ {
+  "budget": 4.4,
+  "cap": 10,
+  "price": 0.95,
+  "size": 10
+ },
+ {
+  "budget": 21.33,
+  "cap": 10,
+  "price": 0.74,
+  "size": 10
+ },
+ {
+  "budget": 22.84,
+  "cap": 5,
+  "price": 0.35,
+  "size": 5
+ },
+ {
+  "budget": 14.21,
+  "cap": 10,
+  "price": 0.66,
+  "size": 10
+ },
+ {
+  "budget": 9.77,
+  "cap": 10,
+  "price": 0.36,
+  "size": 10
+ },
+ {
+  "budget": 25.8,
+  "cap": 1,
+  "price": 0.41,
+  "size": 1
+ },
+ {
+  "budget": 11.61,
+  "cap": 5,
+  "price": 0.2,
+  "size": 5
+ },
+ {
+  "budget": 27.26,
+  "cap": 10,
+  "price": 0.93,
+  "size": 10
+ },
+ {
+  "budget": 2.95,
+  "cap": 1,
+  "price": 0.38,
+  "size": 1
+ },
+ {
+  "budget": 10.99,
+  "cap": 1,
+  "price": 0.58,
+  "size": 1
+ },
+ {
+  "budget": 17.33,
+  "cap": 1,
+  "price": 0.68,
+  "size": 1
+ },
+ {
+  "budget": 11.65,
+  "cap": 10,
+  "price": 0.58,
+  "size": 10
+ },
+ {
+  "budget": 13.52,
+  "cap": 1,
+  "price": 0.88,
+  "size": 1
+ },
+ {
+  "budget": 18.03,
+  "cap": 10,
+  "price": 0.69,
+  "size": 10
+ },
+ {
+  "budget": 2.69,
+  "cap": 1,
+  "price": 0.66,
+  "size": 1
+ },
+ {
+  "budget": 21.84,
+  "cap": 1,
+  "price": 0.79,
+  "size": 1
+ },
+ {
+  "budget": 20.89,
+  "cap": 5,
+  "price": 0.29,
+  "size": 5
+ },
+ {
+  "budget": 21.93,
+  "cap": 10,
+  "price": 0.63,
+  "size": 10
+ },
+ {
+  "budget": 10.19,
+  "cap": 1,
+  "price": 0.1,
+  "size": 1
+ },
+ {
+  "budget": 3.58,
+  "cap": 5,
+  "price": 0.07,
+  "size": 3
+ },
+ {
+  "budget": 3.0,
+  "cap": 5,
+  "price": 0.92,
+  "size": 5
+ },
+ {
+  "budget": 16.34,
+  "cap": 1,
+  "price": 0.69,
+  "size": 1
+ },
+ {
+  "budget": 16.61,
+  "cap": 5,
+  "price": 0.16,
+  "size": 5
+ },
+ {
+  "budget": 13.52,
+  "cap": 1,
+  "price": 0.87,
+  "size": 1
+ },
+ {
+  "budget": 8.49,
+  "cap": 10,
+  "price": 0.71,
+  "size": 10
+ },
+ {
+  "budget": 6.94,
+  "cap": 1,
+  "price": 0.45,
+  "size": 1
+ },
+ {
+  "budget": 28.41,
+  "cap": 10,
+  "price": 0.71,
+  "size": 10
+ },
+ {
+  "budget": 3.75,
+  "cap": 10,
+  "price": 0.45,
+  "size": 6
+ },
+ {
+  "budget": 2.19,
+  "cap": 1,
+  "price": 0.6,
+  "size": 1
+ },
+ {
+  "budget": 27.92,
+  "cap": 1,
+  "price": 0.06,
+  "size": 1
+ },
+ {
+  "budget": 21.19,
+  "cap": 1,
+  "price": 0.62,
+  "size": 1
+ },
+ {
+  "budget": 7.58,
+  "cap": 5,
+  "price": 0.51,
+  "size": 5
+ },
+ {
+  "budget": 21.22,
+  "cap": 10,
+  "price": 0.54,
+  "size": 10
+ },
+ {
+  "budget": 3.16,
+  "cap": 5,
+  "price": 0.18,
+  "size": 3
+ },
+ {
+  "budget": 9.0,
+  "cap": 5,
+  "price": 0.24,
+  "size": 5
+ },
+ {
+  "budget": 25.77,
+  "cap": 5,
+  "price": 0.35,
+  "size": 5
+ },
+ {
+  "budget": 14.27,
+  "cap": 10,
+  "price": 0.21,
+  "size": 10
+ },
+ {
+  "budget": 1.1,
+  "cap": 5,
+  "price": 0.49,
+  "size": 2
+ },
+ {
+  "budget": 7.41,
+  "cap": 5,
+  "price": 0.42,
+  "size": 5
+ }
+]

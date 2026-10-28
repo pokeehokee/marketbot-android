@@ -1,0 +1,70 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the build number is the commit count
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Core tests (golden comparisons against the Python originals, clients, strategies)
+        run: ./gradlew --no-daemon :core:test
+      - name: App tests (Room stores, vault, screens)
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Android lint (errors fail the build)
+        run: ./gradlew --no-daemon :app:lintDebug
+      - name: Build APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Build release APK (R8, signed with the release key when the secrets are set)
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
+            echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+          fi
+          ./gradlew --no-daemon :app:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketbot-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketbot-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens-and-test-reports
+          path: |
+            app/build/screens
+            core/build/reports/tests
+            app/build/reports/tests
+      - name: Publish APK as a pre-release (default branch only)
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$((100 + $(git rev-list --count HEAD)))   # = versionCode, see app/build.gradle.kts
+          cp app/build/outputs/apk/release/app-release.apk marketbot-$n.apk
+          gh release view "build-$n" >/dev/null 2>&1 && exit 0
+          gh release create "build-$n" marketbot-$n.apk \
+            --prerelease --title "Marketbot build $n" \
+            --notes "Build $n from ${{ github.sha }}. Install by opening the APK on your phone; the app also checks for this under Settings > About."

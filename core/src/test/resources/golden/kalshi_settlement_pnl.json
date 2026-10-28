@@ -1,0 +1,55 @@
+[
+ {
+  "payload": {
+   "fee_cost": "0.000000",
+   "market_result": "no",
+   "no_count_fp": "5.00",
+   "no_total_cost_dollars": "4.75",
+   "revenue": 500,
+   "yes_count_fp": "0.00",
+   "yes_total_cost_dollars": "0.00"
+  },
+  "pnl": 0.25
+ },
+ {
+  "payload": {
+   "fee_cost": "0",
+   "market_result": "yes",
+   "no_count_fp": "5.00",
+   "no_total_cost_dollars": "4.75",
+   "revenue": 0
+  },
+  "pnl": -4.75
+ },
+ {
+  "payload": {
+   "fee_cost": "0.16",
+   "market_result": "no",
+   "no_count_fp": "20.00",
+   "no_total_cost_dollars": "19.60",
+   "revenue": 0,
+   "yes_count_fp": "20.00",
+   "yes_total_cost_dollars": "4.40"
+  },
+  "pnl": -4.16
+ },
+ {
+  "payload": {
+   "fee_cost": "0",
+   "no_count": 10,
+   "no_total_cost": 950,
+   "revenue": 1000,
+   "yes_total_cost": 0
+  },
+  "pnl": 0.5
+ },
+ {
+  "payload": {
+   "fee_cost": "0.01",
+   "no_count_fp": "3.00",
+   "no_total_cost_dollars": "2.91",
+   "revenue": "300"
+  },
+  "pnl": 0.07999999999999986
+ }
+]

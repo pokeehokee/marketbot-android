@@ -1,0 +1,74 @@
+[
+ {
+  "exit": false,
+  "intent": "ORDER_INTENT_BUY_LONG",
+  "pos": -3.0,
+  "side": "bid"
+ },
+ {
+  "exit": true,
+  "intent": "ORDER_INTENT_SELL_SHORT",
+  "pos": -3.0,
+  "side": "bid"
+ },
+ {
+  "exit": false,
+  "intent": "ORDER_INTENT_BUY_LONG",
+  "pos": 0.0,
+  "side": "bid"
+ },
+ {
+  "exit": true,
+  "intent": "ORDER_INTENT_BUY_LONG",
+  "pos": 0.0,
+  "side": "bid"
+ },
+ {
+  "exit": false,
+  "intent": "ORDER_INTENT_BUY_LONG",
+  "pos": 4.0,
+  "side": "bid"
+ },
+ {
+  "exit": true,
+  "intent": "ORDER_INTENT_BUY_LONG",
+  "pos": 4.0,
+  "side": "bid"
+ },
+ {
+  "exit": false,
+  "intent": "ORDER_INTENT_BUY_SHORT",
+  "pos": -3.0,
+  "side": "ask"
+ },
+ {
+  "exit": true,
+  "intent": "ORDER_INTENT_BUY_SHORT",
+  "pos": -3.0,
+  "side": "ask"
+ },
+ {
+  "exit": false,
+  "intent": "ORDER_INTENT_BUY_SHORT",
+  "pos": 0.0,
+  "side": "ask"
+ },
+ {
+  "exit": true,
+  "intent": "ORDER_INTENT_BUY_SHORT",
+  "pos": 0.0,
+  "side": "ask"
+ },
+ {
+  "exit": false,
+  "intent": "ORDER_INTENT_BUY_SHORT",
+  "pos": 4.0,
+  "side": "ask"
+ },
+ {
+  "exit": true,
+  "intent": "ORDER_INTENT_SELL_LONG",
+  "pos": 4.0,
+  "side": "ask"
+ }
+]

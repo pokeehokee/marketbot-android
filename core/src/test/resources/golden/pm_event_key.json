@@ -1,0 +1,814 @@
+[
+ {
+  "key": "evt:nba-atl-ind-2026-11-02",
+  "slug": "aec-nba-atl-ind-2026-11-02"
+ },
+ {
+  "key": "evt:nba-atl-no-2026-10-31",
+  "slug": "aec-nba-atl-no-2026-10-31"
+ },
+ {
+  "key": "evt:nba-atl-was-2026-11-04",
+  "slug": "aec-nba-atl-was-2026-11-04"
+ },
+ {
+  "key": "evt:nba-bkn-atl-2026-11-07",
+  "slug": "aec-nba-bkn-atl-2026-11-07"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "aec-nba-bkn-bos-2026-10-27"
+ },
+ {
+  "key": "evt:nba-bkn-dal-2026-11-08",
+  "slug": "aec-nba-bkn-dal-2026-11-08"
+ },
+ {
+  "key": "evt:nba-bkn-ind-2026-11-01",
+  "slug": "aec-nba-bkn-ind-2026-11-01"
+ },
+ {
+  "key": "evt:nba-bkn-ny-2026-11-02",
+  "slug": "aec-nba-bkn-ny-2026-11-02"
+ },
+ {
+  "key": "evt:nba-bos-cha-2026-11-06",
+  "slug": "aec-nba-bos-cha-2026-11-06"
+ },
+ {
+  "key": "evt:nba-bos-hou-2026-11-02",
+  "slug": "aec-nba-bos-hou-2026-11-02"
+ },
+ {
+  "key": "evt:nba-bos-mil-2026-11-08",
+  "slug": "aec-nba-bos-mil-2026-11-08"
+ },
+ {
+  "key": "evt:nba-bos-orl-2026-11-01",
+  "slug": "aec-nba-bos-orl-2026-11-01"
+ },
+ {
+  "key": "evt:nba-bos-phi-2026-11-10",
+  "slug": "aec-nba-bos-phi-2026-11-10"
+ },
+ {
+  "key": "evt:nba-cha-bkn-2026-11-04",
+  "slug": "aec-nba-cha-bkn-2026-11-04"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "aec-nba-cha-det-2026-10-28"
+ },
+ {
+  "key": "evt:nba-cha-was-2026-10-30",
+  "slug": "aec-nba-cha-was-2026-10-30"
+ },
+ {
+  "key": "evt:nba-chi-bos-2026-10-30",
+  "slug": "aec-nba-chi-bos-2026-10-30"
+ },
+ {
+  "key": "evt:nba-chi-ny-2026-11-04",
+  "slug": "aec-nba-chi-ny-2026-11-04"
+ },
+ {
+  "key": "evt:nba-chi-phi-2026-11-02",
+  "slug": "aec-nba-chi-phi-2026-11-02"
+ },
+ {
+  "key": "evt:nba-cle-atl-2026-10-29",
+  "slug": "aec-nba-cle-atl-2026-10-29"
+ },
+ {
+  "key": "evt:nba-cle-cha-2026-11-09",
+  "slug": "aec-nba-cle-cha-2026-11-09"
+ },
+ {
+  "key": "evt:nba-cle-mil-2026-10-31",
+  "slug": "aec-nba-cle-mil-2026-10-31"
+ },
+ {
+  "key": "evt:nba-cle-okc-2026-11-04",
+  "slug": "aec-nba-cle-okc-2026-11-04"
+ },
+ {
+  "key": "evt:nba-dal-sa-2026-11-04",
+  "slug": "aec-nba-dal-sa-2026-11-04"
+ },
+ {
+  "key": "evt:nba-den-hou-2026-11-09",
+  "slug": "aec-nba-den-hou-2026-11-09"
+ },
+ {
+  "key": "evt:nba-den-ind-2026-11-07",
+  "slug": "aec-nba-den-ind-2026-11-07"
+ },
+ {
+  "key": "evt:nba-den-no-2026-10-28",
+  "slug": "aec-nba-den-no-2026-10-28"
+ },
+ {
+  "key": "evt:nba-den-pho-2026-10-30",
+  "slug": "aec-nba-den-pho-2026-10-30"
+ },
+ {
+  "key": "evt:nba-det-bkn-2026-10-30",
+  "slug": "aec-nba-det-bkn-2026-10-30"
+ },
+ {
+  "key": "evt:nba-det-cha-2026-11-02",
+  "slug": "aec-nba-det-cha-2026-11-02"
+ },
+ {
+  "key": "evt:nba-det-ny-2026-10-27",
+  "slug": "aec-nba-det-ny-2026-10-27"
+ },
+ {
+  "key": "evt:nba-gs-min-2026-10-28",
+  "slug": "aec-nba-gs-min-2026-10-28"
+ },
+ {
+  "key": "evt:nba-hou-dal-2026-10-30",
+  "slug": "aec-nba-hou-dal-2026-10-30"
+ },
+ {
+  "key": "evt:nba-hou-mil-2026-10-28",
+  "slug": "aec-nba-hou-mil-2026-10-28"
+ },
+ {
+  "key": "evt:nba-hou-pho-2026-11-07",
+  "slug": "aec-nba-hou-pho-2026-11-07"
+ },
+ {
+  "key": "evt:nba-ind-dal-2026-11-09",
+  "slug": "aec-nba-ind-dal-2026-11-09"
+ },
+ {
+  "key": "evt:nba-ind-mem-2026-11-04",
+  "slug": "aec-nba-ind-mem-2026-11-04"
+ },
+ {
+  "key": "evt:nba-ind-mia-2026-10-30",
+  "slug": "aec-nba-ind-mia-2026-10-30"
+ },
+ {
+  "key": "evt:nba-lac-gs-2026-11-01",
+  "slug": "aec-nba-lac-gs-2026-11-01"
+ },
+ {
+  "key": "evt:nba-lac-min-2026-10-30",
+  "slug": "aec-nba-lac-min-2026-10-30"
+ },
+ {
+  "key": "evt:nba-lac-pho-2026-11-10",
+  "slug": "aec-nba-lac-pho-2026-11-10"
+ },
+ {
+  "key": "evt:nba-lal-atl-2026-11-09",
+  "slug": "aec-nba-lal-atl-2026-11-09"
+ },
+ {
+  "key": "evt:nba-lal-det-2026-11-08",
+  "slug": "aec-nba-lal-det-2026-11-08"
+ },
+ {
+  "key": "evt:nba-lal-gs-2026-10-30",
+  "slug": "aec-nba-lal-gs-2026-10-30"
+ },
+ {
+  "key": "evt:nba-lal-lac-2026-10-28",
+  "slug": "aec-nba-lal-lac-2026-10-28"
+ },
+ {
+  "key": "evt:nba-lal-sac-2026-11-04",
+  "slug": "aec-nba-lal-sac-2026-11-04"
+ },
+ {
+  "key": "evt:nba-mem-por-2026-10-29",
+  "slug": "aec-nba-mem-por-2026-10-29"
+ },
+ {
+  "key": "evt:nba-mem-tor-2026-11-09",
+  "slug": "aec-nba-mem-tor-2026-11-09"
+ },
+ {
+  "key": "evt:nba-mia-atl-2026-10-28",
+  "slug": "aec-nba-mia-atl-2026-10-28"
+ },
+ {
+  "key": "evt:nba-mia-gs-2026-11-05",
+  "slug": "aec-nba-mia-gs-2026-11-05"
+ },
+ {
+  "key": "evt:nba-mia-lac-2026-11-04",
+  "slug": "aec-nba-mia-lac-2026-11-04"
+ },
+ {
+  "key": "evt:nba-mia-lal-2026-11-02",
+  "slug": "aec-nba-mia-lal-2026-11-02"
+ },
+ {
+  "key": "evt:nba-mia-sac-2026-11-08",
+  "slug": "aec-nba-mia-sac-2026-11-08"
+ },
+ {
+  "key": "evt:nba-mia-uta-2026-11-10",
+  "slug": "aec-nba-mia-uta-2026-11-10"
+ },
+ {
+  "key": "evt:nba-mil-bos-2026-11-04",
+  "slug": "aec-nba-mil-bos-2026-11-04"
+ },
+ {
+  "key": "evt:nba-mil-min-2026-11-02",
+  "slug": "aec-nba-mil-min-2026-11-02"
+ },
+ {
+  "key": "evt:nba-mil-ny-2026-11-10",
+  "slug": "aec-nba-mil-ny-2026-11-10"
+ },
+ {
+  "key": "evt:nba-min-hou-2026-11-04",
+  "slug": "aec-nba-min-hou-2026-11-04"
+ },
+ {
+  "key": "evt:nba-min-no-2026-11-06",
+  "slug": "aec-nba-min-no-2026-11-06"
+ },
+ {
+  "key": "evt:nba-min-sa-2026-10-31",
+  "slug": "aec-nba-min-sa-2026-10-31"
+ },
+ {
+  "key": "evt:nba-no-gs-2026-11-09",
+  "slug": "aec-nba-no-gs-2026-11-09"
+ },
+ {
+  "key": "evt:nba-no-lac-2026-11-08",
+  "slug": "aec-nba-no-lac-2026-11-08"
+ },
+ {
+  "key": "evt:nba-no-mem-2026-11-02",
+  "slug": "aec-nba-no-mem-2026-11-02"
+ },
+ {
+  "key": "evt:nba-ny-chi-2026-10-28",
+  "slug": "aec-nba-ny-chi-2026-10-28"
+ },
+ {
+  "key": "evt:nba-ny-cle-2026-11-07",
+  "slug": "aec-nba-ny-cle-2026-11-07"
+ },
+ {
+  "key": "evt:nba-ny-phi-2026-10-30",
+  "slug": "aec-nba-ny-phi-2026-10-30"
+ },
+ {
+  "key": "evt:nba-okc-cle-2026-11-02",
+  "slug": "aec-nba-okc-cle-2026-11-02"
+ },
+ {
+  "key": "evt:nba-okc-dal-2026-10-28",
+  "slug": "aec-nba-okc-dal-2026-10-28"
+ },
+ {
+  "key": "evt:nba-okc-hou-2026-10-31",
+  "slug": "aec-nba-okc-hou-2026-10-31"
+ },
+ {
+  "key": "evt:nba-okc-mem-2026-11-06",
+  "slug": "aec-nba-okc-mem-2026-11-06"
+ },
+ {
+  "key": "evt:nba-okc-por-2026-11-10",
+  "slug": "aec-nba-okc-por-2026-11-10"
+ },
+ {
+  "key": "evt:nba-orl-gs-2026-11-07",
+  "slug": "aec-nba-orl-gs-2026-11-07"
+ },
+ {
+  "key": "evt:nba-orl-pho-2026-11-05",
+  "slug": "aec-nba-orl-pho-2026-11-05"
+ },
+ {
+  "key": "evt:nba-orl-sac-2026-11-10",
+  "slug": "aec-nba-orl-sac-2026-11-10"
+ },
+ {
+  "key": "evt:nba-orl-tor-2026-10-28",
+  "slug": "aec-nba-orl-tor-2026-10-28"
+ },
+ {
+  "key": "evt:nba-orl-tor-2026-10-30",
+  "slug": "aec-nba-orl-tor-2026-10-30"
+ },
+ {
+  "key": "evt:nba-phi-cha-2026-10-31",
+  "slug": "aec-nba-phi-cha-2026-10-31"
+ },
+ {
+  "key": "evt:nba-phi-chi-2026-11-08",
+  "slug": "aec-nba-phi-chi-2026-11-08"
+ },
+ {
+  "key": "evt:nba-phi-cle-2026-11-06",
+  "slug": "aec-nba-phi-cle-2026-11-06"
+ },
+ {
+  "key": "evt:nba-phi-det-2026-11-04",
+  "slug": "aec-nba-phi-det-2026-11-04"
+ },
+ {
+  "key": "evt:nba-phi-ind-2026-10-28",
+  "slug": "aec-nba-phi-ind-2026-10-28"
+ },
+ {
+  "key": "evt:nba-pho-gs-2026-11-02",
+  "slug": "aec-nba-pho-gs-2026-11-02"
+ },
+ {
+  "key": "evt:nba-por-den-2026-11-02",
+  "slug": "aec-nba-por-den-2026-11-02"
+ },
+ {
+  "key": "evt:nba-por-lal-2026-10-27",
+  "slug": "aec-nba-por-lal-2026-10-27"
+ },
+ {
+  "key": "evt:nba-por-lal-2026-11-06",
+  "slug": "aec-nba-por-lal-2026-11-06"
+ },
+ {
+  "key": "evt:nba-por-pho-2026-11-04",
+  "slug": "aec-nba-por-pho-2026-11-04"
+ },
+ {
+  "key": "evt:nba-por-uta-2026-10-31",
+  "slug": "aec-nba-por-uta-2026-10-31"
+ },
+ {
+  "key": "evt:nba-sa-pho-2026-11-09",
+  "slug": "aec-nba-sa-pho-2026-11-09"
+ },
+ {
+  "key": "evt:nba-sa-por-2026-11-07",
+  "slug": "aec-nba-sa-por-2026-11-07"
+ },
+ {
+  "key": "evt:nba-sa-sac-2026-11-06",
+  "slug": "aec-nba-sa-sac-2026-11-06"
+ },
+ {
+  "key": "evt:nba-sa-uta-2026-10-28",
+  "slug": "aec-nba-sa-uta-2026-10-28"
+ },
+ {
+  "key": "evt:nba-sac-dal-2026-11-02",
+  "slug": "aec-nba-sac-dal-2026-11-02"
+ },
+ {
+  "key": "evt:nba-sac-mem-2026-10-31",
+  "slug": "aec-nba-sac-mem-2026-10-31"
+ },
+ {
+  "key": "evt:nba-sac-no-2026-10-29",
+  "slug": "aec-nba-sac-no-2026-10-29"
+ },
+ {
+  "key": "evt:nba-sac-sa-2026-10-27",
+  "slug": "aec-nba-sac-sa-2026-10-27"
+ },
+ {
+  "key": "evt:nba-tor-den-2026-11-04",
+  "slug": "aec-nba-tor-den-2026-11-04"
+ },
+ {
+  "key": "evt:nba-tor-lac-2026-11-02",
+  "slug": "aec-nba-tor-lac-2026-11-02"
+ },
+ {
+  "key": "evt:nba-tor-lal-2026-11-01",
+  "slug": "aec-nba-tor-lal-2026-11-01"
+ },
+ {
+  "key": "evt:nba-tor-mil-2026-11-06",
+  "slug": "aec-nba-tor-mil-2026-11-06"
+ },
+ {
+  "key": "evt:nba-uta-dal-2026-11-06",
+  "slug": "aec-nba-uta-dal-2026-11-06"
+ },
+ {
+  "key": "evt:nba-uta-min-2026-11-08",
+  "slug": "aec-nba-uta-min-2026-11-08"
+ },
+ {
+  "key": "evt:nba-uta-no-2026-11-04",
+  "slug": "aec-nba-uta-no-2026-11-04"
+ },
+ {
+  "key": "evt:nba-uta-sa-2026-11-02",
+  "slug": "aec-nba-uta-sa-2026-11-02"
+ },
+ {
+  "key": "evt:nba-was-atl-2026-11-06",
+  "slug": "aec-nba-was-atl-2026-11-06"
+ },
+ {
+  "key": "evt:nba-was-cle-2026-10-28",
+  "slug": "aec-nba-was-cle-2026-10-28"
+ },
+ {
+  "key": "evt:nba-was-det-2026-11-09",
+  "slug": "aec-nba-was-det-2026-11-09"
+ },
+ {
+  "key": "evt:nba-was-okc-2026-11-07",
+  "slug": "aec-nba-was-okc-2026-11-07"
+ },
+ {
+  "key": "evt:nba-was-orl-2026-11-02",
+  "slug": "aec-nba-was-orl-2026-11-02"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-neg-11pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-neg-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-neg-3pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-neg-5pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-neg-7pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-neg-9pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-0pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-10pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-12pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-14pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-16pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-18pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-20pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-22pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-24pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-4pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-6pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-fh-pos-8pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-11pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-13pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-3pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-5pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-7pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-neg-9pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-10pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-11pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-12pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-13pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-14pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-15pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-16pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-17pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-18pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-19pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-20pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-22pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-24pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-26pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-28pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-30pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-32pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-34pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-36pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-38pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-40pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-42pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-4pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-6pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-8pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-pos-9pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q1-neg-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q1-pos-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q1-pos-3pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q1-pos-5pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q1-pos-7pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q1-pos-9pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q2-neg-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q2-pos-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q2-pos-4pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q2-pos-6pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q3-neg-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q3-pos-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q3-pos-3pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q3-pos-5pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q3-pos-7pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q3-pos-9pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q4-neg-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q4-pos-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q4-pos-4pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-q4-pos-6pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-neg-0pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-neg-2pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-11pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-13pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-1pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-3pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-5pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-7pt5"
+ },
+ {
+  "key": "evt:nba-bkn-bos-2026-10-27",
+  "slug": "asc-nba-bkn-bos-2026-10-27-sh-pos-9pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-10pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-12pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-14pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-16pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-18pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-20pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-2pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-4pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-6pt5"
+ },
+ {
+  "key": "evt:nba-cha-det-2026-10-28",
+  "slug": "asc-nba-cha-det-2026-10-28-neg-8pt5"
+ },
+ {
+  "key": "evt:nfl-pit-cle-2026-10-01",
+  "slug": "astatc-nfl-pit-cle-2026-10-01-ptd-6pt5"
+ },
+ {
+  "key": "fam:cpc-btc-hitprice",
+  "slug": "cpc-btc-hitprice-low-yr-12-31-2026-75k"
+ },
+ {
+  "key": "fam:x",
+  "slug": "x"
+ }
+]
