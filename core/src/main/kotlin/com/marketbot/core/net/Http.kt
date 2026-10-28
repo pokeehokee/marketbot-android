@@ -135,21 +135,25 @@ class JsonHttp(
 
         /** Kalshi: `{"error": {"code", "message"}}` or `{"code", "message"}`; Polymarket: `{"code", "message"}`. */
         fun errorOf(status: Int, text: String, url: HttpUrl): ApiException {
-            var code: String? = null
-            var msg = text.take(300)
-            runCatching {
-                val o = JSON.parseToJsonElement(text) as JsonObject
-                val e = o.obj("error") ?: o
-                code = e.str("code")
-                msg = listOfNotNull(e.str("message") ?: o.str("error"), e.str("details")).joinToString(" ").ifBlank { msg }
-            }
-            val label = "$status ${url.encodedPath}: $msg"
-            return when (status) {
-                429 -> RateLimited(code, label)
-                401, 403 -> AuthRejected(status, code, label)
-                404 -> NotFound(code, label)
-                else -> ApiException(status, code, label, text.take(2000))
-            }
+        var code: String? = null
+        var msg = text.take(300)
+        runCatching {
+            val o = JSON.parseToJsonElement(text) as JsonObject
+            val e = o.obj("error") ?: o
+            code = e.str("code")
+            msg = listOfNotNull(e.str("message") ?: o.str("error"), e.str("details")).joinToString(" ").ifBlank { msg }
+        }
+        var label = "$status ${url.encodedPath}: $msg"
+        // A signature rejected because the phone's clock is off looks like a bad key; say which it is.
+        if (status == 401 || status == 403) NetStats.skewMs(url.host)?.takeIf { kotlin.math.abs(it) > 5_000 }?.let {
+            label += " (the phone's clock is off by ${kotlin.math.abs(it) / 1000} s from ${url.host}; turn on automatic date and time)"
+        }
+        return when (status) {
+            429 -> RateLimited(code, label)
+            401, 403 -> AuthRejected(status, code, label)
+            404 -> NotFound(code, label)
+            else -> ApiException(status, code, label, text.take(2000))
+        }
         }
     }
 }

@@ -185,10 +185,14 @@ class BtcIndex(
     fun start(scope: CoroutineScope) {
         if (job?.isActive == true) return
         job = scope.launch {
+            var dead = 0
             while (isActive) {
                 val t0 = System.currentTimeMillis()
-                runCatching { pollOnce() }
-                delay(max(0L, 1000L - (System.currentTimeMillis() - t0)))
+                val ok = runCatching { pollOnce() }.getOrNull() != null || freshVenues() > 0
+                // Every venue failing means no network, not four broken exchanges: back off to 30 s instead of 4 requests a second.
+                dead = if (ok) 0 else dead + 1
+                val wait = if (dead < 5) 1000L else minOf(30_000L, 1000L shl minOf(dead - 4, 5))
+                delay(max(0L, wait - (System.currentTimeMillis() - t0)))
             }
         }
     }

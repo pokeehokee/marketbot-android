@@ -47,6 +47,16 @@ class Phase2CoreTest {
         assertEquals(1, NetStats.today()["b.example"]!!.requests)
     }
 
+    @Test fun `a rejected signature names the clock when the clock is the cause`() {
+        val local = 1_800_000_000_000L
+        val date = DateTimeFormatter.RFC_1123_DATE_TIME.format(ZonedDateTime.ofInstant(Instant.ofEpochMilli(local + 40_000), ZoneOffset.UTC))
+        NetStats.record("api.example", 1, date, local, local)
+        val e = com.marketbot.core.net.JsonHttp.errorOf(401, """{"code":"unauthorized"}""", okhttp3.HttpUrl.Builder().scheme("https").host("api.example").build())
+        assertTrue("clock is off by 40 s" in e.message!!, e.message)
+        val other = com.marketbot.core.net.JsonHttp.errorOf(401, "{}", okhttp3.HttpUrl.Builder().scheme("https").host("fine.example").build())
+        assertTrue("clock" !in other.message!!)
+    }
+
     // ---------------------------------------------------------------- subaccount, demo, transfer
     @Test fun `a subaccount is named on portfolio reads and on every order`() = runTest {
         val k = fake.client(true, subaccount = 3)
