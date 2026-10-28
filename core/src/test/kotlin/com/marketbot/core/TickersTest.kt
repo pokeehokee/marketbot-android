@@ -15,3 +15,17 @@ class TickersTest {
         assertEquals("KXBTCD-garbage", Tickers.describe("KXBTCD-garbage"))
     }
 }
+
+class RecordVsExpectedTest {
+    private fun row(c: Double, pnl: Double?, hyp: Boolean = false) = com.marketbot.core.store.QuoteRow(strategyId = "s",
+        mode = com.marketbot.core.strategy.Mode.LIVE, venue = "kalshi", ticker = "T", action = "sell_yes", price = 0.05, contracts = c,
+        placedAt = java.time.Instant.EPOCH, filledContracts = c, resolvedAt = java.time.Instant.EPOCH, pnl = pnl, hypothetical = hyp)
+
+    @Test fun `per-contract record weights by contracts and ignores hypothetical rows`() {
+        val r = com.marketbot.core.strategy.RecordVsExpected.of(listOf(row(5.0, 0.25), row(5.0, 0.25), row(10.0, -9.5), row(5.0, 100.0, hyp = true)))!!
+        assertEquals(3, r.n); assertEquals(20.0, r.contracts)
+        assertEquals((0.25 + 0.25 - 9.5) / 20, r.perContract, 1e-12)
+        kotlin.test.assertTrue(r.low < r.perContract && r.high > r.perContract)
+        assertEquals(null, com.marketbot.core.strategy.RecordVsExpected.of(listOf(row(5.0, 0.25))))
+    }
+}

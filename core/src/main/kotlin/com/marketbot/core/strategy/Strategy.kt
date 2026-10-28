@@ -22,7 +22,31 @@ enum class EvidenceLevel(val label: String) {
     UNPROVEN("Unproven"),
 }
 
-data class Evidence(val level: EvidenceLevel, val headline: String, val details: List<String>, val source: String)
+data class Evidence(val level: EvidenceLevel, val headline: String, val details: List<String>, val source: String,
+                    val expectation: Expectation? = null)
+
+/** What the evidence says one contract should earn, in dollars, with its interval when one was measured. */
+data class Expectation(val perContract: Double, val low: Double?, val high: Double?, val basis: String)
+
+/** This app's own live (or paper) record per contract, with a 95% interval, against the evidence. */
+data class RecordVsExpected(val n: Int, val contracts: Double, val perContract: Double, val low: Double, val high: Double) {
+    companion object {
+        /**
+         * Settled real fills only (never hypothetical). The interval treats each
+         * position as one draw of its per-contract result, weighted by contracts,
+         * so a single large position cannot look like many independent ones.
+         */
+        fun of(rows: List<com.marketbot.core.store.QuoteRow>): RecordVsExpected? {
+            val r = rows.filter { it.resolvedAt != null && it.hypothetical == false && it.pnl != null }
+                .map { (it.filledContracts ?: it.contracts) to it.pnl!! }.filter { it.first > 0 }
+            if (r.size < 2) return null
+            val c = r.sumOf { it.first }
+            val m = r.sumOf { it.second } / c
+            val se = kotlin.math.sqrt(r.sumOf { (w, p) -> w * w * (p / w - m) * (p / w - m) }) / c
+            return RecordVsExpected(r.size, c, m, m - 1.96 * se, m + 1.96 * se)
+        }
+    }
+}
 
 /** One user-editable setting. The settings screen is generated from these. */
 sealed interface Param {

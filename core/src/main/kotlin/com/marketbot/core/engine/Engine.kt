@@ -284,6 +284,37 @@ class Engine(
         for (s in strategies) if (mode(s.id) != Mode.OFF) launchStrategy(s)
     }
 
+    /**
+     * Cancel one resting order by hand. Fills are read from the exchange first, so
+     * what already filled is recorded, never written off. Runs under the strategy's
+     * pass lock so it cannot race a pass that is re-quoting the same market.
+     */
+    suspend fun cancelOne(strategyId: String, rowId: Long): String = passLock(strategyId).withLock {
+        val q = stores.ledger.byId(rowId) ?: return@withLock "That order is gone."
+        if (!q.resting) return@withLock "That order is no longer resting."
+        val now = clock.now()
+        if (q.mode != Mode.LIVE || q.orderId == null) {
+            stores.ledger.update(q.copy(cancelledAt = now, filledContracts = q.filledContracts ?: 0.0))
+            log(strategyId, LogEvent.Level.INFO, "cancel", "Withdrew a paper order on ${com.marketbot.core.util.Tickers.describe(q.ticker)} by hand.")
+            return@withLock "Paper order withdrawn."
+        }
+        when (q.venue) {
+            "kalshi" -> {
+                val fs = runCatching { kalshi.order(q.orderId) }.getOrNull()?.let { com.marketbot.core.kalshi.FillState.of(it) }
+                    ?: return@withLock "Couldn't read the order's fills from Kalshi, so it was left alone. Try again."
+                kalshi.cancelOrder(q.orderId, q.ticker)
+                val n = fs.contracts ?: if (fs.filled == true) q.contracts else 0.0
+                stores.ledger.update(q.copy(cancelledAt = now, filledContracts = n, fillSource = "Kalshi API ${fs.origin}", fillCheckedAt = now))
+            }
+            else -> {
+                polymarket.cancel(q.orderId, q.ticker)
+                stores.ledger.update(q.copy(cancelledAt = now))
+            }
+        }
+        log(strategyId, LogEvent.Level.TRADE, "cancel", "Cancelled an order on ${com.marketbot.core.util.Tickers.describe(q.ticker)} by hand.")
+        "Order cancelled at ${if (q.venue == "kalshi") "Kalshi" else "Polymarket"}."
+    }
+
     /** Strategies that were live when the kill switch went on (they stay in paper until re-armed). */
     suspend fun liveBeforeKill(): List<String> = stores.state.get("global.kill.was_live")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
 

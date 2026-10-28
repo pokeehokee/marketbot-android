@@ -63,6 +63,7 @@ class WeatherLongshot : Strategy {
             "Crossing the spread instead of resting removes about three quarters of the edge.",
         ),
         "weatherbot CLAUDE.md (main, 2026-09-17)",
+        com.marketbot.core.strategy.Expectation(0.0264, 0.0206, 0.0323, "backtest, resting at the ask, out of sample; live fills are adversely selected, so expect it lower"),
     )
 
     override val params: List<Param> = listOf(
@@ -210,7 +211,12 @@ class WeatherLongshot : Strategy {
         }
         val ordered = LongshotModel.orderCandidates(accepted)
         val lot = minOf(r.maxContractsPerMarket, r.lotCap, LongshotModel.lotForBudget(budget0, ordered.map { it.yesAsk }, r.minContractsPerMarket, r.maxContractsPerMarket))
-        ctx.info("candidates", "${markets.size} open markets; ${ordered.size} accepted, lot $lot; skipped $shortLead under ${r.minLeadHours}h, $paused paused kind, $deadBand in a skipped band.")
+        ctx.info("candidates", "Found ${ordered.size} market(s) worth selling out of ${markets.size} open; offering $lot contracts each." +
+            listOfNotNull(
+                "$shortLead closing within ${r.minLeadHours.roundToInt()} h".takeIf { shortLead > 0 },
+                "$paused of a paused kind".takeIf { paused > 0 },
+                "$deadBand in a skipped price band".takeIf { deadBand > 0 },
+            ).takeIf { it.isNotEmpty() }?.joinToString(", ", " Not offered: ", ".").orEmpty())
 
         // ---- quote
         var budget = budget0
@@ -230,7 +236,7 @@ class WeatherLongshot : Strategy {
                 val attempt = runCatching { ctx.kalshi.placeOrder(c.ticker, "ask", q.contracts, q.price, tick.value, m.exchangeIndex, expirationEpochS = expiry) }
                 val res = attempt.getOrNull()
                 if (res == null) { ctx.error("order", "Order failed on ${c.ticker}: ${attempt.exceptionOrNull()?.message}"); continue }
-                if (res.filtered) { ctx.info("order", "${c.ticker}: post-only order would cross; not quoted."); continue }
+                if (res.filtered) { ctx.info("order", "Not offered on ${com.marketbot.core.util.Tickers.describe(c.ticker)}: the price moved and the offer would have traded at once."); continue }
                 orderId = res.orderId; coid = res.clientOrderId
                 if (orderId == null) ctx.warn("order", "${c.ticker}: no order id returned; tracking by client order id $coid")
             }
@@ -253,8 +259,8 @@ class WeatherLongshot : Strategy {
             locked += LongshotModel.collateralPerContract(q.price) * q.contracts
             expected += q.expectedEdge * q.contracts
             placed++
-            ctx.trade(if (live) "order" else "paper_quote", "${if (live) "ORDER" else "PAPER"} sell YES ${c.ticker} ${q.contracts} @ ${"%.2f".format(q.price)}  ${q.reason}",
-                mapOf("yes_bid" to Sourced.kalshi(c.yesBid, "market ${c.ticker}#yes_bid_dollars"),
+            ctx.trade(if (live) "order" else "paper_quote", "${if (live) "Offered" else "Paper: offered"} to sell ${q.contracts} YES on ${com.marketbot.core.util.Tickers.describe(c.ticker)} at ${(q.price * 100).roundToInt()}c",
+                mapOf("ticker" to Sourced(c.ticker, Source.KALSHI_API, "market ticker"), "why" to Sourced(q.reason, Source.CONFIG, "the selector's rule"),"yes_bid" to Sourced.kalshi(c.yesBid, "market ${c.ticker}#yes_bid_dollars"),
                     "yes_ask" to Sourced.kalshi(c.yesAsk, "market ${c.ticker}#yes_ask_dollars")))
             if (openMarkets >= r.maxConcurrentMarkets || budget <= 0) break
         }
@@ -353,7 +359,7 @@ class WeatherLongshot : Strategy {
             ctx.stores.ledger.update(q.copy(cancelledAt = ctx.clock.now(), filledContracts = n,
                 fillSource = "Kalshi API ${fs.origin}", fillCheckedAt = ctx.clock.now()))
             freed += (1.0 - q.price) * (q.contracts - n)
-            ctx.info("recycle", "Cancelled idle quote ${q.ticker}: ${n.roundToInt()} of ${q.contracts.roundToInt()} filled (read from the exchange).")
+            ctx.info("recycle", "Withdrew an offer on ${com.marketbot.core.util.Tickers.describe(q.ticker)} after ${r.idleQuoteHours.roundToInt()} h: ${n.roundToInt()} of ${q.contracts.roundToInt()} had filled (read from Kalshi).")
         }
         if (freed > 0) ctx.info("recycle", "Recycled quotes freed ${money(freed)} of collateral.")
     }
@@ -410,7 +416,7 @@ class WeatherLongshot : Strategy {
                 ctx.stores.ledger.update(q.copy(resolvedAt = now, result = result, pnl = pnl.value, pnlSource = Source.KALSHI_API,
                     pnlOrigin = pnl.origin, hypothetical = false, filledContracts = held, fillSource = "Kalshi API settlement yes/no_count",
                     extra = if (minOf(yes, no) > 0) buildJsonObject { q.extra.forEach { (k, v) -> put(k, v) }; put("closed_before_settlement", minOf(yes, no)) } else q.extra))
-                ctx.trade("settled", "${q.ticker} settled ${result.uppercase()}: ${money(pnl.value)} (exchange figure)", mapOf("pnl" to pnl))
+                ctx.trade("settled", "${com.marketbot.core.util.Tickers.describe(q.ticker)} settled ${result.uppercase()}: ${if (pnl.value >= 0) "made" else "lost"} ${money(kotlin.math.abs(pnl.value))} (Kalshi's figure)", mapOf("pnl" to pnl))
             } else {
                 // Never filled, per the exchange: graded as hypothetical, never summed as realised.
                 val n = q.contracts

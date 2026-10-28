@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
+import com.marketbot.app.data.toRow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,6 +50,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val modes = a.db.state().watchAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     fun quotes(id: String) = a.db.quotes().watch(id, 300)
+
+    /** Every settled real position, as ledger rows: the one source for realised P&L, today's figure and the charts. */
+    val settled: StateFlow<List<com.marketbot.core.store.QuoteRow>> = a.db.quotes().watchSettled()
+        .map { l -> l.map { it.toRow() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    data class Portfolio(val liveToday: Double = 0.0, val liveTotal: Double = 0.0, val paperToday: Double = 0.0, val paperTotal: Double = 0.0,
+                         val liveCurve: Series = emptyList(), val paperCurve: Series = emptyList(), val liveN: Int = 0, val paperN: Int = 0)
+
+    val portfolio: StateFlow<Portfolio> = settled.map { rows ->
+        val today = com.marketbot.core.strategy.startOfLocalDay(java.time.Instant.now())
+        fun of(m: Mode) = rows.filter { it.mode == m }
+        val live = of(Mode.LIVE); val paper = of(Mode.PAPER)
+        fun curve(r: List<com.marketbot.core.store.QuoteRow>) = cumulative(r.map { it.resolvedAt!!.toEpochMilli() to it.pnl!! })
+        Portfolio(com.marketbot.core.strategy.realisedSince(live, today), live.sumOf { it.pnl!! },
+            com.marketbot.core.strategy.realisedSince(paper, today), paper.sumOf { it.pnl!! }, curve(live), curve(paper), live.size, paper.size)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Portfolio())
+
+    /** 30 days of equity snapshots, per venue and mode; total where the venue reports positions, else cash. */
+    val equityCurves: StateFlow<Map<Pair<String, String>, Series>> = a.db.equity().watchSince(System.currentTimeMillis() - 30 * 86_400_000L)
+        .map { l -> l.groupBy { it.venue to it.mode }.mapValues { (_, v) -> v.map { it.at to (it.total ?: it.cash) } } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    fun strategyCurve(id: String, mode: Mode): Series = cumulative(settled.value.filter { it.strategyId == id && it.mode == mode }
+        .map { it.resolvedAt!!.toEpochMilli() to it.pnl!! })
+
+    fun record(id: String, mode: Mode) = com.marketbot.core.strategy.RecordVsExpected.of(settled.value.filter { it.strategyId == id && it.mode == mode })
+
+    /** Cancel one resting order (swipe on Orders); the engine reads fills first. */
+    fun cancelOrder(strategyId: String, rowId: Long) = viewModelScope.launch(Dispatchers.IO) {
+        say(runCatching { engine.cancelOne(strategyId, rowId) }.getOrElse { "Cancel failed: ${it.message}" })
+    }
 
     private val _accounts = MutableStateFlow(AccountReading())
     val accounts = _accounts.asStateFlow()

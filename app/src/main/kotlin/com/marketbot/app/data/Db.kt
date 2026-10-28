@@ -64,6 +64,9 @@ interface QuoteDao {
     @Query("SELECT * FROM quotes WHERE strategyId = :s ORDER BY id DESC LIMIT :limit")
     fun watch(s: String, limit: Int): Flow<List<QuoteEntity>>
     @Query("SELECT * FROM quotes ORDER BY id DESC LIMIT :limit") fun watchAll(limit: Int): Flow<List<QuoteEntity>>
+    /** Settled real positions of every strategy, oldest first: the source of realised P&L and its charts. */
+    @Query("SELECT * FROM quotes WHERE resolvedAt IS NOT NULL AND hypothetical = 0 AND pnl IS NOT NULL ORDER BY resolvedAt")
+    fun watchSettled(): Flow<List<QuoteEntity>>
 }
 
 @Dao
@@ -91,6 +94,7 @@ interface EquityDao {
     @Query("SELECT * FROM equity WHERE venue = :v AND mode = :m AND at >= :since ORDER BY at")
     suspend fun history(v: String, m: String, since: Long): List<EquityEntity>
     @Query("SELECT MAX(at) FROM equity WHERE venue = :v AND mode = :m") suspend fun lastAt(v: String, m: String): Long?
+    @Query("SELECT * FROM equity WHERE at >= :since ORDER BY at") fun watchSince(since: Long): Flow<List<EquityEntity>>
     @Query("SELECT * FROM equity WHERE id IN (SELECT MAX(id) FROM equity GROUP BY venue, mode)") fun watchLatest(): Flow<List<EquityEntity>>
 }
 

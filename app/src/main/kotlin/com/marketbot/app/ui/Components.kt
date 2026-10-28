@@ -78,8 +78,11 @@ fun ValueRow(label: String, value: String, source: Source?, origin: String? = nu
     var show by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().clickable(enabled = origin != null) { show = true }.padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically) {
+        // Both share the row: a long value wraps onto a second line instead of crushing the label.
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-        Text(value, style = Figures, color = valueColor ?: MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.width(8.dp))
+        Text(value, style = Figures, color = valueColor ?: MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = if (value.length > 20) Modifier.weight(1.4f) else Modifier)
         if (source != null) { Spacer(Modifier.width(8.dp)); SourceChip(source) }
     }
     if (show && origin != null) AlertDialog(onDismissRequest = { show = false }, confirmButton = { TextButton({ show = false }) { Text("Close") } },

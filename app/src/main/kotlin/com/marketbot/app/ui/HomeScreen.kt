@@ -72,6 +72,8 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             IconButton({ if (running) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
         }
 
+        PortfolioHeader(vm)
+        EquitySection(vm)
         val resumed = rememberResumeCount()
         val batteryOk = remember(resumed) { ignoringBattery(ctx) }
         if (!batteryOk) Surface(shape = RoundedCornerShape(12.dp), color = LocalDesk.current.warn.copy(alpha = 0.12f),

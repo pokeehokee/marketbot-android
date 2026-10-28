@@ -186,7 +186,7 @@ class RewardFarm : Strategy {
         }
         if (dt > 0) accrue(ctx, now, estRate * dt / 86_400.0, dt)
         savePaper(ctx, rt)
-        ctx.info("tick", "Equity ${money(bal.equity.value)}, ${positions.size} positions, ${orders.size} orders, est ${money(estRate)}/day",
+        ctx.info("tick", "Working ${orders.map { it.slug }.toSet().size} market(s) with ${orders.size} order(s) and ${positions.size} position(s); equity ${money(bal.equity.value)}, rewards estimated at ${money(estRate)}/day",
             buildMap {
                 put("equity", bal.equity); put("free_cash", bal.freeCash)
                 bal.exchangeEquity?.let { put("exchange_equity", it) }
@@ -297,7 +297,8 @@ class RewardFarm : Strategy {
             if (oid == null) { ctx.warn("place", "Order refused: $slug ${d.side} ${"%.3f".format(d.price)} x ${"%.2f".format(d.qty)}"); continue }
             resting += Triple(d.side, d.price, d.qty)
             if (d.kind == "entry") slots--
-            ctx.trade(if (br.live) "order" else "paper_quote", "${if (br.live) "ORDER" else "PAPER"} ${d.kind} $slug ${d.side} ${"%.3f".format(d.price)} x ${"%.2f".format(d.qty)}",
+            ctx.trade(if (br.live) "order" else "paper_quote", "${if (br.live) "" else "Paper: "}${if (d.side == "bid") "bid" else "offered"} ${"%.0f".format(d.qty)} at ${"%.1f".format(d.price * 100)}c on $slug" +
+                if (d.kind == "exit") " to close the position" else "",
                 mapOf("best_bid" to Sourced(bids.firstOrNull()?.price ?: 0.0, Source.POLYMARKET_API, "GET /v1/markets/$slug/book")))
         }
         var rate = 0.0

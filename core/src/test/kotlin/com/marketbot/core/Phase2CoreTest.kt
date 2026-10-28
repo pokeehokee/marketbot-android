@@ -165,4 +165,19 @@ class Phase2CoreTest {
             assertTrue(fake.requests.none { it.requestUrl!!.encodedPath.endsWith("/markets") }, "no market reads while offline")
         } finally { scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel() }
     }
+
+    @Test fun `cancelling one live order by hand keeps what had filled`() = runTest {
+        val stores = inMemoryStores()
+        val engine = com.marketbot.core.engine.Engine(stores, MutableClock(now), clientFactory = { _ -> fake.client(true) to PolymarketClient(null) },
+            fillStreamFactory = null)
+        val id = stores.ledger.insert(QuoteRow(strategyId = "kalshi_weather_longshot", mode = Mode.LIVE, venue = "kalshi", ticker = "KXHIGHNY-26OCT29-B70.5",
+            action = "sell_yes", price = 0.07, contracts = 5.0, placedAt = now, orderId = "o5"))
+        fake.orders["o5"] = """{"order":{"order_id":"o5","status":"resting","fill_count_fp":"3.00"}}"""
+        val msg = engine.cancelOne("kalshi_weather_longshot", id)
+        assertTrue("cancelled" in msg, msg)
+        val q = stores.ledger.byId(id)!!
+        assertEquals(3.0, q.filledContracts); assertTrue(q.cancelledAt != null)
+        assertEquals("KXHIGHNY-26OCT29-B70.5", fake.deletes().single().requestUrl!!.queryParameter("market_ticker"))
+        assertTrue("no longer resting" in engine.cancelOne("kalshi_weather_longshot", id))
+    }
 }

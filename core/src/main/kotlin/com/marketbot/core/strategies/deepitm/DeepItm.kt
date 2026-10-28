@@ -130,7 +130,7 @@ abstract class DeepItmStrategy(
         when (guard) {
             "listing_retry" -> {}
             "quote" -> {
-                if (rt.mode != "quote") ctx.info("mode", "Mode ${rt.mode} -> quote")
+                if (rt.mode != "quote") ctx.info("mode", "Quoting again (was: ${modeText(rt.mode)}).")
                 requote(ctx, venue, r, now, markets, spot!!, sigma!!)
             }
             else -> cancelAll(ctx, venue, guard, rt)
@@ -168,7 +168,7 @@ abstract class DeepItmStrategy(
             if (ctx.live) runCatching { venue.cancel(q) }.onFailure { ctx.warn("cancel", "Cancel failed on ${q.ticker}: ${it.message}") }
             finalFill(ctx, venue, q.copy(cancelledAt = now), now)
         }
-        if (why != rt.mode) ctx.info("mode", "Mode ${rt.mode} -> $why")
+        if (why != rt.mode) ctx.info("mode", "Not quoting: ${modeText(why)}.")
     }
 
     private suspend fun requote(ctx: StrategyContext, venue: LadderVenue, r: DeepItmRules, now: Instant, markets: List<LadderMarket>, spot: Double, sigma: Double) {
@@ -220,8 +220,9 @@ abstract class DeepItmStrategy(
                     if (ctx.live) put("expires_at", expiry.toString())
                 }))
             ctx.trade(if (ctx.live) "order" else "paper_quote",
-                "${if (ctx.live) "BID" else "paper bid"} $ticker ${c.side.uppercase()} ${c.count} @ ${"%.3f".format(c.price)} (fair ${"%.4f".format(c.fair)}, z ${"%.2f".format(c.z)}, queue ${c.queueAhead.toInt()})",
-                mapOf("bid" to Sourced(c.price, if (venue.venueKey == "kalshi") Source.KALSHI_API else Source.POLYMARKET_API, "best ${c.side} bid on $ticker"),
+                "${if (ctx.live) "Bid" else "Paper: bid"} ${"%.0f".format(c.price * 100)}c for ${c.count} ${c.side.uppercase()} on ${com.marketbot.core.util.Tickers.describe(ticker)}",
+                mapOf("z" to Sourced.derived(c.z, "ln(spot/strike) / (sigma sqrt(ttc))", "distance from the strike in standard deviations"),
+                    "queue_ahead" to Sourced(c.queueAhead, if (venue.venueKey == "kalshi") Source.KALSHI_API else Source.POLYMARKET_API, "size resting ahead at our price"),"bid" to Sourced(c.price, if (venue.venueKey == "kalshi") Source.KALSHI_API else Source.POLYMARKET_API, "best ${c.side} bid on $ticker"),
                     "fair" to Sourced.derived(c.fair, "Phi(ln(spot/strike) / (sigma sqrt(ttc)))", "model probability; no venue publishes it")))
         }
     }
@@ -255,7 +256,7 @@ abstract class DeepItmStrategy(
                 val pnl = DeepItmRule.pnl(side, q.price, filled, res.value)
                 ctx.stores.ledger.update(q.copy(resolvedAt = now, result = res.value, pnl = pnl, pnlSource = Source.PAPER_MODEL,
                     pnlOrigin = "simulated fills x (payout - price); result: ${res.origin}", hypothetical = filled <= 0))
-                if (filled > 0) ctx.trade("settled", "Paper ${q.ticker} ${side.uppercase()} settled ${res.value.uppercase()}: ${money(pnl)}")
+                if (filled > 0) ctx.trade("settled", "Paper: ${com.marketbot.core.util.Tickers.describe(q.ticker)} settled ${res.value.uppercase()} (held ${side.uppercase()}): ${money(pnl)}")
                 continue
             }
             if (filled <= 0) {
@@ -266,7 +267,7 @@ abstract class DeepItmStrategy(
             val pnl = runCatching { venue.livePnl(q, res.value) }.getOrNull() ?: continue   // wait for the exchange figure
             ctx.stores.ledger.update(q.copy(resolvedAt = now, result = res.value, pnl = pnl.value, pnlSource = pnl.source,
                 pnlOrigin = pnl.origin, hypothetical = false))
-            ctx.trade("settled", "${q.ticker} ${side.uppercase()} settled ${res.value.uppercase()}: ${money(pnl.value)} (${pnl.source.label})", mapOf("pnl" to pnl))
+            ctx.trade("settled", "${com.marketbot.core.util.Tickers.describe(q.ticker)} settled ${res.value.uppercase()} (held ${side.uppercase()}): ${if (pnl.value >= 0) "made" else "lost"} ${money(kotlin.math.abs(pnl.value))} (${pnl.source.label})", mapOf("pnl" to pnl))
         }
     }
 
@@ -350,7 +351,8 @@ class KalshiBtcDeepItm : DeepItmStrategy(
             "Orders must name the Crypto & Commodities shard (exchange index 2) and that shard must hold cash.",
             "The original's first-day bug was duplicate orders from mis-routed cancels; cancels here always send the market ticker.",
             "A loss costs 90-96c per contract against a win of 4-10c."),
-        "weatherbot branch ccr-f6dc9b99-xbiukn, commit f136342"),
+        "weatherbot branch ccr-f6dc9b99-xbiukn, commit f136342",
+        com.marketbot.core.strategy.Expectation(0.02, null, null, "reported by the original runner, not reproducible; no interval exists")),
     defaultSkipHours = "3,10,21,23",
     loopSeconds = 2,
 ) {
@@ -380,4 +382,21 @@ class PolymarketBtcDeepItm : DeepItmStrategy(
         (venues.getOrPut(ctx.polymarket) { PolymarketBtcLadder(ctx.polymarket) } as PolymarketBtcLadder)
             .also { it.allowNoLive = ctx.config.bool("allow_no_live") }
     private val venues = mutableMapOf<Any, LadderVenue>()
+}
+
+
+/** The deep-ITM guard states, for a person. */
+internal fun modeText(m: String?): String = when (m) {
+    null, "" -> "starting"
+    "quote" -> "quoting"
+    "killed" -> "stopped after its loss limit; reset it to resume"
+    "total_kill" -> "total loss limit reached"
+    "daily_stop" -> "today's loss brake is on"
+    "stale_index" -> "BTC price is stale"
+    "too_few_venues" -> "too few BTC price sources agree for live"
+    "warming_up" -> "warming up volatility (about 5 minutes after a start)"
+    "exchange_closed" -> "the exchange is closed or paused"
+    "listing_failed" -> "couldn't read the market list"
+    "listing_retry" -> "retrying the market list"
+    else -> m.replace('_', ' ')
 }

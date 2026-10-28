@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -53,13 +54,19 @@ fun ActivityScreen(vm: MainViewModel) {
     val events by vm.events.collectAsState()
     var level by remember { mutableStateOf<String?>(null) }
     var strat by remember { mutableStateOf<String?>(null) }
-    val shown = events.filter { (level == null || it.level == level) && (strat == null || it.strategyId == strat) }
+    var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    val shown = events.filter { (level == null || it.level == level) && (strat == null || it.strategyId == strat) &&
+        (query.isBlank() || it.message.contains(query.trim(), ignoreCase = true) || it.values.contains(query.trim(), ignoreCase = true)) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
             Text("Activity", style = MaterialTheme.typography.headlineSmall)
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(top = 8.dp), singleLine = true,
+                placeholder = { Text("Search: a city, a ticker, \"brake\"...") },
+                leadingIcon = { Icon(androidx.compose.material.icons.Icons.Outlined.Search, null) })
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(level == null, { level = null }, { Text("All") })
-                listOf("TRADE", "WARN", "ERROR", "INFO").forEach { l -> FilterChip(level == l, { level = if (level == l) null else l }, { Text(l.lowercase().replaceFirstChar { it.uppercase() }) }) }
+                listOf("TRADE" to "Trades", "WARN" to "Warnings", "ERROR" to "Errors", "INFO" to "Info").forEach { (l, name) ->
+                    FilterChip(level == l, { level = if (level == l) null else l }, { Text(name) }) }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(strat == null, { strat = null }, { Text("Every strategy") })
@@ -73,13 +80,17 @@ fun ActivityScreen(vm: MainViewModel) {
             val c = when (e.level) { "ERROR" -> d.loss; "WARN" -> d.warn; "TRADE" -> d.gain; else -> MaterialTheme.colorScheme.onSurfaceVariant }
             Column(Modifier.fillMaxWidth().clickable { open = !open }.padding(vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(e.level, style = MaterialTheme.typography.labelSmall, color = c, modifier = Modifier.width(52.dp))
+                    Text(when (e.level) { "TRADE" -> "Trade"; "WARN" -> "Warning"; "ERROR" -> "Error"; "DEBUG" -> "Debug"; else -> "Info" },
+                        style = MaterialTheme.typography.labelSmall, color = c)
+                    Spacer(Modifier.width(8.dp))
                     Text(Instant.ofEpochMilli(e.at).short(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
                     Text(vm.strategies.firstOrNull { it.id == e.strategyId }?.name ?: "Engine", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
                 Text(e.message, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 3)
+                if (!open && e.values().isNotEmpty()) Text("Tap for the figures and where they came from", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (open) e.values().forEach { v ->
                     ValueRow(v.key.replace('_', ' '), v.value, runCatching { Source.valueOf(v.source) }.getOrNull(), v.origin, v.note, Instant.ofEpochMilli(v.at))
                 }

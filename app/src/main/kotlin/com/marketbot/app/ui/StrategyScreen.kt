@@ -84,7 +84,7 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
             0 -> Overview(vm, s) { tab = 2 }
             1 -> SettingsForm(vm, s)
             2 -> GoLive(vm, s)
-            else -> Orders(vm, s)
+            else -> OrdersList(vm, s)
         }
     }
 }
@@ -123,6 +123,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
                 else -> stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) }
             }
         }
+        RecordSection(vm, s)
         Section("Evidence") {
             EvidenceBadge(s.evidence.level)
             Spacer(Modifier.size(6.dp))
@@ -262,37 +263,6 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
                 colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text("Arm live trading") }
             ui.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (!ready) Text("Meet every red item and tick every acknowledgement first.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun Orders(vm: MainViewModel, s: Strategy) {
-    val rows by vm.quotes(s.id).collectAsState(initial = emptyList())
-    var showPaper by remember { mutableStateOf(true) }
-    val shown = rows.map { it.toRow() }.filter { showPaper || it.mode == Mode.LIVE }
-    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${shown.size} orders", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                Text("Show paper", style = MaterialTheme.typography.bodySmall); Spacer(Modifier.width(6.dp))
-                Switch(showPaper, { showPaper = it })
-            }
-        }
-        if (shown.isEmpty()) item { Text("No orders yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(shown, key = { it.id }) { q ->
-            Section(com.marketbot.core.util.Tickers.describe(q.ticker), trailing = { ModePill(q.mode, q.mode == Mode.LIVE) }) {
-                ValueRow("Order", "${q.action.replace('_', ' ')} ${q.contracts.toInt()} @ ${"%.3f".format(q.price)}", com.marketbot.core.provenance.Source.CONFIG, "the strategy's own order")
-                ValueRow("Placed", q.placedAt.short(), null)
-                q.closeTime?.let { ValueRow("Market closes", it.closeLabel(), null) }
-                q.filledContracts?.let { ValueRow("Filled", "%.0f of %.0f".format(it, q.contracts),
-                    if (q.fillSource?.startsWith("paper") == true) com.marketbot.core.provenance.Source.PAPER_MODEL else com.marketbot.core.provenance.Source.KALSHI_API.takeIf { q.venue == "kalshi" } ?: com.marketbot.core.provenance.Source.POLYMARKET_API,
-                    q.fillSource) }
-                q.cancelledAt?.let { ValueRow("Cancelled", it.short(), null) }
-                q.resolvedAt?.let { ValueRow("Settled", "${it.short()}  ${q.result?.uppercase() ?: ""}", null) }
-                q.pnl?.let { ValueRow(if (q.hypothetical == true) "P&L if filled (not counted)" else "P&L", money(it), q.pnlSource, q.pnlOrigin, valueColor = if (q.hypothetical == true) null else moneyColor(it)) }
-                q.orderId?.let { Text("Order id $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
         }
     }
 }
