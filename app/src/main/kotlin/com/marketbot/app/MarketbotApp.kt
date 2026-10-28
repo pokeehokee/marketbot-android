@@ -25,11 +25,23 @@ class MarketbotApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Health.installCrashLog(this)
         db = MarketbotDb.open(this)
         vault = Vault(this)
-        engine = Engine(roomStores(db), notifier = { title, body -> alert(this, title, body) })
+        engine = Engine(roomStores(db), notifier = { title, body -> alert(this, title, body) }, online = { Connectivity.online(this) })
         createChannels(this)
-        appScope.launch { engine.setCredentials(vault.credentials()) }
+        appScope.launch {
+            engine.setCredentials(vault.credentials())
+            pruneRoutine()
+        }
+    }
+
+    /** Routine activity lines older than 14 days; warnings, errors, trades and the ledger are kept. */
+    suspend fun pruneRoutine() = db.events().pruneRoutine(System.currentTimeMillis() - 14 * 86_400_000L)
+
+    /** Log an engine-level line from outside the engine (boot restart, a gap found at start). */
+    suspend fun note(level: com.marketbot.core.store.LogEvent.Level, kind: String, message: String) {
+        engine.stores.events.log(com.marketbot.core.store.LogEvent(java.time.Instant.now(), null, level, kind, message))
     }
 
     companion object {

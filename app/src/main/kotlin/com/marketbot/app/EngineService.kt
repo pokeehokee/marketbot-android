@@ -13,7 +13,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import com.marketbot.core.store.LogEvent
 import com.marketbot.core.strategy.Mode
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -34,29 +36,51 @@ import java.time.Instant
 class EngineService : LifecycleService() {
     private var wake: PowerManager.WakeLock? = null
     private var engineScope: CoroutineScope? = null
+    private var lastPrune = System.currentTimeMillis()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) { stopEngine(); return START_NOT_STICKY }
+        val app0 = application as MarketbotApp
+        if (intent?.action == ACTION_KILL) {
+            app0.appScope.launch { app0.engine.setGlobalKill(true) }
+            if (engineScope == null) { stopSelf(); return START_NOT_STICKY }
+        }
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, NOTIF_ID, notification("Starting strategies..."), type)
         val app = application as MarketbotApp
         getSharedPreferences("service", MODE_PRIVATE).edit().putBoolean("running", true).apply()
         if (engineScope == null) {
+            val bootStart = intent?.getBooleanExtra(EXTRA_BOOT, false) == true
+            // A heartbeat left behind means the engine died without a clean stop.
+            val gap = Health.gapOnStart(this)
+            app.appScope.launch {
+                if (bootStart) app.note(LogEvent.Level.WARN, "boot", "Phone restarted: the engine was started again automatically.")
+                gap?.let { (from, to) ->
+                    val mins = java.time.Duration.between(from, to).toMinutes()
+                    app.note(LogEvent.Level.WARN, "gap", "The engine was not running for ${if (mins >= 60) "${mins / 60} h ${mins % 60} min" else "$mins min"} " +
+                        "(last seen ${from.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0)}). Android or the phone's battery manager stopped it.")
+                }
+            }
             // Strategy loops run off the main thread; the scope still ends with the service.
             val scope = CoroutineScope(lifecycleScope.coroutineContext + Dispatchers.Default)
             engineScope = scope
             app.engine.start(scope)
             lifecycleScope.launch {
-                app.engine.status.collectLatest { st ->
+                combine(app.engine.status, app.engine.globalKill) { st, k -> st to k }.collectLatest { (st, killed) ->
                     val active = st.values.filter { it.mode != Mode.OFF }
-                    val live = active.count { it.mode == Mode.LIVE && it.armed }
-                    val text = when {
-                        active.isEmpty() -> "No strategies on."
-                        live > 0 -> "$live live, ${active.size - live} paper"
-                        else -> "${active.size} running in paper mode"
+                    val live = active.filter { it.mode == Mode.LIVE && it.armed }
+                    val title = when {
+                        killed -> "Kill switch on"
+                        live.isNotEmpty() -> "${live.size} live, ${active.size - live.size} paper"
+                        active.isEmpty() -> "No strategies on"
+                        else -> "${active.size} in paper mode"
                     }
-                    getSystemService(android.app.NotificationManager::class.java).notify(NOTIF_ID, notification(text))
+                    val next = active.mapNotNull { it.nextRunAt }.minOrNull()
+                    val lines = active.map { s0 -> "${app.engine.strategies.firstOrNull { it.id == s0.id }?.name ?: s0.id}: ${if (s0.mode == Mode.LIVE && s0.armed) "LIVE" else "paper"}" +
+                        (s0.lastSummary?.let { " - $it" } ?: "") }
+                    getSystemService(android.app.NotificationManager::class.java).notify(NOTIF_ID,
+                        notification(title, next?.let { "Next pass ${it.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0)}" } ?: "Idle", lines, live.isNotEmpty() && !killed))
                 }
             }
             lifecycleScope.launch { managePower(app) }
@@ -76,6 +100,8 @@ class EngineService : LifecycleService() {
                 app.engine.nextWakeAt()?.let { Alarms.schedule(this, it) }
             }
             if (app.engine.busy.value == 0) AlarmReceiver.releasePassLock()
+            Health.beat(this)
+            if (System.currentTimeMillis() - lastPrune > 86_400_000L) { lastPrune = System.currentTimeMillis(); app.pruneRoutine() }
             delay(5_000)
         }
     }
@@ -89,19 +115,31 @@ class EngineService : LifecycleService() {
         }
     }
 
-    private fun notification(text: String): Notification {
+    private fun notification(title: String, text: String = "", lines: List<String> = emptyList(), live: Boolean = false): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 1, Intent(this, EngineService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(this, MarketbotApp.CH_ENGINE)
-            .setSmallIcon(R.drawable.ic_stat_engine).setContentTitle("Marketbot").setContentText(text)
-            .setOngoing(true).setContentIntent(open).addAction(0, "Stop engine", stop).build()
+        val b = NotificationCompat.Builder(this, MarketbotApp.CH_ENGINE)
+            .setSmallIcon(R.drawable.ic_stat_engine).setContentTitle(title).setContentText(text)
+            .setOngoing(true).setOnlyAlertOnce(true).setContentIntent(open).addAction(0, "Stop engine", stop)
+        if (lines.isNotEmpty()) b.setStyle(NotificationCompat.InboxStyle().also { st -> lines.take(5).forEach { st.addLine(it) }; st.setSummaryText(text) })
+        if (live) {
+            // One tap from the shade: cancel every resting order and drop to paper.
+            val kill = PendingIntent.getService(this, 2, Intent(this, EngineService::class.java).setAction(ACTION_KILL), PendingIntent.FLAG_IMMUTABLE)
+            b.addAction(0, "Kill switch", kill)
+        }
+        return b.build()
     }
 
     private fun stopEngine() {
         val app = application as MarketbotApp
         getSharedPreferences("service", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         Alarms.cancel(this)
-        app.appScope.launch { app.engine.stopAll() }
+        Health.clearBeat(this)
+        app.appScope.launch {
+            val summary = app.engine.stopAll()
+            app.note(LogEvent.Level.INFO, "stopped", summary)
+            MarketbotApp.alert(this@EngineService, "Engine stopped", summary)
+        }
         engineScope = null
         holdWake(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -116,6 +154,8 @@ class EngineService : LifecycleService() {
     companion object {
         const val NOTIF_ID = 1
         const val ACTION_STOP = "com.marketbot.app.STOP"
+        const val ACTION_KILL = "com.marketbot.app.KILL"
+        const val EXTRA_BOOT = "boot"
 
         fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, EngineService::class.java))
         fun stop(ctx: Context) = ctx.startService(Intent(ctx, EngineService::class.java).setAction(ACTION_STOP))
@@ -172,6 +212,7 @@ class AlarmReceiver : BroadcastReceiver() {
 /** Restarts the engine after a reboot if it was running before. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED && EngineService.wasRunning(context)) EngineService.start(context)
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED && EngineService.wasRunning(context))
+            context.startForegroundService(Intent(context, EngineService::class.java).putExtra(EngineService.EXTRA_BOOT, true))
     }
 }

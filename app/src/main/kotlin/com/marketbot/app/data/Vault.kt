@@ -63,7 +63,16 @@ class Vault(private val prefs: SharedPreferences, private val crypter: Crypter) 
         runCatching { String(crypter.decrypt(Base64.getDecoder().decode(it))) }.getOrNull()
     }
 
-    fun credentials() = Credentials(get("kalshi_key_id"), get("kalshi_pem"), get("pm_key_id"), get("pm_secret"))
+    fun credentials() = Credentials(get("kalshi_key_id"), get("kalshi_pem"), get("pm_key_id"), get("pm_secret"),
+        kalshiDemo = kalshiDemo(), kalshiSubaccount = kalshiSubaccount())
+
+    /** Kalshi's demo exchange (fake money) instead of the real one. Not a secret, so stored plainly. */
+    fun kalshiDemo() = prefs.getBoolean("kalshi_demo", false)
+    fun setKalshiDemo(on: Boolean) = prefs.edit().putBoolean("kalshi_demo", on).apply()
+
+    /** 0 = the primary account; 1+ a Kalshi subaccount that keeps the bot's money apart. */
+    fun kalshiSubaccount() = prefs.getInt("kalshi_subaccount", 0)
+    fun setKalshiSubaccount(n: Int) { require(n in 0..32) { "subaccount must be 0-32" }; prefs.edit().putInt("kalshi_subaccount", n).apply() }
 
     fun saveKalshi(keyId: String?, pem: String?) { put("kalshi_key_id", keyId); put("kalshi_pem", pem) }
     fun savePolymarket(keyId: String?, secret: String?) { put("pm_key_id", keyId); put("pm_secret", secret) }

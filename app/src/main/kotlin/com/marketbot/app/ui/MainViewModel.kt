@@ -16,6 +16,7 @@ import com.marketbot.core.strategy.Requirement
 import com.marketbot.core.strategy.Stat
 import com.marketbot.core.strategy.Strategy
 import com.marketbot.core.strategy.StrategyConfig
+import com.marketbot.core.strategy.money
 import com.marketbot.core.strategies.deepitm.DeepItmStrategy
 import com.marketbot.core.strategies.rewards.RewardFarm
 import kotlinx.coroutines.Dispatchers
@@ -121,8 +122,60 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearKalshi() = viewModelScope.launch(Dispatchers.IO) { a.vault.saveKalshi(null, null); engine.setCredentials(a.vault.credentials()); say("Kalshi key removed.") }
     fun clearPolymarket() = viewModelScope.launch(Dispatchers.IO) { a.vault.savePolymarket(null, null); engine.setCredentials(a.vault.credentials()); say("Polymarket key removed.") }
 
+    // ---------------------------------------------------------------- Kalshi account options
+    fun kalshiDemo() = a.vault.kalshiDemo()
+    fun kalshiSubaccount() = a.vault.kalshiSubaccount()
+    private val _demo = MutableStateFlow(a.vault.kalshiDemo())
+    val demo = _demo.asStateFlow()
+
+    fun setKalshiDemo(on: Boolean) = viewModelScope.launch(Dispatchers.IO) {
+        a.vault.setKalshiDemo(on); _demo.value = on
+        engine.setCredentials(a.vault.credentials())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "account", if (on) "Kalshi switched to the DEMO exchange (no real money)." else "Kalshi switched to the REAL exchange.")
+        say(if (on) "Kalshi demo exchange: orders use fake money. Demo needs its own API key." else "Kalshi real exchange.")
+        refreshAccounts()
+    }
+
+    fun setKalshiSubaccount(n: Int) = viewModelScope.launch(Dispatchers.IO) {
+        runCatching { a.vault.setKalshiSubaccount(n) }.onFailure { say(it.message ?: "Invalid subaccount"); return@launch }
+        engine.setCredentials(a.vault.credentials())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "account", "Kalshi subaccount set to ${if (n == 0) "primary" else "#$n"}.")
+        say(if (n == 0) "Trading the primary Kalshi account." else "Trading Kalshi subaccount #$n."); refreshAccounts()
+    }
+
+    /** Move cash between Kalshi exchange shards (e.g. into the crypto shard for BTC deep-ITM). */
+    fun transferShards(amount: Double, from: Int, to: Int) = viewModelScope.launch(Dispatchers.IO) {
+        runCatching { engine.kalshiClient.transferBetweenShards(amount, from, to) }
+            .onSuccess { id ->
+                a.note(com.marketbot.core.store.LogEvent.Level.TRADE, "transfer", "Moved ${money(amount)} from shard $from to shard $to (transfer ${id ?: "accepted"}).")
+                say("Transfer requested. Kalshi processes it in the background; refresh in a minute.")
+            }
+            .onFailure { say("Transfer failed: ${it.message}") }
+        kotlinx.coroutines.delay(3_000); refreshAccounts()
+    }
+
+    // ---------------------------------------------------------------- health and system
+    /** Server minus phone time, worst across hosts. Signing corrects for it, but past a few seconds the phone's clock is wrong. */
+    fun clockSkewMs(): Long? = com.marketbot.core.net.NetStats.worstSkewMs()
+    fun netUsage() = com.marketbot.core.net.NetStats.today()
+    suspend fun liveBeforeKill(): List<String> = withContext(Dispatchers.IO) {
+        engine.liveBeforeKill().mapNotNull { id -> strategies.firstOrNull { it.id == id }?.name }
+    }
+    fun wifiOnly() = com.marketbot.app.Connectivity.wifiOnly(getApplication())
+    fun setWifiOnly(on: Boolean) { com.marketbot.app.Connectivity.setWifiOnly(getApplication(), on); say(if (on) "Strategies wait for Wi-Fi." else "Strategies run on any connection.") }
+    fun lastCrash() = com.marketbot.app.Health.lastCrash(getApplication())
+    fun clearCrash() = com.marketbot.app.Health.clearCrash(getApplication())
+
     fun pruneLogs(days: Int) = viewModelScope.launch(Dispatchers.IO) {
         a.db.events().prune(System.currentTimeMillis() - days * 86_400_000L); say("Activity older than $days days deleted.")
+    }
+
+    /** The CSV written to app cache and shared as a file (a long ledger does not fit in an Intent extra). */
+    suspend fun exportCsvUri(): android.net.Uri = withContext(Dispatchers.IO) {
+        val dir = java.io.File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+        val f = java.io.File(dir, "marketbot-orders-${java.time.LocalDate.now()}.csv")
+        f.writeText(exportCsv())
+        androidx.core.content.FileProvider.getUriForFile(getApplication(), "${getApplication<Application>().packageName}.files", f)
     }
 
     /** CSV of every ledger row with its sources, for the share sheet. */

@@ -67,6 +67,8 @@ interface EventDao {
     suspend fun recent(limit: Int, s: String?): List<EventEntity>
     @Query("SELECT * FROM events ORDER BY id DESC LIMIT :limit") fun watch(limit: Int): Flow<List<EventEntity>>
     @Query("DELETE FROM events WHERE at < :before") suspend fun prune(before: Long)
+    /** Routine lines (DEBUG, INFO) go after [before]; warnings, errors and trades are kept as the record. */
+    @Query("DELETE FROM events WHERE at < :before AND level IN ('DEBUG', 'INFO')") suspend fun pruneRoutine(before: Long)
 }
 
 @Dao
@@ -82,6 +84,7 @@ interface EquityDao {
     @Insert suspend fun insert(e: EquityEntity)
     @Query("SELECT * FROM equity WHERE venue = :v AND mode = :m AND at >= :since ORDER BY at")
     suspend fun history(v: String, m: String, since: Long): List<EquityEntity>
+    @Query("SELECT MAX(at) FROM equity WHERE venue = :v AND mode = :m") suspend fun lastAt(v: String, m: String): Long?
     @Query("SELECT * FROM equity WHERE id IN (SELECT MAX(id) FROM equity GROUP BY venue, mode)") fun watchLatest(): Flow<List<EquityEntity>>
 }
 

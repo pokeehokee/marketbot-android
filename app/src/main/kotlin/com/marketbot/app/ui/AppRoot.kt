@@ -73,7 +73,9 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
             }
         },
     ) { pad ->
-        NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
+        Column(Modifier.padding(pad)) {
+        SystemBanners(vm)
+        NavHost(nav, startDestination = "home", modifier = Modifier.weight(1f)) {
             composable("home") { HomeScreen(vm, onOpen = { nav.navigate("strategy/$it") }, onSources = { nav.navigate("sources") }) }
             composable("strategies") { StrategiesScreen(vm) { nav.navigate("strategy/$it") } }
             composable("strategy/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
@@ -83,6 +85,7 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
             composable("accounts") { AccountsScreen(vm) }
             composable("settings") { SettingsScreen(vm, onSources = { nav.navigate("sources") }) }
             composable("sources") { SourcesScreen(vm, onBack = { nav.popBackStack() }) }
+        }
         }
     }
 

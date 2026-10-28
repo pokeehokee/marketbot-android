@@ -122,8 +122,9 @@ fun AccountsScreen(vm: MainViewModel) {
                 b.byExchangeIndex.toSortedMap().forEach { (i, v) -> SourcedRow("Shard $i cash${if (i == 2) " (crypto)" else ""}", v, { money(it) }) }
             }
             accounts.kalshiError?.let { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
-            Text("BTC deep-ITM trades on Kalshi's crypto shard (index 2), which needs its own cash. Move funds between shards in Kalshi's web app.",
+            Text("BTC deep-ITM trades on Kalshi's crypto shard (index 2), which needs its own cash.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            KalshiAccountOptions(vm)
         }
 
         Section("Polymarket US") {
@@ -162,20 +163,21 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
             Text("Some phones (Samsung, Xiaomi, OnePlus) also kill background apps in their own battery manager; set Marketbot to Unrestricted there. Keep the phone charging and on Wi-Fi for BTC deep-ITM, which re-quotes every few seconds.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        SystemSettings(vm)
         Section("Data") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onSources) { Text("Data sources") }
                 OutlinedButton({
                     scope.launch {
-                        val csv = vm.exportCsv()
-                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_TEXT, csv)
-                            .putExtra(Intent.EXTRA_SUBJECT, "Marketbot orders"), "Export orders"))
+                        val uri = vm.exportCsvUri()
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri)
+                            .putExtra(Intent.EXTRA_SUBJECT, "Marketbot orders").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export orders"))
                     }
                 }) { Text("Export orders (CSV)") }
             }
             Spacer(Modifier.size(6.dp))
             OutlinedButton({ vm.pruneLogs(30) }) { Text("Delete activity older than 30 days") }
-            Text("Orders, fills and settlements are kept forever; they are the record.", style = MaterialTheme.typography.labelSmall,
+            Text("Orders, fills and settlements are kept forever; they are the record. Routine activity lines are deleted after 14 days automatically.", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Section("About") {

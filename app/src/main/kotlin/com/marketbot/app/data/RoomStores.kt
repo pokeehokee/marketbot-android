@@ -63,10 +63,15 @@ class RoomState(private val dao: StateDao) : StateStore {
     override suspend fun put(key: String, value: String?) { if (value == null) dao.delete(key) else dao.put(StateEntity(key, value)) }
 }
 
-class RoomEquity(private val dao: EquityDao) : EquityStore {
-    override suspend fun record(s: EquitySnapshot) = dao.insert(EquityEntity(0, s.at.toEpochMilli(), s.venue, s.mode.name,
+class RoomEquity(private val dao: EquityDao, private val minGapMs: Long = 5 * 60_000L) : EquityStore {
+    /** One snapshot per venue and mode every [minGapMs]: a 5-second strategy would otherwise write 17,000 rows a day. */
+    override suspend fun record(s: EquitySnapshot) {
+        val last = dao.lastAt(s.venue, s.mode.name)
+        if (last != null && s.at.toEpochMilli() - last < minGapMs) return
+        dao.insert(EquityEntity(0, s.at.toEpochMilli(), s.venue, s.mode.name,
         s.cash.value, s.cash.source.name, s.cash.origin, s.positionsValue?.value, s.positionsValue?.source?.name, s.positionsValue?.origin,
         s.total?.value, s.total?.source?.name, s.total?.origin))
+    }
 
     override suspend fun history(venue: String, mode: Mode, since: Instant) = dao.history(venue, mode.name, since.toEpochMilli()).map { it.toSnapshot() }
 }
