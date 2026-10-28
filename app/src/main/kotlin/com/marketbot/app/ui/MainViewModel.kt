@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.retryWhen
 import com.marketbot.app.data.toRow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -54,7 +55,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Every settled real position, as ledger rows: the one source for realised P&L, today's figure and the charts. */
     val settled: StateFlow<List<com.marketbot.core.store.QuoteRow>> = a.db.quotes().watchSettled()
-        .map { l -> l.map { it.toRow() } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .map { l -> l.map { it.toRow() } }
+        .resilient("settled positions")
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** The last error a database stream hit (it is retried); shown nowhere, kept for diagnostics. */
+    @Volatile var lastStreamError: Throwable? = null
+        private set
+
+    /**
+     * A failing stream would otherwise leave every number on screen frozen at its
+     * initial value without a word. Record the error and resubscribe after a pause.
+     */
+    private fun <T> kotlinx.coroutines.flow.Flow<T>.resilient(what: String) = retryWhen { e, attempt ->
+        lastStreamError = e
+        android.util.Log.w("marketbot", "$what stream failed (attempt $attempt)", e)
+        kotlinx.coroutines.delay(minOf(30_000L, 1_000L shl attempt.toInt().coerceAtMost(5))); true
+    }
 
     data class Portfolio(val liveToday: Double = 0.0, val liveTotal: Double = 0.0, val paperToday: Double = 0.0, val paperTotal: Double = 0.0,
                          val liveCurve: Series = emptyList(), val paperCurve: Series = emptyList(), val liveN: Int = 0, val paperN: Int = 0)

@@ -72,6 +72,9 @@ android {
             // Robolectric downloads its Android runtime at test time; allow a mirror where Maven Central rate-limits.
             (project.findProperty("robolectricRepo") as String?)?.let { t.systemProperty("robolectric.dependency.repo.url", it) }
             t.maxHeapSize = "2g"
+            // One JVM per test class: Robolectric sandboxes reused across classes leaked state
+            // (a view model's shared flows never started after another class had run).
+            t.forkEvery = 1
         }
     }
     packaging {

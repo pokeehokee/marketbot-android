@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Before
@@ -30,7 +31,7 @@ private fun skipSetup() = ApplicationProvider.getApplicationContext<Context>().g
 /** A tablet in landscape: navigation rail, strategy list beside its detail. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w1280dp-h800dp-land-night-xhdpi")
+@Config(sdk = [34], qualifiers = "w1280dp-h800dp-land-night-xhdpi", fontScale = 1.0f)
 class TabletLayoutTest {
     init { skipSetup() }
     @get:Rule val rule = createAndroidComposeRule<MainActivity>()
@@ -53,7 +54,7 @@ class LargeFontTest {
 
     @Test fun `home and a strategy at twice the font size`() {
         shot(rule, "10_large_font_home")
-        rule.onNodeWithText("Strategies").performClick()
+        rule.onNodeWithContentDescription("Strategies").performClick()   // labels give way to icons at this size
         rule.onNodeWithText("Weather longshot").performClick()
         shot(rule, "11_large_font_strategy")
     }
