@@ -50,11 +50,11 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 @Composable
-fun ActivityScreen(vm: MainViewModel) {
+fun ActivityScreen(vm: MainViewModel, initialQuery: String = "") {
     val events by vm.events.collectAsState()
     var level by remember { mutableStateOf<String?>(null) }
     var strat by remember { mutableStateOf<String?>(null) }
-    var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var query by androidx.compose.runtime.saveable.rememberSaveable(initialQuery) { mutableStateOf(initialQuery) }
     val shown = events.filter { (level == null || it.level == level) && (strat == null || it.strategyId == strat) &&
         (query.isBlank() || it.message.contains(query.trim(), ignoreCase = true) || it.values.contains(query.trim(), ignoreCase = true)) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -205,26 +205,71 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
 }
 
 @Composable
-fun SourcesScreen(vm: MainViewModel, onBack: () -> Unit) {
+fun SourcesScreen(vm: MainViewModel, onBack: () -> Unit, onFind: (String) -> Unit = {}) {
     val audit by vm.audit.collectAsState()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)) {
+    val now = System.currentTimeMillis()
+    fun group(key: String) = when {
+        key.startsWith("kalshi") -> "Kalshi"; key.startsWith("polymarket") || key.startsWith("pm.") -> "Polymarket"
+        key.startsWith("btc") -> "BTC price sources"; else -> "Calculated and settings"
+    }
+    val groups = audit.groupBy { group(it.key) }.toSortedMap()
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
                 Text("Data sources", style = MaterialTheme.typography.headlineSmall)
             }
-            Text("The latest reading of every value the app has used, with where it came from. Values from the exchange APIs are always preferred; CALC means the API has no field for it and the formula is shown.",
+            Text("The latest reading of every value the app has used, where it came from and how old it is. Exchange values are always preferred; CALC means the API has no field for it and the formula is shown. Tap a value to see its origin; Find shows the activity lines that used it.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
             val counts = audit.groupingBy { it.source }.eachCount()
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 counts.forEach { (s, n) -> runCatching { Source.valueOf(s) }.getOrNull()?.let { Row(verticalAlignment = Alignment.CenterVertically) { SourceChip(it); Text(" $n", style = MaterialTheme.typography.labelSmall) } } }
             }
         }
         if (audit.isEmpty()) item { Text("Nothing read yet. Values appear once a strategy runs or you refresh balances.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(audit, key = { it.key }) { a ->
-            ValueRow(a.key, a.value.take(24), runCatching { Source.valueOf(a.source) }.getOrNull(), a.origin, a.note, Instant.ofEpochMilli(a.at))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        groups.forEach { (g, rows) ->
+            item(key = g) {
+                Section(g) {
+                    rows.sortedBy { it.key }.forEach { a ->
+                        val ageMin = (now - a.at) / 60_000
+                        val stale = ageMin > 60
+                        ValueRow(a.key.substringAfter('.').replace('_', ' '), a.value.take(24), runCatching { Source.valueOf(a.source) }.getOrNull(), a.origin, a.note, Instant.ofEpochMilli(a.at))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(when { ageMin < 1 -> "just now"; ageMin < 60 -> "$ageMin min ago"; ageMin < 2880 -> "${ageMin / 60} h ago"; else -> "${ageMin / 1440} days ago" } +
+                                if (stale) " · stale" else "", style = MaterialTheme.typography.labelSmall,
+                                color = if (stale) LocalDesk.current.warn else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            TextButton({ onFind(a.key.substringAfter('.').replace('_', ' ')) }) { Text("Find") }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+            }
         }
     }
 }
 
+/** How a strategy makes and loses money, and every setting explained. */
+@Composable
+fun HelpScreen(vm: MainViewModel, id: String, onBack: () -> Unit) {
+    val s = vm.strategies.first { it.id == id }
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+            Text("How ${s.name} works", style = MaterialTheme.typography.headlineSmall)
+        }
+        Section("How it makes money") { Text(s.help.makes, style = MaterialTheme.typography.bodyMedium) }
+        Section("How it loses money") { Text(s.help.loses, style = MaterialTheme.typography.bodyMedium) }
+        if (s.help.notes.isNotEmpty()) Section("Good to know") { s.help.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp)) } }
+        Section("Every setting") {
+            s.params.forEach { p ->
+                Text(p.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                Text(p.help + " Default: ${p.default.ifEmpty { "none" }}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Section("Evidence") {
+            EvidenceBadge(s.evidence.level)
+            Text(s.evidence.headline, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            Text("Source: ${s.evidence.source}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}

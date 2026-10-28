@@ -25,6 +25,9 @@ enum class EvidenceLevel(val label: String) {
 data class Evidence(val level: EvidenceLevel, val headline: String, val details: List<String>, val source: String,
                     val expectation: Expectation? = null)
 
+/** A strategy's help page: [makes] and [loses] money, then [notes] worth knowing before going live. */
+data class Help(val makes: String, val loses: String, val notes: List<String>)
+
 /** What the evidence says one contract should earn, in dollars, with its interval when one was measured. */
 data class Expectation(val perContract: Double, val low: Double?, val high: Double?, val basis: String)
 
@@ -179,6 +182,9 @@ interface Strategy {
     val venue: Venue
     val summary: String
     val evidence: Evidence
+    /** Plain-language help: how it makes money, how it loses it. Settings are explained from [params]. */
+    val help: Help get() = Help(summary, "See the evidence below.", emptyList())
+
     /** What happens to orders at the venue when this strategy leaves live, in one sentence for the confirmation. */
     val onLeaveLive: String get() = "Its resting orders are cancelled at the exchange now."
     val params: List<Param>

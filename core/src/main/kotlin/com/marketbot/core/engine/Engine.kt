@@ -356,7 +356,17 @@ class Engine(
         return passLock(s.id).withLock { s.preflight(ctx(s, Mode.LIVE)) }
     }
 
-    suspend fun stats(s: Strategy): List<Stat> = runCatching { s.stats(ctx(s)) }.getOrElse { emptyList() }
+    private val lastStats = java.util.concurrent.ConcurrentHashMap<String, List<Stat>>()
+
+    /**
+     * A strategy's figures, read under its pass lock so they never observe a pass
+     * half-way (strategies keep state that a pass mutates). If a pass holds the lock
+     * for more than a few seconds, the last complete reading is shown instead.
+     */
+    suspend fun stats(s: Strategy): List<Stat> = runCatching {
+        kotlinx.coroutines.withTimeoutOrNull(3_000) { passLock(s.id).withLock { s.stats(ctx(s)) } }?.also { lastStats[s.id] = it }
+            ?: lastStats[s.id] ?: emptyList()
+    }.getOrElse { lastStats[s.id] ?: emptyList() }
 
     // ------------------------------------------------------------------ internals
     private suspend fun ensureIndex(force: Boolean = false) {

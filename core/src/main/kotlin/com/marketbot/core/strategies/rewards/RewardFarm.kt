@@ -7,6 +7,7 @@ import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
 import com.marketbot.core.provenance.ValueUnavailable
 import com.marketbot.core.store.EquitySnapshot
+import com.marketbot.core.strategy.Help
 import com.marketbot.core.strategy.Evidence
 import com.marketbot.core.strategy.EvidenceLevel
 import com.marketbot.core.strategy.Mode
@@ -53,6 +54,18 @@ class RewardFarm : Strategy {
             "Fills carry adverse selection on thin books; the one loss on record was a BTC range market, now excluded.",
             "Run paper, then compare 'estimated' against 'paid' (Polymarket's earnings) before trusting any figure."),
         "polymarket repo README (claude/intelligent-dirac, 2026-10-04)")
+
+    override val help = Help(
+        makes = "Polymarket US pays liquidity rewards to resting orders near the middle of the book on selected markets. This strategy keeps small bids " +
+            "(and, once verified, offers) resting where the program pays, and collects the rewards.",
+        loses = "Resting orders get filled, often by someone who knows more. A filled position can lose more than the rewards pay, and the reward " +
+            "estimates have never matched what was actually paid: the one live day paid \$0.26 against about \$108 estimated.",
+        notes = listOf(
+            "Rewards arrive days later and payouts under \$1 per market are not paid.",
+            "Set the calibration from 'Rewards earned' against 'estimated' before trusting any \$/day figure.",
+            "It cancels only orders it placed; orders you place by hand are left alone.",
+        ),
+    )
 
     override val params: List<Param> = listOf(
         Param.Num("paper_cash", "Paper account size", "Starting cash of the virtual account.", 10.0, 1.0, 100000.0, "$"),

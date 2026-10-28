@@ -75,6 +75,7 @@ android {
             // One JVM per test class: Robolectric sandboxes reused across classes leaked state
             // (a view model's shared flows never started after another class had run).
             t.forkEvery = 1
+            t.systemProperty("recordScreens", (project.findProperty("recordScreens") != null).toString())
         }
     }
     packaging {

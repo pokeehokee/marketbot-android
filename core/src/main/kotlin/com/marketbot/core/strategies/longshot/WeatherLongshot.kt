@@ -10,6 +10,7 @@ import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
 import com.marketbot.core.store.EquitySnapshot
 import com.marketbot.core.store.QuoteRow
+import com.marketbot.core.strategy.Help
 import com.marketbot.core.strategy.BookSummary
 import com.marketbot.core.strategy.Evidence
 import com.marketbot.core.strategy.EvidenceLevel
@@ -48,6 +49,20 @@ import kotlin.math.roundToInt
  */
 class WeatherLongshot : Strategy {
     override val id = "kalshi_weather_longshot"
+    override val help = Help(
+        makes = "People overpay for long shots. On Kalshi's daily temperature markets, a bucket priced at 5c settles YES less than 5% of the time. " +
+            "This strategy offers to sell those cheap YES contracts and waits; when someone buys, it collects the price and usually keeps it when the bucket settles NO. " +
+            "It never crosses the spread: resting the offer is the edge, and taking liquidity gives most of it away.",
+        loses = "When the temperature lands in a bucket it sold, it pays the full dollar per contract: a 5-contract position loses up to \$4.90 against wins of 10-90c. " +
+            "Losses cluster on days the weather surprises everyone, and fills are adversely selected: offers that are lifted fast are the ones that lose more often. " +
+            "The daily brake stops new offers after about two full losses.",
+        notes = listOf(
+            "Offers rest about a day before the market closes; markets settle the next morning from the weather service's report.",
+            "Collateral locked is the most the book can lose at once: selling YES at 5c locks 95c per contract.",
+            "Kill criteria from the original: the loss ratio at or above 1.0 over 30+ losses, or the fill rate under 40%, stop live quoting.",
+        ),
+    )
+
     override val onLeaveLive = "Offers already resting stay at Kalshi until they fill or expire on their own (within about 8.5 hours), because their place in the queue is the edge. Use the kill switch to cancel them."
     override val name = "Weather longshot"
     override val venue = Venue.KALSHI

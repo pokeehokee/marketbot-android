@@ -68,7 +68,8 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
     val twoPane = width >= 840       // room for the strategy list beside its detail
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    fun selected(t: Tab) = route == t.route || (t.route == "strategies" && route?.startsWith("strategy/") == true)
+    fun selected(t: Tab) = route == t.route || route?.startsWith(t.route + "?") == true ||
+        (t.route == "strategies" && (route?.startsWith("strategy/") == true || route?.startsWith("help/") == true))
     // At large font sizes five labels cannot fit: show only the selected one, never a word broken in two.
     val bigText = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
     fun go(t: Tab) = nav.navigate(t.route) { popUpTo("home") { saveState = true }; launchSingleTop = true; restoreState = true }
@@ -96,12 +97,18 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
             }
             composable("strategy/{id}?tab={tab}", arguments = listOf(navArgument("id") { type = NavType.StringType },
                 navArgument("tab") { type = NavType.IntType; defaultValue = 0 })) { e ->
-                StrategyScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, initialTab = e.arguments!!.getInt("tab"))
+                StrategyScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, initialTab = e.arguments!!.getInt("tab"),
+                    onHelp = { nav.navigate("help/$it") })
             }
-            composable("activity") { ActivityScreen(vm) }
+            composable("activity?q={q}", arguments = listOf(navArgument("q") { type = NavType.StringType; defaultValue = "" })) { e ->
+                ActivityScreen(vm, e.arguments?.getString("q").orEmpty())
+            }
+            composable("help/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
+                HelpScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() })
+            }
             composable("accounts") { AccountsScreen(vm) }
             composable("settings") { SettingsScreen(vm, onSources = { nav.navigate("sources") }) }
-            composable("sources") { SourcesScreen(vm, onBack = { nav.popBackStack() }) }
+            composable("sources") { SourcesScreen(vm, onBack = { nav.popBackStack() }, onFind = { q -> nav.navigate("activity?q=${android.net.Uri.encode(q)}") }) }
         }
         }
         }

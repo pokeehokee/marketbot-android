@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
@@ -62,7 +63,7 @@ import com.marketbot.core.strategies.rewards.RewardFarm
 import kotlinx.coroutines.launch
 
 @Composable
-fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab: Int = 0, showBack: Boolean = true) {
+fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab: Int = 0, showBack: Boolean = true, onHelp: ((String) -> Unit)? = null) {
     val s = vm.strategies.first { it.id == id }
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(initialTab) }
     val running by vm.engineRunning.collectAsState()
@@ -82,6 +83,7 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
             val st by vm.status.collectAsState()
             vm.modes.collectAsState().value
             ModePill(st[s.id]?.mode ?: vm.modeOf(s.id), st[s.id]?.armed == true, running)
+            onHelp?.let { IconButton({ it(s.id) }) { Icon(androidx.compose.material.icons.Icons.AutoMirrored.Outlined.HelpOutline, "How ${s.name} works") } }
         }
         androidx.compose.material3.PrimaryScrollableTabRow(tab, edgePadding = 8.dp) {
             listOf("Overview", "Parameters", "Go live", "Orders").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t, maxLines = 1) }) }

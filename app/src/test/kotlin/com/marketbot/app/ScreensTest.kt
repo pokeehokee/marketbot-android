@@ -34,7 +34,11 @@ class ScreensTest {
         rule.runOnUiThread { v.draw(android.graphics.Canvas(bmp)) }
         val dir = File("build/screens").apply { mkdirs() }
         File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        if (name in APPROVED) Approved.check(name, bmp)
     }
+
+    /** Screens with no clock-dependent content, so a pixel comparison is meaningful. */
+    private val APPROVED = setOf("0_setup_welcome", "0_setup_keep_running", "2_strategies")
 
     @Test fun `onboarding, home, strategies and go-live render`() {
         rule.onNodeWithText("Welcome to Marketbot").assertExists()
@@ -68,6 +72,7 @@ class ScreensTest {
         val cv = android.graphics.Canvas(bmp)
         for (id in listOf(R.drawable.ic_launcher_bg, R.drawable.ic_launcher_fg)) c.getDrawable(id)!!.apply { setBounds(0, 0, 432, 432); draw(cv) }
         File(File("build/screens").apply { mkdirs() }, "icon.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        Approved.check("icon", bmp)
     }
 
     @Suppress("unused") private val c: Context get() = ApplicationProvider.getApplicationContext()

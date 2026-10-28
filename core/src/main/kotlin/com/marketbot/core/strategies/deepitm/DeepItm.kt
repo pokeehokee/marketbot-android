@@ -3,6 +3,7 @@ package com.marketbot.core.strategies.deepitm
 import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
 import com.marketbot.core.store.QuoteRow
+import com.marketbot.core.strategy.Help
 import com.marketbot.core.strategy.Evidence
 import com.marketbot.core.strategy.EvidenceLevel
 import com.marketbot.core.strategy.Mode
@@ -38,6 +39,18 @@ import java.time.Instant
  * settlement. A failed listing within 10 s of a good one HOLDS quotes rather
  * than cancelling (one 429 should not cost queue position).
  */
+private val DEEP_ITM_HELP = Help(
+    makes = "Near the end of each hour, Bitcoin is often far enough from some strikes that the outcome is nearly certain. This strategy bids just under " +
+        "the market on those strikes (90-96c for a dollar payout) when a random-walk model says the chance of winning is at least 97%, and holds to settlement.",
+    loses = "When Bitcoin moves several standard deviations in the last minutes, a near-certain strike settles the other way and the whole bid is lost: " +
+        "90-96c per contract against wins of 4-10c. One loss erases 10-20 wins, so the daily stop and total kill matter.",
+    notes = listOf(
+        "It needs live BTC prices from at least two (live: three) exchanges and five minutes of volatility before it bids.",
+        "Hours where losses ran 3-7x higher (session opens) are skipped by default.",
+        "Live bids expire at the exchange a couple of minutes after the app last renewed them, so a dead phone cannot leave one standing.",
+    ),
+)
+
 abstract class DeepItmStrategy(
     final override val id: String,
     final override val name: String,
@@ -51,6 +64,8 @@ abstract class DeepItmStrategy(
     abstract fun ladderVenue(ctx: StrategyContext): LadderVenue
 
     override val needsBtcIndex = true
+
+    override val help get() = DEEP_ITM_HELP
 
     override val params: List<Param> = listOf(
         Param.Int_("lot", "Contracts per strike", "Flat lot. Sizing as a share of cash made the paper method lose \$80 on a day the live one made \$5.", 5, 1, 50),
