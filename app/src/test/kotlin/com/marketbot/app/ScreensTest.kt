@@ -37,8 +37,16 @@ class ScreensTest {
     }
 
     @Test fun `onboarding, home, strategies and go-live render`() {
-        rule.onNodeWithText("Before you start").assertExists()
-        rule.onNodeWithText("I understand").performClick()
+        rule.onNodeWithText("Welcome to Marketbot").assertExists()
+        shot("0_setup_welcome")
+        rule.onNodeWithText("Next").performClick()
+        rule.onNodeWithText("I understand this can lose money").performClick()
+        rule.onNodeWithText("Next").performClick()
+        shot("0_setup_keep_running")
+        rule.onNodeWithText("Next").performClick()
+        rule.onNodeWithText("Next").performClick()
+        rule.onNodeWithText("Not yet: I'll look around first").performClick()
+        rule.onNodeWithText("Finish").performClick()
         rule.onNodeWithText("Kill switch").assertExists()
         shot("1_home")
         rule.onNodeWithText("Strategies", useUnmergedTree = true).let { rule.onNodeWithText("Strategies").performClick() }
@@ -51,7 +59,8 @@ class ScreensTest {
         rule.waitUntil(5000) { runCatching { rule.onNodeWithText("Kalshi API key saved").assertExists(); true }.getOrDefault(false) }
         shot("4_go_live")
         rule.onNodeWithText("Parameters").performClick()
-        shot("5_strategy_settings")
+        rule.waitUntil(5000) { rule.onAllNodesWithText("What these settings mean".uppercase()).fetchSemanticsNodes().isNotEmpty() }
+        shot("5_strategy_parameters")
     }
 
     @Test fun `home with a record, and a strategy's orders`() {
@@ -87,7 +96,7 @@ class ScreensTest {
     }
 
     private fun ctxPrefs() {
-        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putBoolean("accepted_v1", true).apply()
+        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putBoolean("setup_v2", true).apply()
         rule.activityRule.scenario.recreate()
     }
 

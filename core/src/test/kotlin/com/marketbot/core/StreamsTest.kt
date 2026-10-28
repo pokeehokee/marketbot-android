@@ -28,12 +28,15 @@ class StreamsTest {
     @Test fun `the fill channel is signed, subscribes on connect and reports each trade once`() {
         val sent = CopyOnWriteArrayList<String>()
         val subscribed = CountDownLatch(1)
+        val closed = CountDownLatch(1)
         server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 sent += text; subscribed.countDown()
                 webSocket.send(fill("t1")); webSocket.send(fill("t1")); webSocket.send(fill("t2"))
                 webSocket.send("""{"type":"subscribed","msg":{"channel":"fill","sid":1}}""")
             }
+            // Answer the client's close, or the server's shutdown waits on a half-open socket.
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null); closed.countDown() }
         }))
         server.start()
         val got = CopyOnWriteArrayList<KalshiFill>()
@@ -45,6 +48,7 @@ class StreamsTest {
         assertTrue(done.await(10, TimeUnit.SECONDS))
         Thread.sleep(200)
         s.stop()
+        assertTrue(closed.await(10, TimeUnit.SECONDS), "the stream closes its socket on stop")
         val req = server.takeRequest()
         assertEquals("kid", req.getHeader("KALSHI-ACCESS-KEY"))
         assertNotNull(req.getHeader("KALSHI-ACCESS-SIGNATURE"))

@@ -62,6 +62,8 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     val confirm = com.marketbot.app.rememberConfirm()
     LaunchedEffect(Unit) { vm.refreshAccounts() }
 
+    val refreshing by vm.refreshing.collectAsState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(refreshing, { vm.refreshAccounts() }, Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -108,12 +110,12 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                 b.equity?.let { SourcedRow("Kalshi equity", it, { v -> money(v) }) }
                 b.byExchangeIndex[2]?.let { SourcedRow("Kalshi crypto shard cash", it, { v -> money(v) }) }
             }
-            accounts.kalshiError?.let { Text("Kalshi: $it", color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+            accounts.kalshiError?.let { ErrorCard("Kalshi: $it") { vm.refreshAccounts() } }
             accounts.polymarket?.let { b ->
                 SourcedRow("Polymarket balance", b.currentBalance, { money(it) })
                 SourcedRow("Polymarket buying power", b.buyingPower, { money(it) })
             }
-            accounts.polymarketError?.let { Text("Polymarket: $it", color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+            accounts.polymarketError?.let { ErrorCard("Polymarket: $it") { vm.refreshAccounts() } }
             accounts.readAt?.let { Text("Read ${it.short()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
 
@@ -142,6 +144,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             TextButton(onSources) { Text("Data sources") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(Source.KALSHI_API, Source.POLYMARKET_API, Source.DERIVED, Source.PAPER_MODEL, Source.CONFIG).forEach { SourceChip(it) } }
+    }
     }
 
     if (confirmKill) AlertDialog(onDismissRequest = { confirmKill = false },

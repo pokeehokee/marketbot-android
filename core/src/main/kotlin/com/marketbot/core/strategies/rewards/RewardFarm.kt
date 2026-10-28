@@ -84,6 +84,17 @@ class RewardFarm : Strategy {
         excludeSlugPrefixes = c.text("exclude_slug_prefixes").split(',').map { it.trim() }.filter { it.isNotEmpty() },
     )
 
+    override fun effects(config: StrategyConfig): List<String> {
+        val cash = config.num("paper_cash")
+        val perMarket = minOf(config.num("per_instrument_frac") * cash, config.num("per_instrument_max_usd"))
+        val floor = maxOf(config.num("hard_floor_usd"), maxOf(cash, config.num("start_equity")) * (1 - config.num("max_drawdown_frac")))
+        return listOf(
+            "Worst loss in any one market: ${money(perMarket)} (on a ${money(cash)} paper account).",
+            "Everything halts if equity falls to ${money(floor)}, until you reset it.",
+            "Requotes every ${config.int("tick_seconds")} s: about ${86_400 / config.int("tick_seconds")} passes a day while it runs.",
+        )
+    }
+
     override fun nextDelay(ctx: StrategyContext): Duration = Duration.ofSeconds(ctx.config.int("tick_seconds").toLong())
 
     private class Rt {

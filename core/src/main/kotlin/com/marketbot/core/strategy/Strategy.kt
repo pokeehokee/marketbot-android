@@ -71,7 +71,36 @@ sealed interface Param {
 
     data class Text(
         override val key: String, override val label: String, override val help: String, override val default: String,
+        val kind: TextKind = TextKind.FREE,
     ) : Param
+
+    /** How a text setting is edited: free text, or one of the structured pickers. */
+    enum class TextKind { FREE, HOURS, KINDS, ZONE, BANDS }
+
+    /** Why [raw] is not acceptable for this setting, or null when it is. */
+    fun problem(raw: String): String? = when (this) {
+        is Num -> when (val v = raw.trim().toDoubleOrNull()) {
+            null -> "$label must be a number."
+            else -> if (v < min || v > max) "$label must be between $min and $max." else null
+        }
+        is Int_ -> when (val v = raw.trim().toIntOrNull()) {
+            null -> "$label must be a whole number."
+            else -> if (v < min || v > max) "$label must be between $min and $max." else null
+        }
+        is Bool -> if (raw.toBooleanStrictOrNull() == null) "$label must be on or off." else null
+        is Text -> when (kind) {
+            TextKind.HOURS -> raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                .firstOrNull { h -> h.toIntOrNull()?.let { it !in 0..23 } ?: true }?.let { "$label: \"$it\" is not an hour 0-23." }
+            TextKind.KINDS -> raw.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+                .firstOrNull { it !in setOf("HIGH", "LOW") }?.let { "$label: only HIGH and LOW." }
+            TextKind.ZONE -> raw.trim().takeIf { it.isNotEmpty() }?.let { z ->
+                if (runCatching { java.time.ZoneId.of(z) }.isFailure) "\"$z\" is not a time zone name; try America/New_York." else null }
+            TextKind.BANDS -> raw.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.firstOrNull { b ->
+                val p = b.split('-').mapNotNull { it.trim().toDoubleOrNull() }
+                p.size != 2 || p[0] < 0 || p[1] > 1 || p[0] >= p[1] }?.let { "$label: \"$it\" should look like 0.10-0.15." }
+            TextKind.FREE -> null
+        }
+    }
 }
 
 /** A strategy's settings: defaults overlaid with whatever the user saved. Out-of-range values are clamped. */
@@ -169,6 +198,12 @@ interface Strategy {
     /** Settings problems that must be fixed before the strategy can run. */
     fun validate(config: StrategyConfig): List<String> = emptyList()
 
+    /**
+     * What these settings mean in money, before saving: the worst single loss,
+     * how many the brake allows, what can be locked up. Plain sentences.
+     */
+    fun effects(config: StrategyConfig): List<String> = emptyList()
+
     /** The go-live checklist. */
     suspend fun liveRequirements(ctx: StrategyContext): List<Requirement>
 
@@ -177,4 +212,10 @@ interface Strategy {
 
     /** Headline numbers for the strategy screen. */
     suspend fun stats(ctx: StrategyContext): List<Stat>
+}
+
+/** Every problem with [config]: each setting's own range or format, then the strategy's cross-checks. */
+fun Strategy.problems(config: StrategyConfig): List<String> {
+    val own = params.mapNotNull { p -> config.asMap[p.key]?.let { p.problem(it) } }
+    return own + if (own.isEmpty()) runCatching { validate(config) }.getOrElse { listOf(it.message ?: "invalid settings") } else emptyList()
 }

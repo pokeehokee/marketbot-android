@@ -68,7 +68,12 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
     val running by vm.engineRunning.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = 4.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+            var askLeave by remember { mutableStateOf(false) }
+            IconButton({ if (vm.dirty(s)) askLeave = true else onBack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+            if (askLeave) androidx.compose.material3.AlertDialog(onDismissRequest = { askLeave = false },
+                confirmButton = { androidx.compose.material3.TextButton({ vm.drafts.remove(s.id); askLeave = false; onBack() }) { Text("Discard changes") } },
+                dismissButton = { androidx.compose.material3.TextButton({ askLeave = false }) { Text("Keep editing") } },
+                title = { Text("Unsaved changes") }, text = { Text("${s.name} has changed settings that are not saved.") })
             Column(Modifier.weight(1f)) {
                 Text(s.name, style = MaterialTheme.typography.titleLarge)
                 Text(s.venue.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -82,7 +87,7 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
         }
         when (tab) {
             0 -> Overview(vm, s) { tab = 2 }
-            1 -> SettingsForm(vm, s)
+            1 -> ParametersForm(vm, s, onLeave = onBack)
             2 -> GoLive(vm, s)
             else -> OrdersList(vm, s)
         }
@@ -109,7 +114,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             ValueRow("Last pass", st?.lastRunAt?.short() ?: "never", null)
             ValueRow("Result", st?.lastSummary ?: "-", null)
             st?.nextRunAt?.let { ValueRow("Next pass", it.short(), null) }
-            st?.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.loss) }
+            st?.lastError?.let { ErrorCard(it) { vm.runNow(s) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ vm.runNow(s) }) { Text("Run one pass now") }
                 if (s is DeepItmStrategy || s is RewardFarm) OutlinedButton({ vm.resetKill(s) }) { Text("Reset stop") }
@@ -146,42 +151,6 @@ private fun WarmUp(vm: MainViewModel) {
         Text("Warming up volatility: ${"%.0f".format(f * 5)} of 5 min${if (!candles) ", waiting for candle data" else ""} · $venues of 4 price sources",
             style = MaterialTheme.typography.bodySmall)
         androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-    }
-}
-
-@Composable
-private fun SettingsForm(vm: MainViewModel, s: Strategy) {
-    val values = remember { mutableStateMapOf<String, String>() }
-    val errors = remember { mutableStateListOf<String>() }
-    LaunchedEffect(s.id) { values.putAll(vm.config(s).asMap) }
-    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Defaults are the measured values from the original repos. Changing them changes what the evidence says.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(s.params, key = { it.key }) { p ->
-            Column {
-                when (p) {
-                    is Param.Bool -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                        Switch(values[p.key]?.toBooleanStrictOrNull() ?: p.defaultValue, { values[p.key] = it.toString() })
-                    }
-                    else -> {
-                        val unit = when (p) { is Param.Num -> p.unit; is Param.Int_ -> p.unit; else -> "" }
-                        val range = when (p) { is Param.Num -> "${p.min} to ${p.max}"; is Param.Int_ -> "${p.min} to ${p.max}"; else -> null }
-                        OutlinedTextField(values[p.key] ?: p.default, { values[p.key] = it }, Modifier.fillMaxWidth(),
-                            label = { Text(p.label + if (unit.isNotEmpty()) " ($unit)" else "") }, singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = if (p is Param.Text) KeyboardType.Text else KeyboardType.Decimal),
-                            supportingText = { Text(listOfNotNull(p.help, range?.let { "Allowed: $it. Default ${p.default}." }).joinToString(" ")) })
-                    }
-                }
-            }
-        }
-        item {
-            errors.forEach { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ vm.saveConfig(s, values.toMap()) { e -> errors.clear(); errors.addAll(e) } }) { Text("Save") }
-                OutlinedButton({ values.clear(); values.putAll(s.params.associate { it.key to it.default }) }) { Text("Restore defaults") }
-            }
-        }
     }
 }
 

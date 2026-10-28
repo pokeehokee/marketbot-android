@@ -60,11 +60,11 @@ abstract class DeepItmStrategy(
         Param.Num("fair_min", "Minimum model probability", "Random-walk P(our side wins) required.", 0.97, 0.80, 0.999, decimals = 3),
         Param.Int_("ttc_min", "Earliest, seconds before close", "Stop joining this close to settlement.", 300, 30, 3600, "s"),
         Param.Int_("ttc_max", "Latest, seconds before close", "Start joining this long before settlement.", 3000, 60, 7200, "s"),
-        Param.Text("skip_hours_et", "Skip hours closing at (ET)", "Session opens, where losses ran 3-7x higher.", defaultSkipHours),
+        Param.Text("skip_hours_et", "Skip hours closing at (ET)", "Session opens, where losses ran 3-7x higher.", defaultSkipHours, Param.TextKind.HOURS),
         Param.Num("daily_stop", "Daily stop", "Stop for the day at this realised loss.", 15.0, 1.0, 500.0, "$"),
         Param.Num("total_kill", "Total kill", "Stop for good (until reset) at this total realised loss.", 60.0, 5.0, 5000.0, "$"),
         Param.Int_("min_venues_live", "Price sources needed for live", "Live bids need at least this many of the four spot venues to agree (fresh within 5 s). Paper needs 2.", 3, 2, 4),
-        Param.Text("brake_time_zone", "Daily stop resets at midnight in", "IANA time zone. The original runner used America/Chicago. Blank means the phone's zone.", "America/Chicago"),
+        Param.Text("brake_time_zone", "Daily stop resets at midnight in", "IANA time zone. The original runner used America/Chicago. Blank means the phone's zone.", "America/Chicago", Param.TextKind.ZONE),
         Param.Int_("dead_man_s", "Order lifetime without the app", "Live bids expire at the exchange this long after the app last renewed them, so a phone that dies or sleeps cannot leave a stale bid. Renewed while the app runs.", defaultDeadMan, 30, 3000, "s"),
     )
 
@@ -74,6 +74,15 @@ abstract class DeepItmStrategy(
         skipCloseHoursEt = c.text("skip_hours_et").split(',', ' ').mapNotNull { it.trim().toIntOrNull() }.toSet(),
         dailyStop = -c.num("daily_stop"), totalKill = -c.num("total_kill"),
     )
+
+    override fun effects(config: StrategyConfig): List<String> {
+        val lot = config.int("lot"); val hi = config.num("band_hi"); val worst = lot * hi; val open = config.int("max_open")
+        return listOf(
+            "A strike that settles against you loses up to ${money(worst)} ($lot contracts bought at up to ${"%.0f".format(hi * 100)}c); a win pays about ${money(lot * (1 - config.num("band_lo")))} at most.",
+            "With $open strikes at once, one bad hour can lose up to ${money(worst * open)}.",
+            "The ${money(config.num("daily_stop"))} daily stop allows ${(config.num("daily_stop") / worst).toInt()} full loss(es); the ${money(config.num("total_kill"))} total kill stops it for good after ${(config.num("total_kill") / worst).toInt()}.",
+        )
+    }
 
     override fun validate(config: StrategyConfig): List<String> {
         val r = rules(config); val out = mutableListOf<String>()

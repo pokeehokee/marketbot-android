@@ -1,6 +1,7 @@
 package com.marketbot.core
 
 import com.marketbot.core.util.Tickers
+import com.marketbot.core.strategy.problems
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -27,5 +28,20 @@ class RecordVsExpectedTest {
         assertEquals((0.25 + 0.25 - 9.5) / 20, r.perContract, 1e-12)
         kotlin.test.assertTrue(r.low < r.perContract && r.high > r.perContract)
         assertEquals(null, com.marketbot.core.strategy.RecordVsExpected.of(listOf(row(5.0, 0.25))))
+    }
+}
+
+class ParamCheckTest {
+    @Test fun `every setting is checked against its range or format`() {
+        val s = com.marketbot.core.strategies.longshot.WeatherLongshot()
+        fun cfg(vararg kv: Pair<String, String>) = com.marketbot.core.strategy.StrategyConfig(s.params, mapOf(*kv))
+        assertEquals(emptyList(), s.problems(cfg()))
+        kotlin.test.assertTrue(s.problems(cfg("lot_cap" to "50")).single().contains("between 1 and 10"))
+        kotlin.test.assertTrue(s.problems(cfg("paused_kinds" to "HIGH,MID")).single().contains("only HIGH and LOW"))
+        kotlin.test.assertTrue(s.problems(cfg("excluded_ask_bands" to "0.15-0.10")).single().contains("0.10-0.15"))
+        kotlin.test.assertTrue(s.problems(cfg("brake_time_zone" to "Moon/Base")).single().contains("time zone"))
+        kotlin.test.assertTrue(s.problems(cfg("daily_loss_limit" to "2")).single().contains("smaller than one worst-case"))
+        val e = s.effects(cfg())
+        kotlin.test.assertTrue(e[0].contains("\$4.90")); kotlin.test.assertTrue(e[1].contains("after 2 such"))
     }
 }

@@ -133,7 +133,7 @@ fun AccountsScreen(vm: MainViewModel) {
                 SourcedRow("Cash", b.cash, { money(it) }); b.portfolioValue?.let { SourcedRow("Positions", it, { v -> money(v) }) }
                 b.byExchangeIndex.toSortedMap().forEach { (i, v) -> SourcedRow("Shard $i cash${if (i == 2) " (crypto)" else ""}", v, { money(it) }) }
             }
-            accounts.kalshiError?.let { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+            accounts.kalshiError?.let { ErrorCard("Kalshi: $it") { vm.refreshAccounts() } }
             Text("BTC deep-ITM trades on Kalshi's crypto shard (index 2), which needs its own cash.",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             KalshiAccountOptions(vm)
@@ -154,7 +154,7 @@ fun AccountsScreen(vm: MainViewModel) {
                 SourcedRow("Balance", b.currentBalance, { money(it) }); SourcedRow("Buying power", b.buyingPower, { money(it) })
                 b.openOrders?.let { SourcedRow("In open orders", it, { v -> money(v) }) }
             }
-            accounts.polymarketError?.let { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+            accounts.polymarketError?.let { ErrorCard("Polymarket: $it") { vm.refreshAccounts() } }
         }
         OutlinedButton({ vm.refreshAccounts() }) { Text("Test connections") }
     }

@@ -1,0 +1,191 @@
+package com.marketbot.app.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.ui.unit.dp
+import com.marketbot.core.strategy.Param
+import com.marketbot.core.strategy.Strategy
+import com.marketbot.core.strategy.StrategyConfig
+import com.marketbot.core.strategy.problems
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.log10
+import kotlin.math.pow
+import kotlin.math.roundToInt
+
+/** Whether the strategy has unsaved parameter edits. */
+fun MainViewModel.dirty(s: Strategy): Boolean = drafts[s.id]?.let { it != savedConfigs.value[s.id] } == true
+
+@Composable
+fun ParametersForm(vm: MainViewModel, s: Strategy, onLeave: () -> Unit) {
+    val saved by vm.savedConfigs.collectAsState()
+    LaunchedEffect(s.id) { vm.loadConfig(s) }
+    val base = saved[s.id] ?: return Column(Modifier.padding(16.dp)) { repeat(6) { SkeletonLine() } }
+    val values = vm.drafts[s.id] ?: base
+    fun set(k: String, v: String) { vm.drafts[s.id] = values + (k to v) }
+    val cfg = StrategyConfig(s.params, values)
+    val problems = s.problems(cfg)
+    val effects = if (problems.isEmpty()) runCatching { s.effects(cfg) }.getOrDefault(emptyList()) else emptyList()
+    var saveErrors by remember { mutableStateOf<List<String>>(emptyList()) }
+    var askLeave by remember { mutableStateOf(false) }
+    val dirty = vm.dirty(s)
+    BackHandler(dirty) { askLeave = true }
+
+    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item { Text("Defaults are the measured values from the original repos. A dot marks a changed setting.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {
+            Section("What these settings mean") {
+                if (problems.isNotEmpty()) problems.forEach { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+                else if (effects.isEmpty()) Text("No money limits to show for this strategy.", style = MaterialTheme.typography.bodySmall)
+                else effects.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp)) }
+            }
+        }
+        items(s.params, key = { it.key }) { p ->
+            val v = values[p.key] ?: p.default
+            ParamRow(p, v, changed = v != p.default, problem = p.problem(v), onChange = { set(p.key, it) }, onReset = { set(p.key, p.default) })
+        }
+        item {
+            saveErrors.forEach { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({ vm.saveDraft(s) { saveErrors = it } }, enabled = dirty && problems.isEmpty()) { Text("Save") }
+                OutlinedButton({ vm.drafts.remove(s.id); saveErrors = emptyList() }, enabled = dirty) { Text("Discard") }
+                TextButton({ vm.drafts[s.id] = s.params.associate { it.key to it.default } }) { Text("All defaults") }
+            }
+        }
+    }
+    if (askLeave) AlertDialog(onDismissRequest = { askLeave = false },
+        confirmButton = { TextButton({ vm.drafts.remove(s.id); askLeave = false; onLeave() }) { Text("Discard changes") } },
+        dismissButton = { TextButton({ askLeave = false }) { Text("Keep editing") } },
+        title = { Text("Unsaved changes") }, text = { Text("Leave without saving the changed settings?") })
+}
+
+private fun fmt(v: Double, decimals: Int) = "%.${decimals}f".format(Locale.ROOT, v)
+
+/** A round step for a range: about 1/100th of it, at the setting's precision. */
+private fun step(min: Double, max: Double, decimals: Int): Double {
+    val raw = (max - min) / 100
+    val p = 10.0.pow(kotlin.math.floor(log10(raw)))
+    val s = listOf(1.0, 2.0, 5.0, 10.0).map { it * p }.first { it >= raw }
+    return maxOf(s, 10.0.pow(-decimals))
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ParamRow(p: Param, v: String, changed: Boolean, problem: String?, onChange: (String) -> Unit, onReset: () -> Unit) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (changed) { androidx.compose.foundation.layout.Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)); Spacer(Modifier.width(6.dp)) }
+            Text(p.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            if (changed) IconButton(onReset) { Icon(Icons.Outlined.Restore, "Reset ${p.label} to ${p.default}") }
+        }
+        when (p) {
+            is Param.Bool -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (v.toBooleanStrictOrNull() == true) "On" else "Off", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Switch(v.toBooleanStrictOrNull() ?: p.defaultValue, { onChange(it.toString()) })
+            }
+            is Param.Num -> NumberControl(v.toDoubleOrNull(), p.min, p.max, step(p.min, p.max, p.decimals), p.decimals, p.unit, onChange)
+            is Param.Int_ -> NumberControl(v.toDoubleOrNull(), p.min.toDouble(), p.max.toDouble(), maxOf(1.0, step(p.min.toDouble(), p.max.toDouble(), 0)), 0, p.unit, onChange)
+            is Param.Text -> when (p.kind) {
+                Param.TextKind.HOURS -> {
+                    val on = v.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        (0..23).forEach { h -> FilterChip(h in on, { onChange((if (h in on) on - h else on + h).sorted().joinToString(",")) }, { Text("%02d".format(h)) }) }
+                    }
+                }
+                Param.TextKind.KINDS -> {
+                    val on = v.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("HIGH" to "Daily highs", "LOW" to "Daily lows").forEach { (k, l) ->
+                            FilterChip(k in on, { onChange((if (k in on) on - k else on + k).sorted().joinToString(",")) }, { Text("Pause $l") }) }
+                    }
+                }
+                Param.TextKind.ZONE -> {
+                    val zones = listOf("" to "Phone's zone", "America/New_York" to "Eastern", "America/Chicago" to "Central",
+                        "America/Denver" to "Mountain", "America/Los_Angeles" to "Pacific")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) { zones.forEach { (z, l) -> FilterChip(v.trim() == z, { onChange(z) }, { Text(l) }) } }
+                    if (zones.none { it.first == v.trim() }) OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Time zone") })
+                }
+                Param.TextKind.BANDS -> BandsControl(v, onChange)
+                Param.TextKind.FREE -> OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true)
+            }
+        }
+        problem?.let { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
+        Text(p.help + "  Default: ${p.default.ifEmpty { "none" }}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** A slider for the range plus - and + for exact steps, with the value and unit shown. */
+@Composable
+private fun NumberControl(value: Double?, min: Double, max: Double, step: Double, decimals: Int, unit: String, onChange: (String) -> Unit) {
+    val v = (value ?: min).coerceIn(min, max)
+    fun emit(x: Double) = onChange(fmt(((x / step).roundToInt() * step).coerceIn(min, max), decimals))
+    val label = (if (unit == "$") "$" else "") + fmt(v, decimals) + (if (unit.isNotEmpty() && unit != "$") " $unit" else "")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton({ emit(v - step) }, enabled = v > min) { Icon(Icons.Outlined.Remove, "Decrease") }
+        Text(label, style = Figures, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        IconButton({ emit(v + step) }, enabled = v < max) { Icon(Icons.Outlined.Add, "Increase") }
+    }
+    // A slider only where its range is usable by thumb; huge ranges use the steppers alone.
+    if ((max - min) / step <= 1000) Slider(v.toFloat(), { emit(it.toDouble()) }, valueRange = min.toFloat()..max.toFloat())
+}
+
+/** Ask bands as two-handle sliders, one per band. */
+@Composable
+private fun BandsControl(v: String, onChange: (String) -> Unit) {
+    val bands = v.split(',', ';').mapNotNull { b -> b.split('-').mapNotNull { it.trim().toDoubleOrNull() }.takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+    fun emit(l: List<Pair<Double, Double>>) = onChange(l.joinToString(", ") { "${fmt(it.first, 2)}-${fmt(it.second, 2)}" })
+    bands.forEachIndexed { i, (lo, hi) ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${(lo * 100).roundToInt()}c to ${(hi * 100).roundToInt()}c", style = Figures, modifier = Modifier.weight(1f))
+            IconButton({ emit(bands.filterIndexed { j, _ -> j != i }) }) { Icon(Icons.Outlined.Close, "Remove this band") }
+        }
+        RangeSlider(lo.toFloat()..hi.toFloat(), { r ->
+            emit(bands.mapIndexed { j, b -> if (j == i) ((r.start * 100).roundToInt() / 100.0) to ((r.endInclusive * 100).roundToInt() / 100.0) else b })
+        }, valueRange = 0f..0.5f, steps = 49)
+    }
+    TextButton({ emit(bands + (0.20 to 0.25)) }) { Text("Add a skipped band") }
+    if (bands.isEmpty()) Text("No bands skipped.", style = MaterialTheme.typography.bodySmall)
+}

@@ -76,13 +76,13 @@ class WeatherLongshot : Strategy {
         Param.Num("max_mid_low", "Max price, LOW markets", "Highest mid sold on daily-low buckets. Above 0.15 the two halves of the sample disagree.", 0.15, 0.03, 0.25, decimals = 2),
         Param.Num("min_mid", "Min price", "A 1c contract needs a 99:1 win rate to break even.", 0.02, 0.01, 0.10, decimals = 2),
         Param.Num("max_spread", "Max bid-ask spread", "Wider books mean the ask is far from fair and fills are adverse.", 0.06, 0.01, 0.20, decimals = 2),
-        Param.Text("excluded_ask_bands", "Skipped ask bands", "Ask ranges never quoted, as lo-hi pairs. 0.10-0.15 lost money live and in two of three periods.", "0.10-0.15"),
-        Param.Text("paused_kinds", "Paused market kinds", "HIGH and/or LOW to stop quoting (resting quotes of a paused kind are withdrawn).", ""),
+        Param.Text("excluded_ask_bands", "Skipped ask bands", "Ask ranges never quoted, as lo-hi pairs. 0.10-0.15 lost money live and in two of three periods.", "0.10-0.15", Param.TextKind.BANDS),
+        Param.Text("paused_kinds", "Paused market kinds", "HIGH and/or LOW to stop quoting (resting quotes of a paused kind are withdrawn).", "", Param.TextKind.KINDS),
         Param.Int_("max_markets", "Max markets at once", "A runaway guard, not a risk control: the collateral share is the control.", 120, 1, 300),
         Param.Int_("max_contracts", "Lot ceiling when budget is large", "Upper clamp of the budget-scaled lot.", 10, 1, 10),
         Param.Num("paper_cash", "Paper account size", "Starting cash of the virtual account used in paper mode.", 400.0, 10.0, 100000.0, "$"),
         Param.Int_("run_minute", "Run at minute past each hour", "The original ran at :05.", 5, 0, 59),
-        Param.Text("brake_time_zone", "Daily brake resets at midnight in", "IANA time zone, e.g. America/New_York. Blank means the phone's zone, which moves when you travel.", ""),
+        Param.Text("brake_time_zone", "Daily brake resets at midnight in", "IANA time zone, e.g. America/New_York. Blank means the phone's zone, which moves when you travel.", "", Param.TextKind.ZONE),
     )
 
     fun rules(c: StrategyConfig) = LongshotRules(
@@ -94,6 +94,17 @@ class WeatherLongshot : Strategy {
         idleQuoteHours = c.num("idle_quote_hours"), excludedAskBands = parseBands(c.text("excluded_ask_bands")),
         pausedKinds = c.text("paused_kinds").split(',', ' ').map { it.trim().uppercase() }.filter { it == "HIGH" || it == "LOW" }.toSet(),
     )
+
+    override fun effects(config: StrategyConfig): List<String> {
+        val lot = config.int("lot_cap"); val brake = config.num("daily_loss_limit"); val worst = lot * 0.98
+        val cash = config.num("paper_cash"); val frac = config.num("collateral_fraction")
+        return listOf(
+            "One market that settles against you loses up to ${money(worst)} ($lot contracts at 98c).",
+            "The ${money(brake)} daily brake stops new offers after ${(brake / worst).toInt()} such loss(es) in a day.",
+            "At most ${"%.0f".format(frac * 100)}% of equity is locked as collateral (${money(frac * cash)} of a ${money(cash)} paper account): the most the book can lose at once.",
+            "Unfilled offers are withdrawn after ${"%.1f".format(config.num("idle_quote_hours"))} h; live ones also expire at Kalshi 30 min later if the phone is off.",
+        )
+    }
 
     override fun validate(config: StrategyConfig): List<String> {
         val lot = config.int("lot_cap"); val brake = config.num("daily_loss_limit")

@@ -57,7 +57,11 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
     val toast by vm.toast.collectAsState()
     LaunchedEffect(toast) { toast?.let { snack.showSnackbar(it); vm.toastShown() } }
     val ctx = LocalContext.current
-    var accepted by remember { mutableStateOf(ctx.getSharedPreferences("ui", Context.MODE_PRIVATE).getBoolean("accepted_v1", false)) }
+    var setupDone by remember { mutableStateOf(Setup.done(ctx)) }
+    var goAccounts by remember { mutableStateOf(false) }
+    if (!setupDone) { SetupWizard(vm) { keys -> setupDone = true; goAccounts = keys }; return }
+    // After the graph exists: navigating in the frame that first composes the NavHost would fail.
+    LaunchedEffect(goAccounts) { if (goAccounts) { nav.navigate("accounts"); goAccounts = false } }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
@@ -89,16 +93,4 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
         }
         }
     }
-
-    if (!accepted) AlertDialog(onDismissRequest = {}, confirmButton = {
-        Button({ ctx.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putBoolean("accepted_v1", true).apply(); accepted = true }) { Text("I understand") }
-    }, title = { Text("Before you start") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Marketbot places real orders on Kalshi and Polymarket when you arm a strategy for live trading. It can lose money; one losing contract can cost up to a dollar.", style = MaterialTheme.typography.bodyMedium)
-            Text("Everything starts in paper mode, which uses live public prices and never sends an order.", style = MaterialTheme.typography.bodyMedium)
-            Text("Only one method has made money live (the weather longshot), and its last stage gate failed. The others are a rebuild of a reported result or are unproven. Each strategy card says which.", style = MaterialTheme.typography.bodyMedium)
-            Text("Every number carries a tag saying where it came from: the exchange (KALSHI / POLYMARKET), a calculation (CALC), the simulator (PAPER) or your settings. Tap any number to see the exact field or formula.", style = MaterialTheme.typography.bodyMedium)
-            Text("Run only one bot per account. If another computer is trading the same account, turn it off first.", style = MaterialTheme.typography.bodyMedium, color = LocalDesk.current.warn)
-        }
-    })
 }

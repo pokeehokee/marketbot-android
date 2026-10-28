@@ -17,6 +17,7 @@ import com.marketbot.core.strategy.Stat
 import com.marketbot.core.strategy.Strategy
 import com.marketbot.core.strategy.StrategyConfig
 import com.marketbot.core.strategy.money
+import com.marketbot.core.strategy.problems
 import com.marketbot.core.strategies.deepitm.DeepItmStrategy
 import com.marketbot.core.strategies.rewards.RewardFarm
 import kotlinx.coroutines.Dispatchers
@@ -79,7 +80,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Cancel one resting order (swipe on Orders); the engine reads fills first. */
     fun cancelOrder(strategyId: String, rowId: Long) = viewModelScope.launch(Dispatchers.IO) {
-        say(runCatching { engine.cancelOne(strategyId, rowId) }.getOrElse { "Cancel failed: ${it.message}" })
+        say(runCatching { engine.cancelOne(strategyId, rowId) }.getOrElse { "Cancel failed. " + plainError(it.message) })
     }
 
     private val _accounts = MutableStateFlow(AccountReading())
@@ -155,9 +156,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun config(s: Strategy): StrategyConfig = withContext(Dispatchers.IO) { engine.config(s) }
     fun saveConfig(s: Strategy, values: Map<String, String>, done: (List<String>) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
-        val errs = s.validate(StrategyConfig(s.params, values))
+        val errs = s.problems(StrategyConfig(s.params, values))
         if (errs.isEmpty()) { engine.saveConfig(s, values); say("Settings saved.") }
         withContext(Dispatchers.Main) { done(errs) }
+    }
+
+    /** Unsaved parameter edits per strategy, kept across tab switches and rotation. */
+    val drafts = androidx.compose.runtime.mutableStateMapOf<String, Map<String, String>>()
+    private val _saved = MutableStateFlow<Map<String, Map<String, String>>>(emptyMap())
+    val savedConfigs = _saved.asStateFlow()
+    fun loadConfig(s: Strategy) = viewModelScope.launch(Dispatchers.IO) { val c = engine.config(s).asMap; _saved.update { it + (s.id to c) } }
+    fun saveDraft(s: Strategy, done: (List<String>) -> Unit) {
+        val d = drafts[s.id] ?: return
+        saveConfig(s, d) { errs -> if (errs.isEmpty()) { drafts.remove(s.id); _saved.update { it + (s.id to d) } }; done(errs) }
     }
 
     suspend fun stats(s: Strategy): List<Stat> = withContext(Dispatchers.IO) { engine.stats(s) }
@@ -178,7 +189,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         say("Stop reset for ${s.name}.")
     }
 
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing = _refreshing.asStateFlow()
+
     fun refreshAccounts() = viewModelScope.launch(Dispatchers.IO) {
+        _refreshing.value = true
+        try { readAccounts() } finally { _refreshing.value = false }
+    }
+
+    private suspend fun readAccounts() {
         val k = engine.kalshiClient; val p = engine.polymarketClient
         val kb = if (k.hasCredentials) runCatching { k.balance() } else null
         val pb = if (p.hasCredentials) runCatching { p.balance() } else null
@@ -230,7 +249,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 a.note(com.marketbot.core.store.LogEvent.Level.TRADE, "transfer", "Moved ${money(amount)} from shard $from to shard $to (transfer ${id ?: "accepted"}).")
                 say("Transfer requested. Kalshi processes it in the background; refresh in a minute.")
             }
-            .onFailure { say("Transfer failed: ${it.message}") }
+            .onFailure { say("Transfer failed. " + plainError(it.message)) }
         kotlinx.coroutines.delay(3_000); refreshAccounts()
     }
 
@@ -275,7 +294,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             getApplication<Application>().contentResolver.openOutputStream(uri, "wt")!!.use { it.write(blob) }
             blob.size
         }.onSuccess { say("Backup saved (${it / 1024} KB). Keep the password: it cannot be recovered.") }
-            .onFailure { say("Backup failed: ${it.message}") }
+            .onFailure { say("Backup failed. " + plainError(it.message)) }
         password.fill(' ')
     }
 
