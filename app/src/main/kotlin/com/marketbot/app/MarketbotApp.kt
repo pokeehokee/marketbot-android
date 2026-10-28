@@ -31,7 +31,8 @@ class MarketbotApp : Application() {
         Health.installCrashLog(this)
         db = MarketbotDb.open(this)
         vault = Vault(this)
-        engine = Engine(roomStores(db), notifier = { title, body -> alert(this, title, body) }, online = { Connectivity.online(this) })
+        engine = Engine(roomStores(db), notifier = { title, body -> alert(this, title, body) }, online = { Connectivity.online(this) },
+            tradeNotifier = { title, body -> trade(this, title, body) })
         createChannels(this)
         appScope.launch {
             engine.setCredentials(vault.credentials())
@@ -67,6 +68,18 @@ class MarketbotApp : Application() {
                 description = "Live orders and settlements."
             })
         }
+
+        /** Fill and settlement notices, grouped under one summary so a busy day stays one entry in the shade. */
+        @Suppress("MissingPermission")
+        fun trade(ctx: Context, title: String, body: String) {
+            val nm = NotificationManagerCompat.from(ctx)
+            val n = NotificationCompat.Builder(ctx, CH_TRADES).setSmallIcon(R.drawable.ic_stat_engine)
+                .setContentTitle(title).setContentText(body).setGroup(GROUP_TRADES).setAutoCancel(true).build()
+            val summary = NotificationCompat.Builder(ctx, CH_TRADES).setSmallIcon(R.drawable.ic_stat_engine)
+                .setContentTitle("Trades").setGroup(GROUP_TRADES).setGroupSummary(true).setAutoCancel(true).build()
+            runCatching { nm.notify((title + body + System.nanoTime()).hashCode(), n); nm.notify(GROUP_TRADES.hashCode(), summary) }
+        }
+        private const val GROUP_TRADES = "com.marketbot.trades"
 
         @Suppress("MissingPermission")
         fun alert(ctx: Context, title: String, body: String) {

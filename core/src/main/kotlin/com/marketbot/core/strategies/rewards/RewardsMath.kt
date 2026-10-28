@@ -119,6 +119,23 @@ data class FarmRules(
 
 /** Port of pmfarm `scanner.py`. */
 object FarmScanner {
+    /**
+     * pmfarm's top-of-book screen: a two-sided book with a spread inside
+     * [FarmRules.maxBookSpread] and one side inside the price band, at most
+     * `maxPerEvent x 3` legs per event (only `maxPerEvent` can be selected, so
+     * full books are not fetched for dozens of alternate lines of one game).
+     */
+    fun screen(cands: List<FarmCandidate>, bbo: Map<String, Pair<Double?, Double?>>, closed: Set<String>, r: FarmRules): List<FarmCandidate> {
+        val perEvent = mutableMapOf<String, Int>()
+        return cands.filter { c ->
+            val (bid, ask) = bbo[c.slug] ?: (null to null)
+            val ok = bid != null && ask != null && c.slug !in closed && c.slug in bbo &&
+                ask - bid > 0 && ask - bid <= r.maxBookSpread + 1e-9 &&
+                ((bid >= r.minPrice && bid <= r.maxPrice) || (ask >= r.minPrice && ask <= r.maxPrice))
+            if (ok && (perEvent[c.eventKey] ?: 0) < r.maxPerEvent * 3) { perEvent.merge(c.eventKey, 1, Int::plus); true } else false
+        }
+    }
+
     val QUOTABLE = setOf("early", "day_of", "daily", "daily_event")
     private val EVENT_RE = Regex("^[a-z0-9]+-(.+?-\\d{4}-\\d{2}-\\d{2})")
 

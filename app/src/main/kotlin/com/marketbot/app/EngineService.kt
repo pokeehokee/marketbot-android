@@ -52,6 +52,7 @@ class EngineService : LifecycleService() {
         getSharedPreferences("service", MODE_PRIVATE).edit().putBoolean("running", true).apply()
         if (engineScope == null) {
             val bootStart = intent?.getBooleanExtra(EXTRA_BOOT, false) == true
+            Health.markStarted(this)
             // A heartbeat left behind means the engine died without a clean stop.
             val gap = Health.gapOnStart(this)
             app.appScope.launch {

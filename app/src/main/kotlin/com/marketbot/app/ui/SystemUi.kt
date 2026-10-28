@@ -87,7 +87,12 @@ fun SystemBanners(vm: MainViewModel) {
     val skew by produceState<Long?>(vm.clockSkewMs()) { while (true) { delay(15_000); value = vm.clockSkewMs() } }
     val wasLive by produceState(emptyList<String>(), killed) { value = if (killed) vm.liveBeforeKill() else emptyList() }
 
+    val running by vm.engineRunning.collectAsState()
+    val missedBoot = com.marketbot.app.Health.missedBootRestart(ctx, com.marketbot.app.EngineService.wasRunning(ctx), running)
     Column(Modifier.padding(top = 4.dp)) {
+        if (missedBoot) Banner(Icons.Outlined.WarningAmber, LocalDesk.current.loss,
+            "The engine didn't restart after the phone rebooted, so nothing has run since. Check battery settings for Marketbot.",
+            action = "Start", onClick = { vm.ensureService() })
         if (demo) Banner(Icons.Outlined.Science, LocalDesk.current.warn, "KALSHI DEMO: fake money on Kalshi's demo exchange. Polymarket is unaffected.")
         if (killed && wasLive.isNotEmpty()) Banner(Icons.Outlined.WarningAmber, LocalDesk.current.loss,
             "Kill switch on. Were live: ${wasLive.joinToString()}. They run in paper until you re-arm each one.")

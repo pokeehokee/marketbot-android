@@ -22,6 +22,7 @@ import com.marketbot.core.strategy.Venue
 import com.marketbot.core.strategy.money
 import com.marketbot.core.util.JSON
 import com.marketbot.core.util.num
+import com.marketbot.core.util.obj
 import com.marketbot.core.util.str
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -69,6 +70,7 @@ class RewardFarm : Strategy {
         Param.Num("event_cutoff_min", "Pull quotes before event start", "Never quote in-game.", 45.0, 5.0, 600.0, "min"),
         Param.Text("exclude_slug_prefixes", "Excluded market families", "Fast-underlying markets get picked off.", "cpc-,cpoc-btc,cpoc-eth"),
         Param.Int_("tick_seconds", "Re-quote every", "Seconds between quoting passes.", 15, 5, 300, "s"),
+        Param.Bool("short_quotes", "Quote the NO side too", "Rest asks as well as bids. Live needs Preflight to confirm Polymarket's NO-side price convention first; until then live quotes bids only, as pmfarm did.", false),
         Param.Int_("rescan_minutes", "Rescan markets every", "Full universe scan interval.", 20, 5, 240, "min"),
     )
 
@@ -89,7 +91,12 @@ class RewardFarm : Strategy {
         var lastScan = Instant.EPOCH; var lastTick: Instant? = null; var paper: PaperFarmBroker? = null; var scannedOnce = false
         var lastSettleCheck = Instant.EPOCH; val metas = mutableMapOf<String, PmMarketMeta>()
         var live: LiveFarmBroker? = null
+        /** Paper: public trade prints, when a Polymarket key is set (pmfarm's TradeStream). */
+        var prints: com.marketbot.core.polymarket.PmTradeStream? = null
+        /** Live: cancels the exchange may not have applied yet; their size still shows in the public book for up to 45 s. */
+        val recentCancels = mutableMapOf<String, MutableList<RecentCancel>>()
     }
+    private data class RecentCancel(val price: Double, val side: String, val qty: Double, val atMs: Long)
     private val rts = mutableMapOf<Mode, Rt>()
     private fun mode(ctx: StrategyContext) = if (ctx.live) Mode.LIVE else Mode.PAPER
     private fun k(ctx: StrategyContext, s: String) = "$id.${mode(ctx).name.lowercase()}.$s"
@@ -116,7 +123,11 @@ class RewardFarm : Strategy {
     override suspend fun runOnce(ctx: StrategyContext): RunReport {
         if (ctx.mode == Mode.OFF) return RunReport("off")
         if (ctx.mode == Mode.LIVE && !ctx.liveArmed) return RunReport("live not armed")
-        val r = rules(ctx.config)
+        val r = rules(ctx.config).let { base ->
+            // Live NO-side quoting only once Preflight has shown the exchange prices shorts the way we send them.
+            val shorts = ctx.config.bool("short_quotes") && (!ctx.live || ctx.stores.state.get("$id.no_convention") == NoConvention.YES_PRICE)
+            base.copy(allowShortQuotes = shorts)
+        }
         val rt = rts.getOrPut(mode(ctx)) { Rt() }
         val now = ctx.clock.now()
         if (inMaintenance(now)) { ctx.info("maintenance", "Exchange maintenance window (Thu 06:00-08:00 ET); pausing."); return RunReport("maintenance") }
@@ -125,12 +136,17 @@ class RewardFarm : Strategy {
         val br = broker(ctx, rt)
 
         // Paper: refresh books of everything held/quoted first, so marks are real before valuing.
+        // Trade prints since the last tick go first: they say which shrinkage was trading.
         val books = mutableMapOf<String, PmBook>()
         if (!br.live) {
             val slugs = (br.positions().keys + br.openOrders().map { it.slug }).toSet()
-            for (s in slugs) runCatching { ctx.polymarket.book(s) }.getOrNull()?.let { b ->
-                books[s] = b
-                for (f in br.onBook(b)) ctx.trade("paper_fill", "Paper fill ${f.slug} ${f.side} ${"%.3f".format(f.price)} x ${"%.2f".format(f.qty)} (${f.why})")
+            printStream(ctx, rt)?.setMarkets(slugs + rt.targets.keys)
+            for (s in slugs) {
+                val fromPrints = rt.prints?.drain(s).orEmpty().flatMap { br.onTrade(it) }
+                val b = runCatching { ctx.polymarket.book(s) }.getOrNull()
+                if (b != null) books[s] = b
+                for (f in fromPrints + (b?.let { br.onBook(it) } ?: emptyList()))
+                    ctx.trade("paper_fill", "Paper fill ${f.slug} ${f.side} ${"%.3f".format(f.price)} x ${"%.2f".format(f.qty)} (${f.why})")
             }
         }
         settlements(ctx, rt, br, now)
@@ -179,16 +195,27 @@ class RewardFarm : Strategy {
         return RunReport("tick")
     }
 
+    private fun printStream(ctx: StrategyContext, rt: Rt): com.marketbot.core.polymarket.PmTradeStream? {
+        if (rt.prints == null) ctx.polymarket.signerForStream?.let { s -> rt.prints = com.marketbot.core.polymarket.PmTradeStream(s).also { it.start() } }
+        return rt.prints
+    }
+
     private suspend fun scan(ctx: StrategyContext, rt: Rt, r: FarmRules, equity: Double, now: Instant) {
         rt.lastScan = now
         val programs = runCatching { ctx.polymarket.liquidityPrograms() }.getOrElse {
             ctx.warn("scan", "Incentive programs unavailable: ${it.message}; retrying next tick."); rt.lastScan = Instant.EPOCH; return
         }
-        val cands = programs.mapNotNull { FarmScanner.activePeriods(it, now, r) }.filter { it.sideRate >= r.minSideRatePerDay }
-            .sortedByDescending { it.sideRate }.take(r.maxCandidates)
+        val all = programs.mapNotNull { FarmScanner.activePeriods(it, now, r) }.filter { it.sideRate >= r.minSideRatePerDay }
+            .sortedByDescending { it.sideRate }
+        // Cheap screen on bulk top of book (50 markets a request) before paying for full books, as pmfarm does.
+        val bbo = runCatching { ctx.polymarket.marketsBulk(all.map { it.slug }) }.getOrElse {
+            ctx.warn("scan", "Top-of-book screen unavailable: ${it.message}; retrying next tick."); rt.lastScan = Instant.EPOCH; return
+        }
+        bbo.forEach { (slug, v) -> rt.metas[slug] = v.first }
+        val cands = FarmScanner.screen(all, bbo.mapValues { it.value.second }, bbo.filterValues { it.first.closed }.keys, r).take(r.maxCandidates)
         val budget = minOf(r.perInstrumentFrac * equity, r.perInstrumentMaxUsd)
         val plans = mutableListOf<QuotePlan>()
-        for (c in cands.take(60)) {
+        for (c in cands) {
             val m = runCatching { meta(ctx, rt, c.slug) }.getOrNull() ?: continue
             val b = runCatching { ctx.polymarket.book(c.slug) }.getOrNull() ?: continue
             if (!b.open) continue
@@ -198,7 +225,7 @@ class RewardFarm : Strategy {
         rt.known.putAll(cands.associateBy { it.slug })
         rt.targets = selected.associate { it.slug to rt.known.getValue(it.slug) }
         rt.scannedOnce = true
-        ctx.info("scan", "${cands.size} candidates, ${plans.size} plannable, ${selected.size} selected (est ${money(selected.sumOf { it.usdPerDay })}/day after calibration).")
+        ctx.info("scan", "${all.size} in programs, ${cands.size} passed the top-of-book screen, ${plans.size} plannable, ${selected.size} selected (est ${money(selected.sumOf { it.usdPerDay })}/day after calibration).")
     }
 
     /** Returns (estimated uncalibrated $/day of what rests, remaining entry slots). */
@@ -212,8 +239,13 @@ class RewardFarm : Strategy {
         val book = books[slug] ?: ctx.polymarket.book(slug).also { books[slug] = it; if (!br.live) br.onBook(it) }
         val ownBid = own.filter { it.side == "bid" }.groupBy { RewardsMath.r6(it.price) }.mapValues { e -> e.value.sumOf { it.qtyLeft } }
         val ownAsk = own.filter { it.side == "ask" }.groupBy { RewardsMath.r6(it.price) }.mapValues { e -> e.value.sumOf { it.qtyLeft } }
-        val bids = if (br.live) RewardsMath.withoutOwn(book.bids, ownBid) else book.bids
-        val asks = if (br.live) RewardsMath.withoutOwn(book.asks, ownAsk) else book.asks
+        // A cancel can still show in the public book for a while: count its size as ours too (pmfarm, 45 s).
+        val fresh = rt.recentCancels[slug].orEmpty().filter { ctx.clock.now().toEpochMilli() - it.atMs < 45_000 }
+        if (fresh.isEmpty()) rt.recentCancels.remove(slug) else rt.recentCancels[slug] = fresh.toMutableList()
+        val ownBidAll = ownBid.toMutableMap().also { m -> fresh.filter { it.side == "bid" }.forEach { c -> m.merge(RewardsMath.r6(c.price), c.qty, Double::plus) } }
+        val ownAskAll = ownAsk.toMutableMap().also { m -> fresh.filter { it.side == "ask" }.forEach { c -> m.merge(RewardsMath.r6(c.price), c.qty, Double::plus) } }
+        val bids = if (br.live) RewardsMath.withoutOwn(book.bids, ownBidAll) else book.bids
+        val asks = if (br.live) RewardsMath.withoutOwn(book.asks, ownAskAll) else book.asks
         val posQty = pos?.qty ?: 0.0
 
         data class Desired(val side: String, val price: Double, val qty: Double, val intent: String, val kind: String)
@@ -248,8 +280,11 @@ class RewardFarm : Strategy {
             val match = want.firstOrNull { d -> d.side == o.side && d.intent == o.intent && abs(d.price - o.price) < m.tick / 2 &&
                 abs(d.qty - o.qtyLeft) <= maxOf(m.minQty, 0.2 * d.qty) }
             if (match != null && match !in keep) { keep += match; resting += Triple(o.side, o.price, o.qtyLeft) }
-            else if (!br.cancel(slug, o.id)) stuck += o.side
-            else if ("BUY_" in o.intent) slots++
+            else if (!br.cancel(slug, o.id)) stuck += o.side   // still live: it shows in open orders next tick, so not a "recent cancel"
+            else {
+                if (br.live) rt.recentCancels.getOrPut(slug) { mutableListOf() } += RecentCancel(o.price, o.side, o.qtyLeft, ctx.clock.now().toEpochMilli())
+                if ("BUY_" in o.intent) slots++
+            }
         }
         for (d in want) {
             if (d in keep || d.side in stuck || (stuck.isNotEmpty() && d.kind == "entry")) continue
@@ -305,6 +340,7 @@ class RewardFarm : Strategy {
         val rt = rts[mode(ctx)] ?: Rt()
         runCatching { broker(ctx, rt).cancelAll() }
         savePaper(ctx, rt)
+        rt.prints?.stop(); rt.prints = null
     }
 
     suspend fun resetKill(ctx: StrategyContext) { ctx.stores.state.put(k(ctx, "risk"), null) }
@@ -338,6 +374,11 @@ class RewardFarm : Strategy {
             steps += "Read reward earnings (${earnings.size} rows)" to true
             val progs = ctx.polymarket.liquidityPrograms(maxPages = 1)
             steps += "Read liquidity programs (${progs.size})" to progs.isNotEmpty()
+            if (ctx.config.bool("short_quotes")) {
+                val verdict = noConvention(ctx, progs.mapNotNull { it.str("marketSlug") ?: it.str("slug") })
+                ctx.stores.state.put("$id.no_convention", verdict.first)
+                steps += "NO-side price convention: ${verdict.second}" to (verdict.first == NoConvention.YES_PRICE)
+            }
         } catch (e: Exception) { steps += "Error: ${e.message}" to false }
         val ok = steps.all { it.second }
         if (ok) ctx.stores.state.put("$id.preflight_ok_at", ctx.clock.now().toString())
@@ -345,8 +386,52 @@ class RewardFarm : Strategy {
         return PreflightResult(ok, steps, if (ok) "All checks passed." else "Some checks failed.")
     }
 
+    object NoConvention { const val YES_PRICE = "yes_price"; const val NO_PRICE = "no_price"; const val UNVERIFIED = "unverified" }
+
+    /**
+     * pmfarm's preflight check, decided rather than printed: preview a 1-contract
+     * BUY_SHORT at the YES ask and at 1 - ask. The docs say a short's price is the
+     * YES price; that is confirmed when the YES-price preview is accepted and costs
+     * about 1 - ask, or when only it is accepted. Anything else stays unverified.
+     */
+    suspend fun noConvention(ctx: StrategyContext, slugs: List<String>): Pair<String, String> {
+        for (slug in slugs.take(10)) {
+            val b = runCatching { ctx.polymarket.book(slug) }.getOrNull() ?: continue
+            val ask = b.bestAsk ?: continue
+            if (b.bestBid == null || ask <= 0.05 || ask >= 0.95) continue
+            val yes = runCatching { ctx.polymarket.preview(slug, "ORDER_INTENT_BUY_SHORT", ask, 1.0) }
+            val no = runCatching { ctx.polymarket.preview(slug, "ORDER_INTENT_BUY_SHORT", RewardsMath.r6(1 - ask), 1.0) }
+            val cost = yes.getOrNull()?.let { previewCost(it) }
+            val detail = "$slug ask ${"%.3f".format(ask)}: YES-price preview ${if (yes.isSuccess) "accepted" + (cost?.let { " (cost ${"%.3f".format(it)})" } ?: "") else "rejected"}, " +
+                "NO-price preview ${if (no.isSuccess) "accepted" else "rejected"}"
+            return when {
+                cost != null && kotlin.math.abs(cost - (1 - ask)) <= 0.02 -> NoConvention.YES_PRICE to "$detail. Confirmed: shorts are priced as YES."
+                cost != null && kotlin.math.abs(cost - ask) <= 0.02 -> NoConvention.NO_PRICE to "$detail. Shorts are priced as NO: NO-side quoting stays off."
+                yes.isSuccess && no.isFailure -> NoConvention.YES_PRICE to "$detail. Only the YES-price form is accepted."
+                else -> NoConvention.UNVERIFIED to "$detail. Not conclusive: NO-side quoting stays off live."
+            }
+        }
+        return NoConvention.UNVERIFIED to "no market with a two-sided book between 5c and 95c to test on"
+    }
+
+    /** The cost of a previewed order, from the first field that carries one. */
+    private fun previewCost(o: kotlinx.serialization.json.JsonObject): Double? {
+        val p = o.obj("preview") ?: o.obj("order") ?: o
+        for (k in listOf("cost", "totalCost", "estimatedCost", "notional", "cashRequired", "collateral", "buyingPowerRequired"))
+            (p.num(k) ?: p.obj(k)?.num("value"))?.let { return it }
+        return null
+    }
+
     override suspend fun stats(ctx: StrategyContext): List<Stat> {
         val out = mutableListOf<Stat>()
+        if (ctx.mode == Mode.PAPER) {
+            val p = rts[Mode.PAPER]?.prints
+            out += Stat("Paper fill model", if (p?.connected == true)
+                Sourced.derived("trade prints + books", "Polymarket markets websocket (${p.received} prints) and book snapshots",
+                    "prints say which book shrinkage was trading and which was cancels, as pmfarm does")
+            else Sourced.derived("book snapshots only", "public order books",
+                "optimistic: without trade prints a cancel ahead of us looks like a trade, so paper fills more than live would. Add a Polymarket key to get prints."))
+        }
         for (m in listOf(Mode.LIVE, Mode.PAPER)) {
             val est = ctx.stores.state.get("$id.${m.name.lowercase()}.estimates")?.let { runCatching { JSON.decodeFromString(EST, it) }.getOrNull() } ?: continue
             out += Stat("${m.name.lowercase().replaceFirstChar { it.uppercase() }} estimated rewards (uncalibrated x calibration)",

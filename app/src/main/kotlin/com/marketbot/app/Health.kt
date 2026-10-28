@@ -42,6 +42,22 @@ object Health {
         return if (now - last > threshold) Instant.ofEpochMilli(last) to Instant.ofEpochMilli(now) else null
     }
 
+    /** Called whenever the engine service starts. */
+    fun markStarted(ctx: Context, at: Long = System.currentTimeMillis()) = prefs(ctx).edit().putLong("started_at", at).apply()
+
+    /**
+     * True when the engine should be running (it was not stopped by the user),
+     * is not, and has not started since the phone last booted: Android or the
+     * maker's battery manager blocked the restart.
+     */
+    fun missedBootRestart(ctx: Context, shouldRun: Boolean, running: Boolean,
+                          now: Long = System.currentTimeMillis(), sinceBoot: Long = android.os.SystemClock.elapsedRealtime()): Boolean {
+        if (!shouldRun || running) return false
+        val bootAt = now - sinceBoot
+        val started = prefs(ctx).getLong("started_at", 0)
+        return started in 1 until bootAt && sinceBoot > 3 * 60_000L   // give the boot receiver a few minutes
+    }
+
     fun crashFile(ctx: Context) = File(ctx.filesDir, "last_crash.txt")
 
     /** Keep the stack trace of an uncaught exception, then let the process die as it would have. */

@@ -35,6 +35,8 @@ interface FarmBroker {
     suspend fun cancelAll()
     /** Paper only: apply a fresh book (marks, queue progress, fills). */
     fun onBook(book: PmBook): List<FarmFill> = emptyList()
+    /** Paper only: apply one public trade print. */
+    fun onTrade(t: com.marketbot.core.polymarket.PmTrade): List<FarmFill> = emptyList()
     fun settle(slug: String, value: Double): Double? = null
 }
 
@@ -107,7 +109,7 @@ class LiveFarmBroker(
 
 @Serializable
 data class PaperOrder(val slug: String, val side: String, val price: Double, var qty: Double, val intent: String,
-                      val ts: Long, var ahead: Double, var level: Double)
+                      val ts: Long, var ahead: Double, var level: Double, var traded: Double = 0.0)
 
 @Serializable
 data class PaperPos(var qty: Double, var avgPx: Double)
@@ -208,6 +210,39 @@ class PaperFarmBroker(var s: PaperFarmState, private val clockMs: () -> Long = {
         p.qty = new
     }
 
+    /** Markets with a live trade-print feed: their book shrinkage is then split into trades and cancels. */
+    private val tradeFed = mutableSetOf<String>()
+    fun tradeFed(slug: String) = slug in tradeFed
+
+    /**
+     * One public trade print (pmfarm `on_trade`). A print against our side at our
+     * price first consumes the size ahead of us, then fills us; a print at a worse
+     * price swept through our level and fills us whole.
+     */
+    override fun onTrade(t: com.marketbot.core.polymarket.PmTrade): List<FarmFill> {
+        tradeFed += t.slug
+        val fills = mutableListOf<FarmFill>()
+        for ((id, o) in s.orders.entries.filter { it.value.slug == t.slug }.sortedBy { it.value.ts }) {
+            if (id !in s.orders) continue
+            val hitsUs = (o.side == "bid" && t.takerSide == "ORDER_SIDE_SELL") || (o.side == "ask" && t.takerSide == "ORDER_SIDE_BUY")
+            if (!hitsUs) continue
+            val m = s.marks[t.slug] ?: (null to null)
+            if ((if (o.side == "bid") m.first else m.second) == null)
+                s.marks[t.slug] = if (o.side == "bid") t.price to m.second else m.first to t.price
+            val through = if (o.side == "bid") t.price < o.price - 1e-9 else t.price > o.price + 1e-9
+            if (through) fill(id, o, o.qty, "trade-through", fills)
+            else if (abs(t.price - o.price) < 1e-9) {
+                val used = minOf(o.ahead, t.qty)
+                o.ahead -= used
+                o.traded += t.qty
+                fill(id, o, t.qty - used, "queue", fills)
+            }
+        }
+        val keep = s.positions.filter { abs(it.value.qty) > 1e-9 }.keys + s.orders.values.map { it.slug }
+        s.marks.keys.retainAll(keep)
+        return fills
+    }
+
     override fun onBook(book: PmBook): List<FarmFill> {
         val live = s.positions.filter { abs(it.value.qty) > 1e-9 }.keys + s.orders.values.map { it.slug }
         if (book.slug in live) {
@@ -221,13 +256,21 @@ class PaperFarmBroker(var s: PaperFarmState, private val clockMs: () -> Long = {
                 (o.side == "ask" && book.bestBid != null && book.bestBid!! >= o.price - 1e-9)
             if (crossed) { fill(id, o, o.qty, "cross", fills); continue }
             val level = (if (o.side == "bid") book.bids else book.asks).filter { abs(it.price - o.price) < 1e-9 }.sumOf { it.qty }
-            val shrink = maxOf(0.0, o.level - level)
+            val prevLevel = o.level
+            val shrink = maxOf(0.0, prevLevel - level)
             if (shrink > 0) {
-                val used = minOf(o.ahead, shrink)
-                o.ahead -= used
-                fill(id, o, shrink - used, "queue", fills)
+                if (book.slug in tradeFed) {
+                    // Prints already consumed the queue; the rest of the shrinkage is cancels, spread over ahead and behind.
+                    val cancels = maxOf(0.0, shrink - o.traded)
+                    o.ahead = maxOf(0.0, o.ahead - cancels * (if (prevLevel > 0) o.ahead / prevLevel else 0.0))
+                } else {
+                    // Without prints, trades and cancels look the same: only size beyond what was ahead fills us.
+                    val used = minOf(o.ahead, shrink)
+                    o.ahead -= used
+                    fill(id, o, shrink - used, "queue", fills)
+                }
             }
-            if (id in s.orders) o.level = level
+            if (id in s.orders) { o.level = level; o.traded = 0.0 }
         }
         val keep = s.positions.filter { abs(it.value.qty) > 1e-9 }.keys + s.orders.values.map { it.slug }
         s.marks.keys.retainAll(keep)

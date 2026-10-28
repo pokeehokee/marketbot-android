@@ -99,6 +99,26 @@ class PolymarketClient(
     private val gw = gateway ?: JsonHttp(PM_GATEWAY, limiter = RateLimiter(3.0))
     private val api = api ?: JsonHttp(PM_API, limiter = RateLimiter(5.0))
     val hasCredentials get() = signer != null
+    val signerForStream: RequestSigner? get() = signer
+
+    /**
+     * Top of book for many markets, 50 per request (pmfarm `markets_bulk`): the cheap
+     * screen before paying for full books. Metadata from the same rows is returned too.
+     * A chunk that fails is left out; the next scan retries it.
+     */
+    suspend fun marketsBulk(slugs: List<String>, chunk: Int = 50): Map<String, Pair<PmMarketMeta, Pair<Double?, Double?>>> {
+        val out = mutableMapOf<String, Pair<PmMarketMeta, Pair<Double?, Double?>>>()
+        for (part in slugs.chunked(chunk)) {
+            val d = try { gw.get("/v1/markets", part.map { "slug" to it } + ("limit" to "${part.size}")) }
+                catch (e: ApiException) { if (e.status == 403 || e.status == 429) throw e else continue }   // throttled: back off, don't skip into a ban
+                catch (e: java.io.IOException) { continue }
+            for (m in d.objects("markets")) {
+                val slug = m.str("slug") ?: continue
+                out[slug] = PmMarketMeta(m) to (m.obj("bestBidQuote")?.num("value") to m.obj("bestAskQuote")?.num("value"))
+            }
+        }
+        return out
+    }
     private fun s() = signer ?: throw IllegalStateException("Polymarket API key not configured")
 
     // ---------------------------------------------------------------- public gateway

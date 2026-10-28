@@ -18,6 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -72,5 +73,15 @@ class SystemTest {
         listOf("samsung", "Xiaomi", "OnePlus", "HUAWEI", "vivo").forEach { assertNotNull(Health.oemAdvice(it), it) }
         assertNull(Health.oemAdvice("Google"))
         assertTrue(Health.oemAdvice("samsung")!!.contains("Never sleeping"))
+    }
+
+    @Test fun `a reboot the engine did not come back from is noticed`() {
+        val now = 10_000_000_000L
+        Health.markStarted(ctx, at = now - 2 * 3_600_000)              // started 2 h ago
+        assertTrue(Health.missedBootRestart(ctx, shouldRun = true, running = false, now = now, sinceBoot = 3_600_000))  // booted 1 h ago
+        assertFalse(Health.missedBootRestart(ctx, shouldRun = true, running = false, now = now, sinceBoot = 60_000), "boot receiver still has time")
+        assertFalse(Health.missedBootRestart(ctx, shouldRun = false, running = false, now = now, sinceBoot = 3_600_000), "user stopped it")
+        Health.markStarted(ctx, at = now - 1_000)
+        assertFalse(Health.missedBootRestart(ctx, shouldRun = true, running = false, now = now, sinceBoot = 3_600_000), "started after boot")
     }
 }

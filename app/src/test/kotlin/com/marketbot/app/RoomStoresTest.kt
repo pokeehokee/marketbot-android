@@ -93,4 +93,15 @@ class RoomStoresTest {
         v.saveKalshi(null, null)
         assertNull(v.credentials().kalshiPem)
     }
+
+    @Test fun `room ledger keeps every invariant under random histories`() = runTest {
+        for (seed in 1..8) {
+            val d = MarketbotDb.inMemory(ctx)
+            try {
+                val l = roomStores(d).ledger
+                val ids = com.marketbot.core.store.LedgerChecks.randomHistory(l, seed, n = 250)
+                assertEquals(emptyList(), com.marketbot.core.store.LedgerChecks.violations(l, ids), "seed $seed")
+            } finally { d.close() }
+        }
+    }
 }

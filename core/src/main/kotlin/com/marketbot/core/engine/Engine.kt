@@ -3,6 +3,8 @@ package com.marketbot.core.engine
 import com.marketbot.core.btc.BtcIndex
 import com.marketbot.core.kalshi.KALSHI_BASE
 import com.marketbot.core.kalshi.KALSHI_DEMO_BASE
+import com.marketbot.core.kalshi.KALSHI_DEMO_WS
+import com.marketbot.core.kalshi.KALSHI_WS
 import com.marketbot.core.kalshi.KalshiClient
 import com.marketbot.core.net.NetStats
 import com.marketbot.core.net.KalshiSigner
@@ -82,7 +84,13 @@ class Engine(
     private val clientFactory: (Credentials) -> Pair<KalshiClient, PolymarketClient> = ::defaultClients,
     /** Whether the phone has a usable connection. Offline, passes wait instead of failing over and over. */
     private val online: () -> Boolean = { true },
+    /** Fill notices (the "Trades" channel), separate from alerts. */
+    private val tradeNotifier: suspend (String, String) -> Unit = notifier,
+    /** Opens Kalshi's private fill channel; null disables it (tests). */
+    private val fillStreamFactory: ((KalshiClient, (com.marketbot.core.kalshi.KalshiFill) -> Unit) -> com.marketbot.core.kalshi.KalshiFillStream?)? = ::defaultFillStream,
 ) {
+    private var fills: com.marketbot.core.kalshi.KalshiFillStream? = null
+    val fillStreamConnected: Boolean get() = fills?.connected == true
     private val jobs = mutableMapOf<String, Job>()
     private val lock = Mutex()
     /** One pass of a strategy at a time: a scheduled pass, Run now, stop and the kill switch all take this lock. */
@@ -130,8 +138,28 @@ class Engine(
     val kalshiClient get() = kalshi
     val polymarketClient get() = polymarket
 
-    suspend fun setCredentials(c: Credentials) = lock.withLock {
-        val (k, p) = clientFactory(c); kalshi = k; polymarket = p
+    suspend fun setCredentials(c: Credentials) {
+        lock.withLock { val (k, p) = clientFactory(c); kalshi = k; polymarket = p }
+        if (_running.value) restartFillStream()
+    }
+
+    /** Kalshi's fill channel, while the engine runs with a Kalshi key. Reports only; the ledger reads fills from the order. */
+    private fun restartFillStream() {
+        fills?.stop(); fills = null
+        val sc = scope ?: return
+        fills = fillStreamFactory?.invoke(kalshi) { f -> sc.launch { onKalshiFill(f) } }?.also { it.start() }
+    }
+
+    private suspend fun onKalshiFill(f: com.marketbot.core.kalshi.KalshiFill) {
+        val q = strategies.firstNotNullOfOrNull { s -> stores.ledger.open(s.id, Mode.LIVE).firstOrNull { it.orderId == f.orderId } }
+        val what = "${f.action} ${f.side} ${"%.0f".format(f.count)} x ${f.ticker}" + (f.yesPrice?.let { " at YES ${"%.2f".format(it)}" } ?: "")
+        log(q?.strategyId, LogEvent.Level.TRADE, "fill", "Filled: $what",
+            buildMap {
+                put("count", com.marketbot.core.provenance.Sourced.kalshi(f.count, "ws fill#count_fp", clock.now()))
+                f.yesPrice?.let { put("yes_price", com.marketbot.core.provenance.Sourced.kalshi(it, "ws fill#yes_price_dollars", clock.now())) }
+            })
+        tradeNotifier("Filled on Kalshi", what)
+        poke()
     }
 
     // ------------------------------------------------------------------ persisted settings
@@ -169,6 +197,7 @@ class Engine(
             _globalKill.value = isKilled()
             for (s in strategies) if (mode(s.id) != Mode.OFF) launchStrategy(s)
             ensureIndex()
+            restartFillStream()
         }
     }
 
@@ -181,6 +210,7 @@ class Engine(
         for (s in strategies) stopStrategy(s, callOnStop = true)
         val resting = strategies.sumOf { s -> stores.ledger.open(s.id, Mode.LIVE).count { it.resting } }
         btcIndex.stop()
+        fills?.stop(); fills = null
         _running.value = false
         scope = null
         return if (resting == 0) "Engine stopped. No live orders are resting."
@@ -376,13 +406,21 @@ class Engine(
         _status.value = _status.value + (id to f(cur))
     }
 
-    private suspend fun log(id: String?, level: LogEvent.Level, kind: String, msg: String) =
-        stores.events.log(LogEvent(clock.now(), id, level, kind, msg))
+    private suspend fun log(id: String?, level: LogEvent.Level, kind: String, msg: String,
+                            values: Map<String, com.marketbot.core.provenance.Sourced<*>> = emptyMap()) =
+        stores.events.log(LogEvent(clock.now(), id, level, kind, msg, values))
 
     companion object {
         private val CFG = MapSerializer(String.serializer(), String.serializer())
         /** Strategies that re-run sooner than this keep the CPU awake; slower ones are woken by an alarm. */
         val CONTINUOUS_BELOW: java.time.Duration = java.time.Duration.ofMinutes(5)
+
+        fun defaultFillStream(k: KalshiClient, onFill: (com.marketbot.core.kalshi.KalshiFill) -> Unit): com.marketbot.core.kalshi.KalshiFillStream? =
+            k.signerForStream?.let { s ->
+                // Only the two real exchanges have a websocket; any other base (a test server) gets none.
+                val url = when (k.base) { KALSHI_BASE -> KALSHI_WS; KALSHI_DEMO_BASE -> KALSHI_DEMO_WS; else -> null }
+                url?.let { com.marketbot.core.kalshi.KalshiFillStream(s, it, onFill) }
+            }
 
         fun defaultClients(c: Credentials): Pair<KalshiClient, PolymarketClient> {
             val base = if (c.kalshiDemo) KALSHI_DEMO_BASE else KALSHI_BASE
