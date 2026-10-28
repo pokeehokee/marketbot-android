@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -55,11 +56,56 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toastShown() { _toast.value = null }
     private fun say(s: String) { _toast.value = s }
 
-    fun hasKalshi() = a.vault.credentials().let { !it.kalshiKeyId.isNullOrBlank() && (!it.kalshiPem.isNullOrBlank() || it.kalshiSignBytes != null) }
-    fun kalshiInHardware() = a.vault.kalshiInHardware()
-    fun hasPolymarket() = a.vault.credentials().let { !it.polymarketKeyId.isNullOrBlank() && !it.polymarketSecret.isNullOrBlank() }
-    fun kalshiHint() = a.vault.kalshiHint()
-    fun polymarketHint() = a.vault.polymarketHint()
+    /** What keys exist, read once and after each change: decrypting the vault on every redraw caused jank. */
+    data class KeyFlags(val kalshi: Boolean, val polymarket: Boolean, val kalshiHint: String?, val polymarketHint: String?, val kalshiInHardware: Boolean)
+    private fun readKeys() = a.vault.credentials().let { c ->
+        KeyFlags(!c.kalshiKeyId.isNullOrBlank() && (!c.kalshiPem.isNullOrBlank() || c.kalshiSignBytes != null),
+            !c.polymarketKeyId.isNullOrBlank() && !c.polymarketSecret.isNullOrBlank(), a.vault.kalshiHint(), a.vault.polymarketHint(), a.vault.kalshiInHardware())
+    }
+    private val _keys = MutableStateFlow(readKeys())
+    val keys = _keys.asStateFlow()
+    private fun refreshKeys() { _keys.value = readKeys() }
+    fun hasKalshi() = _keys.value.kalshi
+    fun kalshiInHardware() = _keys.value.kalshiInHardware
+    fun hasPolymarket() = _keys.value.polymarket
+    fun kalshiHint() = _keys.value.kalshiHint
+    fun polymarketHint() = _keys.value.polymarketHint
+
+    // ---------------------------------------------------------------- per-strategy screen state, kept across rotation
+    data class StrategyUi(
+        val stats: List<Stat>? = null, val reqs: List<Requirement>? = null, val arm: com.marketbot.core.engine.ArmRecord? = null,
+        val preflight: PreflightResult? = null, val preflightBusy: Boolean = false, val message: String? = null,
+    )
+    private val _ui = MutableStateFlow<Map<String, StrategyUi>>(emptyMap())
+    val strategyUi = _ui.asStateFlow()
+    private fun edit(id: String, f: (StrategyUi) -> StrategyUi) = _ui.update { m -> m + (id to f(m[id] ?: StrategyUi())) }
+
+    fun loadStats(s: Strategy) = viewModelScope.launch(Dispatchers.IO) { val st = stats(s); edit(s.id) { it.copy(stats = st) } }
+
+    /** The go-live checklist; some checks call the exchange, so only on first open or when asked. */
+    fun loadGoLive(s: Strategy, force: Boolean = false) = viewModelScope.launch(Dispatchers.IO) {
+        if (!force && _ui.value[s.id]?.reqs != null) return@launch
+        val r = requirements(s); val arm = engine.armRecord(s.id)
+        edit(s.id) { it.copy(reqs = r, arm = arm) }
+    }
+
+    fun runPreflight(s: Strategy) = viewModelScope.launch(Dispatchers.IO) {
+        edit(s.id) { it.copy(preflightBusy = true) }
+        val p = preflight(s)
+        edit(s.id) { it.copy(preflight = p, preflightBusy = false) }
+        loadGoLive(s, force = true)
+    }
+
+    fun armLive(s: Strategy, acks: Set<String>) = viewModelScope.launch(Dispatchers.IO) {
+        val (ok, m) = arm(s, acks)
+        edit(s.id) { it.copy(message = m) }
+        if (ok) loadGoLive(s, force = true)
+    }
+
+    fun disarmLive(s: Strategy) = viewModelScope.launch(Dispatchers.IO) { engine.disarm(s); say("Live trading disarmed."); loadGoLive(s, force = true) }
+
+    /** BTC index warm-up: (share of the 5-minute minimum, candle volatility loaded, fresh venues). */
+    fun btcWarmup(): Triple<Double, Boolean, Int> = engine.btcIndex.warmup().let { (f, c) -> Triple(f, c, engine.btcIndex.freshVenues()) }
 
     fun modeOf(id: String): Mode = modes.value.firstOrNull { it.key == "strategy.$id.mode" }?.value?.let { runCatching { Mode.valueOf(it) }.getOrNull() } ?: Mode.OFF
 
@@ -111,17 +157,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun saveKalshi(keyId: String, pem: String) = viewModelScope.launch(Dispatchers.IO) {
         val err = runCatching { if (pem.isNotBlank()) com.marketbot.core.net.KalshiSigner(keyId, pem) }.exceptionOrNull()
         if (err != null) { say(err.message ?: "That key could not be read."); return@launch }
-        a.vault.saveKalshi(keyId, pem); engine.setCredentials(a.vault.credentials()); say("Kalshi key saved."); refreshAccounts()
+        a.vault.saveKalshi(keyId, pem); engine.setCredentials(a.vault.credentials()); refreshKeys(); say(if (a.vault.kalshiInHardware()) "Kalshi key saved in secure hardware." else "Kalshi key saved."); refreshAccounts()
     }
 
     fun savePolymarket(keyId: String, secret: String) = viewModelScope.launch(Dispatchers.IO) {
         val err = runCatching { if (secret.isNotBlank()) com.marketbot.core.net.PolymarketSigner(keyId, secret) }.exceptionOrNull()
         if (err != null) { say(err.message ?: "That key could not be read."); return@launch }
-        a.vault.savePolymarket(keyId, secret); engine.setCredentials(a.vault.credentials()); say("Polymarket key saved."); refreshAccounts()
+        a.vault.savePolymarket(keyId, secret); engine.setCredentials(a.vault.credentials()); refreshKeys(); say("Polymarket key saved."); refreshAccounts()
     }
 
-    fun clearKalshi() = viewModelScope.launch(Dispatchers.IO) { a.vault.saveKalshi(null, null); engine.setCredentials(a.vault.credentials()); say("Kalshi key removed.") }
-    fun clearPolymarket() = viewModelScope.launch(Dispatchers.IO) { a.vault.savePolymarket(null, null); engine.setCredentials(a.vault.credentials()); say("Polymarket key removed.") }
+    fun clearKalshi() = viewModelScope.launch(Dispatchers.IO) { a.vault.saveKalshi(null, null); engine.setCredentials(a.vault.credentials()); refreshKeys(); say("Kalshi key removed.") }
+    fun clearPolymarket() = viewModelScope.launch(Dispatchers.IO) { a.vault.savePolymarket(null, null); engine.setCredentials(a.vault.credentials()); refreshKeys(); say("Polymarket key removed.") }
 
     // ---------------------------------------------------------------- Kalshi account options
     fun kalshiDemo() = a.vault.kalshiDemo()

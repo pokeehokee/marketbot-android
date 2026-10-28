@@ -21,14 +21,15 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.outlined.CheckBox
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -61,9 +62,10 @@ import com.marketbot.core.strategies.rewards.RewardFarm
 import kotlinx.coroutines.launch
 
 @Composable
-fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit) {
+fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab: Int = 0) {
     val s = vm.strategies.first { it.id == id }
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(initialTab) }
+    val running by vm.engineRunning.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = 4.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
@@ -73,13 +75,13 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit) {
             }
             val st by vm.status.collectAsState()
             vm.modes.collectAsState().value
-            ModePill(st[s.id]?.mode ?: vm.modeOf(s.id), st[s.id]?.armed == true)
+            ModePill(st[s.id]?.mode ?: vm.modeOf(s.id), st[s.id]?.armed == true, running)
         }
-        PrimaryTabRow(tab) {
-            listOf("Overview", "Settings", "Go live", "Orders").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
+        androidx.compose.material3.PrimaryScrollableTabRow(tab, edgePadding = 8.dp) {
+            listOf("Overview", "Parameters", "Go live", "Orders").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t, maxLines = 1) }) }
         }
         when (tab) {
-            0 -> Overview(vm, s)
+            0 -> Overview(vm, s) { tab = 2 }
             1 -> SettingsForm(vm, s)
             2 -> GoLive(vm, s)
             else -> Orders(vm, s)
@@ -88,16 +90,21 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun Overview(vm: MainViewModel, s: Strategy) {
+private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
     val status by vm.status.collectAsState()
+    val ui by vm.strategyUi.collectAsState()
+    val running by vm.engineRunning.collectAsState()
     val st = status[s.id]
-    var stats by remember { mutableStateOf<List<Stat>>(emptyList()) }
-    LaunchedEffect(st?.lastRunAt) { stats = vm.stats(s) }
+    val stats = ui[s.id]?.stats
+    LaunchedEffect(st?.lastRunAt) { vm.loadStats(s) }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(s.summary, style = MaterialTheme.typography.bodyLarge)
         Section("Mode") {
             val mode = st?.mode ?: vm.modeOf(s.id)
-            ModeSelector(if (mode == Mode.LIVE) Mode.LIVE else mode, s.supportedModes - Mode.LIVE) { vm.setMode(s, it) }
+            ModeControl(vm, s, mode, onGoLive)
+            if (mode != Mode.OFF && !running) Text("The engine is off, so nothing runs. Start it from Home.", style = MaterialTheme.typography.bodySmall,
+                color = LocalDesk.current.warn, modifier = Modifier.padding(top = 6.dp))
+            if (s.needsBtcIndex && mode != Mode.OFF && running) WarmUp(vm)
             Spacer(Modifier.size(8.dp))
             ValueRow("Last pass", st?.lastRunAt?.short() ?: "never", null)
             ValueRow("Result", st?.lastSummary ?: "-", null)
@@ -109,9 +116,12 @@ private fun Overview(vm: MainViewModel, s: Strategy) {
             }
         }
         Section("Results") {
-            if (stats.isEmpty()) Text("Nothing yet. Turn on paper mode to start a record.", style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) }
+            when {
+                stats == null -> repeat(3) { SkeletonLine() }
+                stats.isEmpty() -> Text("Nothing yet. Turn on paper mode to start a record.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) }
+            }
         }
         Section("Evidence") {
             EvidenceBadge(s.evidence.level)
@@ -122,6 +132,19 @@ private fun Overview(vm: MainViewModel, s: Strategy) {
             Spacer(Modifier.size(6.dp))
             Text("Source: ${s.evidence.source}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/** After a restart the BTC index needs 5 minutes of prices and the candle volatility before deep-ITM can quote. */
+@Composable
+private fun WarmUp(vm: MainViewModel) {
+    val w by androidx.compose.runtime.produceState(vm.btcWarmup()) { while (true) { kotlinx.coroutines.delay(1_000); value = vm.btcWarmup() } }
+    val (f, candles, venues) = w
+    if (f >= 1.0 && candles) return
+    Column(Modifier.padding(top = 8.dp)) {
+        Text("Warming up volatility: ${"%.0f".format(f * 5)} of 5 min${if (!candles) ", waiting for candle data" else ""} · $venues of 4 price sources",
+            style = MaterialTheme.typography.bodySmall)
+        androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
     }
 }
 
@@ -161,39 +184,45 @@ private fun SettingsForm(vm: MainViewModel, s: Strategy) {
     }
 }
 
+private fun Modifier.checkToggle(on: Boolean, onChange: (Boolean) -> Unit) =
+    this.then(Modifier.toggleable(value = on, role = androidx.compose.ui.semantics.Role.Checkbox, onValueChange = onChange))
+
 @Composable
 private fun GoLive(vm: MainViewModel, s: Strategy) {
-    val scope = rememberCoroutineScope()
     val confirm = com.marketbot.app.rememberConfirm()
-    var reqs by remember { mutableStateOf<List<Requirement>?>(null) }
-    var pre by remember { mutableStateOf<PreflightResult?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var arm by remember { mutableStateOf<ArmRecord?>(null) }
-    var typed by remember { mutableStateOf("") }
-    var msg by remember { mutableStateOf<String?>(null) }
+    val all by vm.strategyUi.collectAsState()
+    val ui = all[s.id] ?: MainViewModel.StrategyUi()
+    var typed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val acks = remember { mutableStateListOf<String>() }
     val killed by vm.killed.collectAsState()
-    suspend fun reload() { reqs = vm.requirements(s); arm = vm.armRecord(s) }
-    LaunchedEffect(s.id) { reload() }
+    LaunchedEffect(s.id) { vm.loadGoLive(s) }
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (Mode.LIVE !in s.supportedModes) { Text("This strategy has no live order path."); return@Column }
-        arm?.let { a ->
+        ui.arm?.let { a ->
             Section("Live is armed") {
-                Text("Armed ${a.at}. Acknowledged: ${a.acknowledged.joinToString().ifEmpty { "none outstanding" }}.", style = MaterialTheme.typography.bodyMedium)
+                Text("Armed ${runCatching { java.time.Instant.parse(a.at).short() }.getOrDefault(a.at)}. Acknowledged: ${a.acknowledged.joinToString().ifEmpty { "none outstanding" }}.",
+                    style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.size(8.dp))
-                Button({ vm.disarm(s); scope.launch { reload() } }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("Disarm and switch to paper") }
+                Text(s.onLeaveLive, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.size(8.dp))
+                Button({ vm.disarmLive(s) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("Disarm and switch to paper") }
             }
         }
         if (killed) Text("The kill switch is on. Turn it off on Home before arming anything.", color = LocalDesk.current.loss)
         Section("Checklist") {
-            val r = reqs
-            if (r == null) Text("Checking...", style = MaterialTheme.typography.bodyMedium)
+            val r = ui.reqs
+            if (r == null) repeat(4) { SkeletonLine() }
             r?.forEach { q ->
-                Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+                val ticked = q.met || q.id in acks
+                val rowMod = if (!q.hard && !q.met) Modifier.fillMaxWidth().checkToggle(ticked) { on -> if (on) acks.add(q.id) else acks.remove(q.id) }
+                    else Modifier.fillMaxWidth()
+                Row(rowMod.padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
                     val d = LocalDesk.current
-                    if (q.hard) Icon(if (q.met) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline, null, tint = if (q.met) d.gain else d.loss, modifier = Modifier.size(20.dp))
-                    else Checkbox(q.met || q.id in acks, { on -> if (on) acks.add(q.id) else acks.remove(q.id) }, enabled = !q.met, modifier = Modifier.size(20.dp))
+                    if (q.hard) Icon(if (q.met) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline, if (q.met) "Met" else "Not met",
+                        tint = if (q.met) d.gain else d.loss, modifier = Modifier.size(20.dp))
+                    else Icon(if (ticked) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null,
+                        tint = if (ticked) d.gain else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(q.label, style = MaterialTheme.typography.bodyMedium)
@@ -203,33 +232,35 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             Spacer(Modifier.size(8.dp))
-            OutlinedButton({ scope.launch { reload() } }) { Text("Re-check") }
+            OutlinedButton({ vm.loadGoLive(s, force = true) }) { Text("Re-check") }
         }
         Section("Preflight") {
             Text("Reads your balance and the markets, and where the venue allows it places one tiny test order and cancels it.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.size(8.dp))
-            Button({ busy = true; scope.launch { pre = vm.preflight(s); busy = false; reload() } }, enabled = !busy) { Text(if (busy) "Running..." else "Run preflight") }
-            pre?.let { p ->
+            Button({ vm.runPreflight(s) }, enabled = !ui.preflightBusy) { Text(if (ui.preflightBusy) "Running..." else "Run preflight") }
+            ui.preflight?.let { p ->
                 Spacer(Modifier.size(8.dp))
                 p.steps.forEach { (t, ok) ->
                     Row(Modifier.padding(vertical = 3.dp)) {
-                        Icon(if (ok) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline, null, Modifier.size(18.dp), tint = if (ok) LocalDesk.current.gain else LocalDesk.current.loss)
+                        Icon(if (ok) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline, if (ok) "Passed" else "Failed", Modifier.size(18.dp),
+                            tint = if (ok) LocalDesk.current.gain else LocalDesk.current.loss)
                         Spacer(Modifier.width(8.dp)); Text(t, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 Text(p.message, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        if (arm == null) Section("Arm live trading") {
-            val ready = reqs?.all { it.met || !it.hard } == true && reqs?.filter { !it.hard && !it.met }?.all { it.id in acks } == true
+        if (ui.arm == null) Section("Arm live trading") {
+            val reqs = ui.reqs
+            val ready = reqs?.all { it.met || !it.hard } == true && reqs.filter { !it.hard && !it.met }.all { it.id in acks }
             Text("Type LIVE to confirm that this strategy may place real orders with your money.", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("Type LIVE") })
             Spacer(Modifier.size(8.dp))
-            Button({ confirm("Arm ${s.name} for live trading") { scope.launch { val (ok, m) = vm.arm(s, acks.toSet()); msg = m; if (ok) reload() } } },
+            Button({ confirm("Arm ${s.name} for live trading") { vm.armLive(s, acks.toSet()) } },
                 enabled = ready && typed.trim() == "LIVE" && !killed,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text("Arm live trading") }
-            msg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            ui.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (!ready) Text("Meet every red item and tick every acknowledgement first.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -250,9 +281,10 @@ private fun Orders(vm: MainViewModel, s: Strategy) {
         }
         if (shown.isEmpty()) item { Text("No orders yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(shown, key = { it.id }) { q ->
-            Section(q.ticker, trailing = { ModePill(q.mode, q.mode == Mode.LIVE) }) {
+            Section(com.marketbot.core.util.Tickers.describe(q.ticker), trailing = { ModePill(q.mode, q.mode == Mode.LIVE) }) {
                 ValueRow("Order", "${q.action.replace('_', ' ')} ${q.contracts.toInt()} @ ${"%.3f".format(q.price)}", com.marketbot.core.provenance.Source.CONFIG, "the strategy's own order")
                 ValueRow("Placed", q.placedAt.short(), null)
+                q.closeTime?.let { ValueRow("Market closes", it.closeLabel(), null) }
                 q.filledContracts?.let { ValueRow("Filled", "%.0f of %.0f".format(it, q.contracts),
                     if (q.fillSource?.startsWith("paper") == true) com.marketbot.core.provenance.Source.PAPER_MODEL else com.marketbot.core.provenance.Source.KALSHI_API.takeIf { q.venue == "kalshi" } ?: com.marketbot.core.provenance.Source.POLYMARKET_API,
                     q.fillSource) }

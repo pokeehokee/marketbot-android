@@ -81,7 +81,8 @@ fun SystemBanners(vm: MainViewModel) {
     val ctx = LocalContext.current
     val demo by vm.demo.collectAsState()
     val killed by vm.killed.collectAsState()
-    var notifOk by remember { mutableStateOf(notificationsAllowed(ctx)) }
+    val resumed = rememberResumeCount()
+    var notifOk by remember(resumed) { mutableStateOf(notificationsAllowed(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifOk = notificationsAllowed(ctx) }
     // Clock skew is measured from responses, so re-read it now and then.
     val skew by produceState<Long?>(vm.clockSkewMs()) { while (true) { delay(15_000); value = vm.clockSkewMs() } }

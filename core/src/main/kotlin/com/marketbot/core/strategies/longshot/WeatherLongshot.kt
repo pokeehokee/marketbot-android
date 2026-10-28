@@ -48,6 +48,7 @@ import kotlin.math.roundToInt
  */
 class WeatherLongshot : Strategy {
     override val id = "kalshi_weather_longshot"
+    override val onLeaveLive = "Offers already resting stay at Kalshi until they fill or expire on their own (within about 8.5 hours), because their place in the queue is the edge. Use the kill switch to cancel them."
     override val name = "Weather longshot"
     override val venue = Venue.KALSHI
     override val summary = "Rests offers to sell cheap YES on Kalshi's daily high/low temperature buckets and holds them to settlement."

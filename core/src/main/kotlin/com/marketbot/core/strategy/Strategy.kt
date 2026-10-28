@@ -120,6 +120,8 @@ interface Strategy {
     val venue: Venue
     val summary: String
     val evidence: Evidence
+    /** What happens to orders at the venue when this strategy leaves live, in one sentence for the confirmation. */
+    val onLeaveLive: String get() = "Its resting orders are cancelled at the exchange now."
     val params: List<Param>
 
     /** Modes this strategy may be set to. A method with no live order path omits LIVE. */

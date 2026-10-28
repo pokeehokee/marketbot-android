@@ -49,7 +49,7 @@ class ScreensTest {
         rule.onNodeWithText("Go live").performClick()
         rule.waitUntil(5000) { runCatching { rule.onNodeWithText("Kalshi API key saved").assertExists(); true }.getOrDefault(false) }
         shot("4_go_live")
-        rule.onAllNodesWithText("Settings")[0].performClick()   // the strategy's tab, not the bottom bar
+        rule.onNodeWithText("Parameters").performClick()
         shot("5_strategy_settings")
     }
 

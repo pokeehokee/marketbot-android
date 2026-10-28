@@ -156,8 +156,10 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
         Section("Running in the background") {
-            Text(if (ignoringBattery(ctx)) "Battery optimisation: exempt." else "Battery optimisation: ON. Android may pause the engine with the screen off.",
-                style = MaterialTheme.typography.bodyMedium, color = if (ignoringBattery(ctx)) LocalDesk.current.gain else LocalDesk.current.warn)
+            val resumed = rememberResumeCount()
+            val exempt = remember(resumed) { ignoringBattery(ctx) }
+            Text(if (exempt) "Battery optimisation: exempt." else "Battery optimisation: ON. Android may pause the engine with the screen off.",
+                style = MaterialTheme.typography.bodyMedium, color = if (exempt) LocalDesk.current.gain else LocalDesk.current.warn)
             Spacer(Modifier.size(6.dp))
             OutlinedButton({ requestBatteryExemption(ctx) }) { Text("Battery settings") }
             Spacer(Modifier.size(6.dp))

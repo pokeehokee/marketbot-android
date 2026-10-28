@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,8 +44,17 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private val timeFmt = DateTimeFormatter.ofPattern("MMM d HH:mm:ss").withZone(ZoneId.systemDefault())
-fun Instant.short(): String = timeFmt.format(this)
+private val timeFmt = DateTimeFormatter.ofPattern("MMM d HH:mm:ss z")
+/** Phone-local time with its zone, so nobody has to guess which clock a time is on. */
+fun Instant.short(): String = timeFmt.format(atZone(ZoneId.systemDefault()))
+private val etFmt = DateTimeFormatter.ofPattern("EEE MMM d, h:mm a 'ET'")
+/** Market close times in Eastern (how the contracts are written), with the phone's time beside it when different. */
+fun Instant.closeLabel(): String {
+    val et = etFmt.format(atZone(com.marketbot.core.util.Tickers.ET))
+    val local = ZoneId.systemDefault()
+    return if (local.rules.getOffset(this) == com.marketbot.core.util.Tickers.ET.rules.getOffset(this)) et
+    else "$et (${DateTimeFormatter.ofPattern("h:mm a z").format(atZone(local))})"
+}
 
 /** A small label saying where a value came from. Tap any value to see the exact field or formula. */
 @Composable
@@ -104,9 +115,10 @@ fun Section(title: String, modifier: Modifier = Modifier, trailing: @Composable 
 }
 
 @Composable
-fun ModePill(mode: Mode, armed: Boolean) {
+fun ModePill(mode: Mode, armed: Boolean, engineRunning: Boolean = true) {
     val d = LocalDesk.current
     val (text, c) = when {
+        mode != Mode.OFF && !engineRunning -> "${mode.name} · PAUSED, ENGINE OFF" to d.muted
         mode == Mode.LIVE && armed -> "LIVE" to d.live
         mode == Mode.LIVE -> "LIVE (not armed)" to d.warn
         mode == Mode.PAPER -> "PAPER" to d.paper
@@ -132,7 +144,32 @@ fun EvidenceBadge(level: EvidenceLevel) {
         modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(c.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
-/** Off / Paper / Live selector. Live is never selected directly: it opens the go-live checklist. */
+/**
+ * The honest mode control: Off, Paper and Live all shown. Live opens the go-live
+ * checklist instead of switching; leaving Live asks first and says what happens
+ * to orders resting at the exchange.
+ */
+@Composable
+fun ModeControl(vm: MainViewModel, s: com.marketbot.core.strategy.Strategy, current: Mode, onGoLive: () -> Unit) {
+    var leaving by remember { mutableStateOf<Mode?>(null) }
+    ModeSelector(current, s.supportedModes) { m ->
+        when {
+            m == current -> {}
+            m == Mode.LIVE -> onGoLive()
+            current == Mode.LIVE -> leaving = m
+            else -> vm.setMode(s, m)
+        }
+    }
+    leaving?.let { m ->
+        AlertDialog(onDismissRequest = { leaving = null },
+            confirmButton = { TextButton({ vm.setMode(s, m); leaving = null }) { Text(if (m == Mode.OFF) "Turn off" else "Switch to paper") } },
+            dismissButton = { TextButton({ leaving = null }) { Text("Stay live") } },
+            title = { Text("Stop live trading ${s.name}?") },
+            text = { Text("Live is disarmed and has to be armed again from its checklist. ${s.onLeaveLive}") })
+    }
+}
+
+/** Off / Paper / Live selector. Use [ModeControl] on screens; this is only the segmented control. */
 @Composable
 fun ModeSelector(current: Mode, supported: Set<Mode>, onSelect: (Mode) -> Unit) {
     val modes = listOf(Mode.OFF, Mode.PAPER, Mode.LIVE).filter { it in supported }
@@ -148,4 +185,23 @@ fun ModeSelector(current: Mode, supported: Set<Mode>, onSelect: (Mode) -> Unit) 
 fun moneyColor(v: Double?): Color? {
     val d = LocalDesk.current
     return when { v == null -> null; v > 0.0049 -> d.gain; v < -0.0049 -> d.loss; else -> null }
+}
+
+
+/** A placeholder line while a value loads. */
+@Composable
+fun SkeletonLine(widthFraction: Float = 1f) {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "skeleton")
+    val a by t.animateFloat(initialValue = 0.25f, targetValue = 0.55f, animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+        androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "alpha")
+    Box(Modifier.padding(vertical = 7.dp).fillMaxWidth(widthFraction).height(14.dp)
+        .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = a * 0.25f)))
+}
+
+/** Bumps each time the screen comes back to the foreground, so checks of system settings re-run after the user changes one. */
+@Composable
+fun rememberResumeCount(): Int {
+    var n by remember { mutableStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) { n++; onPauseOrDispose { } }
+    return n
 }

@@ -72,7 +72,9 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             IconButton({ if (running) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
         }
 
-        if (!ignoringBattery(ctx)) Surface(shape = RoundedCornerShape(12.dp), color = LocalDesk.current.warn.copy(alpha = 0.12f),
+        val resumed = rememberResumeCount()
+        val batteryOk = remember(resumed) { ignoringBattery(ctx) }
+        if (!batteryOk) Surface(shape = RoundedCornerShape(12.dp), color = LocalDesk.current.warn.copy(alpha = 0.12f),
             modifier = Modifier.fillMaxWidth().clickable { requestBatteryExemption(ctx) }) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.BatteryAlert, null, tint = LocalDesk.current.warn)
@@ -128,7 +130,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                         Text(st?.lastSummary?.let { "Last: $it" } ?: s.venue.label, style = MaterialTheme.typography.bodySmall,
                             color = if (st?.lastError != null) LocalDesk.current.loss else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
-                    ModePill(mode, st?.armed == true)
+                    ModePill(mode, st?.armed == true, running)
                 }
             }
         }

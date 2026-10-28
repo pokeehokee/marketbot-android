@@ -77,9 +77,10 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
         SystemBanners(vm)
         NavHost(nav, startDestination = "home", modifier = Modifier.weight(1f)) {
             composable("home") { HomeScreen(vm, onOpen = { nav.navigate("strategy/$it") }, onSources = { nav.navigate("sources") }) }
-            composable("strategies") { StrategiesScreen(vm) { nav.navigate("strategy/$it") } }
-            composable("strategy/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
-                StrategyScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() })
+            composable("strategies") { StrategiesScreen(vm, onGoLive = { nav.navigate("strategy/$it?tab=2") }) { nav.navigate("strategy/$it") } }
+            composable("strategy/{id}?tab={tab}", arguments = listOf(navArgument("id") { type = NavType.StringType },
+                navArgument("tab") { type = NavType.IntType; defaultValue = 0 })) { e ->
+                StrategyScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, initialTab = e.arguments!!.getInt("tab"))
             }
             composable("activity") { ActivityScreen(vm) }
             composable("accounts") { AccountsScreen(vm) }

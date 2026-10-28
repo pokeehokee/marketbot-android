@@ -25,8 +25,9 @@ import androidx.compose.ui.unit.dp
 import com.marketbot.core.strategy.Mode
 
 @Composable
-fun StrategiesScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
+fun StrategiesScreen(vm: MainViewModel, onGoLive: (String) -> Unit = {}, onOpen: (String) -> Unit) {
     val status by vm.status.collectAsState()
+    val running by vm.engineRunning.collectAsState()
     vm.modes.collectAsState().value
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -45,15 +46,13 @@ fun StrategiesScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
                             Text(s.name, style = MaterialTheme.typography.titleMedium)
                             Text(s.venue.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        ModePill(mode, st?.armed == true)
+                        ModePill(mode, st?.armed == true, running)
                     }
                     Text(s.summary, style = MaterialTheme.typography.bodyMedium)
                     EvidenceBadge(s.evidence.level)
                     Text(s.evidence.headline, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(2.dp))
-                    ModeSelector(if (mode == Mode.LIVE) Mode.LIVE else mode, s.supportedModes - Mode.LIVE) { vm.setMode(s, it) }
-                    if (mode != Mode.LIVE) Text("Live: open the strategy and use Go live.", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ModeControl(vm, s, mode) { onGoLive(s.id) }
                 }
             }
         }
