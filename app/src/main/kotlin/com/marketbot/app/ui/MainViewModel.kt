@@ -66,7 +66,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (m != Mode.OFF) ensureService()
     }
 
-    fun ensureService() { if (!EngineService.started) EngineService.start(getApplication()) }
+    val engineRunning = engine.running
+    fun ensureService() { if (!engine.running.value) EngineService.start(getApplication()) }
     fun stopService() = EngineService.stop(getApplication())
 
     fun kill(on: Boolean) = viewModelScope.launch(Dispatchers.IO) { engine.setGlobalKill(on); say(if (on) "Kill switch on: orders cancelled." else "Kill switch off.") }

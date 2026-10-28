@@ -88,13 +88,18 @@ class RewardFarm : Strategy {
         var targets: Map<String, FarmCandidate> = emptyMap(); var known = mutableMapOf<String, FarmCandidate>()
         var lastScan = Instant.EPOCH; var lastTick: Instant? = null; var paper: PaperFarmBroker? = null; var scannedOnce = false
         var lastSettleCheck = Instant.EPOCH; val metas = mutableMapOf<String, PmMarketMeta>()
+        var live: LiveFarmBroker? = null
     }
     private val rts = mutableMapOf<Mode, Rt>()
     private fun mode(ctx: StrategyContext) = if (ctx.live) Mode.LIVE else Mode.PAPER
     private fun k(ctx: StrategyContext, s: String) = "$id.${mode(ctx).name.lowercase()}.$s"
 
     private suspend fun broker(ctx: StrategyContext, rt: Rt): FarmBroker =
-        if (ctx.live) LiveFarmBroker(ctx.polymarket)
+        if (ctx.live) rt.live ?: run {
+            val ownedKey = k(ctx, "owned_orders")
+            val owned = ctx.stores.state.get(ownedKey)?.split(',')?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
+            LiveFarmBroker(ctx.polymarket, owned) { ids -> ctx.stores.state.put(ownedKey, ids.joinToString(",")) }.also { rt.live = it }
+        }
         else rt.paper ?: PaperFarmBroker.fromJson(ctx.stores.state.get(k(ctx, "paper_state")), ctx.config.num("paper_cash")).also { rt.paper = it }
 
     private suspend fun savePaper(ctx: StrategyContext, rt: Rt) { rt.paper?.let { ctx.stores.state.put(k(ctx, "paper_state"), it.toJson()) } }
@@ -348,8 +353,10 @@ class RewardFarm : Strategy {
                 Sourced.derived(money(est.values.sum()), "sum of per-day estimates", "program formula; not money received"))
         }
         if (ctx.polymarket.hasCredentials) runCatching { ctx.polymarket.earnings() }.getOrNull()?.let { rows ->
-            val paid = rows.sumOf { it.num("amount") ?: it.num("reward") ?: it.num("value") ?: 0.0 }
-            out += Stat("Rewards paid (Polymarket earnings)", Sourced.polymarket(money(paid), "GET /v1/incentives/earnings, ${rows.size} rows"))
+            val e = earningsSummary(rows)
+            out += if (e == null) Stat("Rewards earned (Polymarket)", Sourced.derived("unreadable", "GET /v1/incentives/earnings",
+                "a row had no numeric 'reward' field; not shown rather than guessed"))
+            else Stat("Rewards earned (Polymarket)", Sourced.polymarket(money(e.first) + e.second, "GET /v1/incentives/earnings: sum of reward over ${rows.size} rows"))
         }
         ctx.stores.state.get("$id.paper.paper_state")?.let { PaperFarmBroker.fromJson(it, 0.0).s }?.let { s ->
             out += Stat("Paper cash", Sourced.paper(money(s.cash), "paper broker"))
@@ -369,6 +376,25 @@ class RewardFarm : Strategy {
     private data class RiskJson(val highWater: Double, val halted: Boolean, val reason: String)
 
     companion object {
+        /**
+         * Total of the `reward` field (the field pmfarm's calibrate reads) and a
+         * per-status breakdown, or null if any row lacks a numeric reward: a
+         * figure built from guessed fields is worse than no figure.
+         */
+        fun earningsSummary(rows: List<kotlinx.serialization.json.JsonObject>): Pair<Double, String>? {
+            var total = 0.0
+            val byStatus = sortedMapOf<String, Double>()
+            for (r in rows) {
+                val v = r.num("reward") ?: return null
+                total += v
+                val st = r.str("status") ?: "unknown"
+                byStatus[st] = (byStatus[st] ?: 0.0) + v
+            }
+            val detail = if (byStatus.size > 1 || byStatus.keys.any { it != "unknown" })
+                " (" + byStatus.entries.joinToString { "${it.key.lowercase().removePrefix("reward_status_")} ${money(it.value)}" } + ")" else ""
+            return total to detail
+        }
+
         private val EST = MapSerializer(String.serializer(), Double.serializer())
     }
 

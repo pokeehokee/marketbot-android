@@ -45,6 +45,7 @@ abstract class DeepItmStrategy(
     final override val evidence: Evidence,
     private val defaultSkipHours: String,
     private val loopSeconds: Long,
+    private val defaultDeadMan: Int = 120,
 ) : Strategy {
     abstract fun ladderVenue(ctx: StrategyContext): LadderVenue
 
@@ -61,6 +62,7 @@ abstract class DeepItmStrategy(
         Param.Text("skip_hours_et", "Skip hours closing at (ET)", "Session opens, where losses ran 3-7x higher.", defaultSkipHours),
         Param.Num("daily_stop", "Daily stop", "Stop for the day at this realised loss.", 15.0, 1.0, 500.0, "$"),
         Param.Num("total_kill", "Total kill", "Stop for good (until reset) at this total realised loss.", 60.0, 5.0, 5000.0, "$"),
+        Param.Int_("dead_man_s", "Order lifetime without the app", "Live bids expire at the exchange this long after the app last renewed them, so a phone that dies or sleeps cannot leave a stale bid. Renewed while the app runs.", defaultDeadMan, 30, 3000, "s"),
     )
 
     fun rules(c: StrategyConfig) = DeepItmRules(
@@ -169,12 +171,24 @@ abstract class DeepItmStrategy(
         val standing = open.filter { it.resting }.associateBy { it.ticker }
         val cands = DeepItmRule.candidates(markets, spot, sigma, now, r)
         val chosen = DeepItmRule.select(cands, held + standing.keys, r.maxOpen).associateBy { it.ticker }
+        val deadMan = java.time.Duration.ofSeconds(ctx.config.int("dead_man_s").toLong())
         for ((ticker, q) in standing) {
             val c = chosen[ticker]
             val side = if (q.action == "buy_yes") "yes" else "no"
             if (c == null || c.side != side || kotlin.math.abs(c.price - q.price) > 1e-9) {
                 if (ctx.live) runCatching { venue.cancel(q) }.onFailure { ctx.warn("cancel", "Cancel failed on $ticker: ${it.message}") }
                 finalFill(ctx, venue, q.copy(cancelledAt = now), now)
+            } else if (ctx.live) {
+                val exp = expiresAt(q)
+                if (exp != null && java.time.Duration.between(now, exp) < deadMan.dividedBy(2)) {
+                    val next = minOf(q.closeTime ?: now.plus(deadMan), now.plus(deadMan))
+                    if (venue.renew(q, next)) ctx.stores.ledger.update(q.copy(extra = withExpiry(q.extra, next)))
+                    else if (!exp.isAfter(now.plusSeconds(5))) {
+                        // Could not renew and about to lapse: close it here; the next step re-places it.
+                        runCatching { venue.cancel(q) }
+                        finalFill(ctx, venue, q.copy(cancelledAt = now), now)
+                    }
+                }
             }
         }
         val live = ctx.stores.ledger.open(id, mode).filter { it.resting }.map { it.ticker }.toSet()
@@ -182,8 +196,9 @@ abstract class DeepItmStrategy(
             if (ticker in live || ticker in held) continue
             val m = markets.first { it.ticker == ticker }
             var orderId: String? = null; var coid: String? = null
+            val expiry = minOf(m.close, now.plus(deadMan))
             if (ctx.live) {
-                val res = runCatching { venue.place(c, m) }
+                val res = runCatching { venue.place(c, m, expiry) }
                 val pair = res.getOrNull()
                 if (pair == null) { ctx.error("order", "Order failed on $ticker: ${res.exceptionOrNull()?.message}"); continue }
                 orderId = pair.first; coid = pair.second
@@ -192,13 +207,23 @@ abstract class DeepItmStrategy(
             ctx.stores.ledger.insert(QuoteRow(strategyId = id, mode = mode, venue = venue.venueKey, ticker = ticker,
                 action = "buy_${c.side}", price = c.price, contracts = c.count.toDouble(), placedAt = now, closeTime = m.close,
                 orderId = orderId, clientOrderId = coid, queueAhead = c.queueAhead,
-                extra = buildJsonObject { put("fair", c.fair); put("z", c.z); put("spot", spot); put("sigma", sigma); put("strike", m.strike) }))
+                extra = buildJsonObject {
+                    put("fair", c.fair); put("z", c.z); put("spot", spot); put("sigma", sigma); put("strike", m.strike)
+                    put("tick", m.tick); m.exchangeIndex?.let { put("exchange_index", it) }
+                    if (ctx.live) put("expires_at", expiry.toString())
+                }))
             ctx.trade(if (ctx.live) "order" else "paper_quote",
                 "${if (ctx.live) "BID" else "paper bid"} $ticker ${c.side.uppercase()} ${c.count} @ ${"%.3f".format(c.price)} (fair ${"%.4f".format(c.fair)}, z ${"%.2f".format(c.z)}, queue ${c.queueAhead.toInt()})",
                 mapOf("bid" to Sourced(c.price, if (venue.venueKey == "kalshi") Source.KALSHI_API else Source.POLYMARKET_API, "best ${c.side} bid on $ticker"),
                     "fair" to Sourced.derived(c.fair, "Phi(ln(spot/strike) / (sigma sqrt(ttc)))", "model probability; no venue publishes it")))
         }
     }
+
+    private fun expiresAt(q: QuoteRow): Instant? =
+        (q.extra["expires_at"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.let { runCatching { Instant.parse(it) }.getOrNull() }
+
+    private fun withExpiry(extra: kotlinx.serialization.json.JsonObject, at: Instant) =
+        kotlinx.serialization.json.JsonObject(extra + ("expires_at" to kotlinx.serialization.json.JsonPrimitive(at.toString())))
 
     private suspend fun finalFill(ctx: StrategyContext, venue: LadderVenue, q: QuoteRow, now: Instant) {
         val f = runCatching { if (ctx.live) venue.liveFill(q) else venue.paperFill(q, now, null) }
@@ -335,6 +360,7 @@ class PolymarketBtcDeepItm : DeepItmStrategy(
         "gateway.polymarket.us event btc-above-day-*, checked 2026-10-27"),
     defaultSkipHours = "",
     loopSeconds = 5,
+    defaultDeadMan = 300,
 ) {
     override val params: List<Param> = super.params + Param.Bool("allow_no_live", "Allow live NO bids",
         "Polymarket's price convention for short (NO) orders is not documented; leave off until preflight confirms it.", false)

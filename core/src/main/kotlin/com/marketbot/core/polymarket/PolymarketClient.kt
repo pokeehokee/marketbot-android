@@ -212,6 +212,28 @@ class PolymarketClient(
         return api.post("/v1/orders", body, s()).str("id")
     }
 
+    /**
+     * [placeOrder], but a create whose response is lost (timeout, reset, 5xx) is
+     * looked up before anything is concluded. Polymarket's create takes no client
+     * order id, so the match is this market, intent, price and size among open
+     * orders that [known] does not already hold. Exactly one match is adopted;
+     * none or several rethrow, because guessing would mean managing an order we
+     * cannot prove is ours.
+     */
+    suspend fun placeOrderRecovering(slug: String, intent: String, wirePrice: Double, qty: Double, goodTill: Instant? = null,
+                                     known: Set<String> = emptySet()): String? = try {
+        placeOrder(slug, intent, wirePrice, qty, goodTill)
+    } catch (e: Exception) {
+        val clientError = e is ApiException && e.status in 400..499
+        if (clientError) throw e
+        val side = if (intent == "ORDER_INTENT_BUY_LONG" || intent == "ORDER_INTENT_SELL_SHORT") "bid" else "ask"
+        val matches = runCatching { openOrders() }.getOrNull()?.filter {
+            it.slug == slug && it.intent == intent && it.side == side && kotlin.math.abs(it.price - wirePrice) < 1e-6 &&
+                kotlin.math.abs(it.qtyLeft - qty) < 1e-6 && it.id !in known
+        } ?: throw e
+        if (matches.size == 1) matches[0].id else throw e
+    }
+
     suspend fun preview(slug: String, intent: String, wirePrice: Double, qty: Double): JsonObject =
         api.post("/v1/order/preview", buildJsonObject {
             putJsonObject("request") {

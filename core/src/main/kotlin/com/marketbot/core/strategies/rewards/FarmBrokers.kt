@@ -38,8 +38,20 @@ interface FarmBroker {
     fun settle(slug: String, value: Double): Double? = null
 }
 
-/** Real orders through the Polymarket US API. Equity values each position at the public book, never at a guess. */
-class LiveFarmBroker(private val pm: PolymarketClient) : FarmBroker {
+/**
+ * Real orders through the Polymarket US API. Equity values each position at the
+ * public book, never at a guess.
+ *
+ * Only orders this app placed ([owned], persisted by the caller) are ever seen,
+ * repriced or cancelled: orders you place by hand in the Polymarket app are left
+ * alone, including by the kill switch. One instance lives for the whole run, so
+ * the last good price of each book side survives a momentarily empty book.
+ */
+class LiveFarmBroker(
+    private val pm: PolymarketClient,
+    val owned: MutableSet<String> = mutableSetOf(),
+    private val persist: suspend (Set<String>) -> Unit = {},
+) : FarmBroker {
     override val live = true
     private val lastMarks = mutableMapOf<String, Pair<Double?, Double?>>()
 
@@ -69,13 +81,28 @@ class LiveFarmBroker(private val pm: PolymarketClient) : FarmBroker {
         it.slug to FarmPosition(it.slug, it.qty.value, it.avgPx?.value ?: throw ValueUnavailable("avgPx ${it.slug}", "missing"))
     }
 
-    override suspend fun openOrders() = pm.openOrders().map { FarmOrder(it.id, it.slug, it.side, it.price, it.qtyLeft, it.intent) }
+    override suspend fun openOrders(): List<FarmOrder> {
+        val open = pm.openOrders()
+        val ids = open.map { it.id }.toSet()
+        // Forget ids the exchange no longer lists as open (filled, expired, cancelled).
+        if (owned.retainAll(ids)) persist(owned.toSet())
+        return open.filter { it.id in owned }.map { FarmOrder(it.id, it.slug, it.side, it.price, it.qtyLeft, it.intent) }
+    }
 
-    override suspend fun place(slug: String, side: String, price: Double, qty: Double, intent: String, expires: Instant?, queueAhead: Double): String? =
-        runCatching { pm.placeOrder(slug, intent, price, qty, expires) }.getOrNull()
+    override suspend fun place(slug: String, side: String, price: Double, qty: Double, intent: String, expires: Instant?, queueAhead: Double): String? {
+        val id = runCatching { pm.placeOrderRecovering(slug, intent, price, qty, expires, known = owned.toSet()) }.getOrNull() ?: return null
+        owned += id
+        persist(owned.toSet())
+        return id
+    }
 
     override suspend fun cancel(slug: String, id: String) = runCatching { pm.cancel(id, slug) }.isSuccess
-    override suspend fun cancelAll() { pm.cancelAll() }
+
+    /** Cancels this app's orders one by one. Never the account-wide cancel-all. */
+    override suspend fun cancelAll() {
+        val mine = runCatching { pm.openOrders() }.getOrNull()?.filter { it.id in owned } ?: return
+        for (o in mine) runCatching { pm.cancel(o.id, o.slug) }
+    }
 }
 
 @Serializable

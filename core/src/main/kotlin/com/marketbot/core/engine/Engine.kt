@@ -21,8 +21,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -72,6 +74,13 @@ class Engine(
 ) {
     private val jobs = mutableMapOf<String, Job>()
     private val lock = Mutex()
+    /** One pass of a strategy at a time: a scheduled pass, Run now, stop and the kill switch all take this lock. */
+    private val passLocks = mutableMapOf<String, Mutex>()
+    private fun passLock(id: String) = synchronized(passLocks) { passLocks.getOrPut(id) { Mutex() } }
+    /** Poked by the OS alarm (or anything else) to re-check due strategies after the CPU slept. */
+    private val pokes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val failures = mutableMapOf<String, Int>()
+    private val delays = mutableMapOf<String, java.time.Duration>()
     private var scope: CoroutineScope? = null
     private var kalshi: KalshiClient
     private var polymarket: PolymarketClient
@@ -81,6 +90,26 @@ class Engine(
     val status: StateFlow<Map<String, StrategyStatus>> = _status
     private val _globalKill = MutableStateFlow(false)
     val globalKill: StateFlow<Boolean> = _globalKill
+    private val _busy = MutableStateFlow(0)
+    /** Passes in progress right now. A wake lock taken for an alarm is held until this returns to 0. */
+    val busy: StateFlow<Int> = _busy
+    private val _running = MutableStateFlow(false)
+    /** True between [start] and [stopAll]. */
+    val running: StateFlow<Boolean> = _running
+
+    /** Wake the strategy loops: they re-check, by wall clock, whether a pass is due. */
+    fun poke() { pokes.tryEmit(Unit) }
+
+    /**
+     * Whether any running strategy re-runs within [CONTINUOUS_BELOW]: only then must the
+     * CPU be held awake. Hourly strategies are woken by an OS alarm at [nextWakeAt] instead.
+     */
+    fun needsContinuousWake(): Boolean = synchronized(delays) {
+        _status.value.values.filter { it.running }.any { (delays[it.id] ?: java.time.Duration.ZERO) < CONTINUOUS_BELOW }
+    }
+
+    /** The earliest scheduled pass across running strategies, by wall clock. */
+    fun nextWakeAt(): Instant? = _status.value.values.filter { it.running }.mapNotNull { it.nextRunAt }.minOrNull()
 
     init {
         val (k, p) = clientFactory(Credentials())
@@ -124,6 +153,7 @@ class Engine(
     // ------------------------------------------------------------------ control
     fun start(scope: CoroutineScope) {
         this.scope = scope
+        _running.value = true
         scope.launch {
             _globalKill.value = isKilled()
             for (s in strategies) if (mode(s.id) != Mode.OFF) launchStrategy(s)
@@ -134,6 +164,8 @@ class Engine(
     suspend fun stopAll() {
         for (s in strategies) stopStrategy(s, callOnStop = true)
         btcIndex.stop()
+        _running.value = false
+        scope = null
     }
 
     /** Switch a strategy's mode. LIVE needs [arm] first; switching away from LIVE disarms it. */
@@ -186,18 +218,25 @@ class Engine(
         _globalKill.value = on
         log(null, LogEvent.Level.WARN, "kill", if (on) "KILL SWITCH ON: cancelling every resting order." else "Kill switch off.")
         if (on) {
+            val wasLive = mutableListOf<String>()
             for (s in strategies) {
                 val m = mode(s.id)
                 stopStrategy(s, callOnStop = false)
-                runCatching { s.cancelAllResting(context(s, m, config(s), armRecord(s.id) != null, killed = false)) }
-                    .onFailure { log(s.id, LogEvent.Level.ERROR, "kill", "Cancel failed: ${it.message}. Check the venue app.") }
+                passLock(s.id).withLock {
+                    runCatching { s.cancelAllResting(context(s, m, config(s), armRecord(s.id) != null, killed = false)) }
+                        .onFailure { log(s.id, LogEvent.Level.ERROR, "kill", "Cancel failed: ${it.message}. Check the venue app.") }
+                }
                 stores.state.put("strategy.${s.id}.armed", null)
-                if (m == Mode.LIVE) stores.state.put("strategy.${s.id}.mode", Mode.PAPER.name)
+                if (m == Mode.LIVE) { stores.state.put("strategy.${s.id}.mode", Mode.PAPER.name); wasLive += s.id }
             }
+            stores.state.put("global.kill.was_live", wasLive.joinToString(","))
             notifier("Kill switch on", "All resting orders were cancelled and live trading is off.")
         }
         for (s in strategies) if (mode(s.id) != Mode.OFF) launchStrategy(s)
     }
+
+    /** Strategies that were live when the kill switch went on (they stay in paper until re-armed). */
+    suspend fun liveBeforeKill(): List<String> = stores.state.get("global.kill.was_live")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
 
     suspend fun runNow(s: Strategy) {
         val c = ctx(s)
@@ -206,7 +245,7 @@ class Engine(
 
     suspend fun preflight(s: Strategy): PreflightResult {
         ensureIndex(force = s.needsBtcIndex)
-        return s.preflight(ctx(s, Mode.LIVE))
+        return passLock(s.id).withLock { s.preflight(ctx(s, Mode.LIVE)) }
     }
 
     suspend fun stats(s: Strategy): List<Stat> = runCatching { s.stats(ctx(s)) }.getOrElse { emptyList() }
@@ -228,26 +267,52 @@ class Engine(
                 while (isActive) {
                     val c = ctx(s)
                     if (c.mode == Mode.OFF) break
-                    runPass(s, c)
-                    val d = runCatching { s.nextDelay(c) }.getOrDefault(java.time.Duration.ofMinutes(1))
-                    publish(s.id) { it.copy(nextRunAt = clock.now().plus(d)) }
-                    delay(d.toMillis().coerceAtLeast(500))
+                    val ok = runPass(s, c)
+                    var d = runCatching { s.nextDelay(c) }.getOrDefault(java.time.Duration.ofMinutes(1))
+                    val n = synchronized(failures) { if (ok) { failures.remove(s.id); 0 } else (failures.merge(s.id, 1, Int::plus) ?: 1) }
+                    if (n > 0) d = maxOf(d, backoff(n))
+                    synchronized(delays) { delays[s.id] = d }
+                    val dueAt = clock.now().plus(d)
+                    publish(s.id) { it.copy(nextRunAt = dueAt) }
+                    waitUntil(dueAt)
                 }
             }
         }
     }
 
-    private suspend fun runPass(s: Strategy, c: StrategyContext) {
+    /**
+     * Wait until the wall clock reaches [dueAt]. Waits in short slices and wakes on
+     * [poke], because a coroutine delay runs on the monotonic clock, which stops
+     * while the phone's CPU sleeps; the OS alarm pokes us when the pass is due.
+     */
+    private suspend fun waitUntil(dueAt: Instant) {
+        while (true) {
+            val left = java.time.Duration.between(clock.now(), dueAt).toMillis()
+            if (left <= 0) return
+            withTimeoutOrNull(minOf(left, 30_000L).coerceAtLeast(200)) { pokes.first() }
+        }
+    }
+
+    private fun backoff(failures: Int): java.time.Duration =
+        java.time.Duration.ofSeconds(minOf(300L, 5L shl minOf(failures, 6)))
+
+    /** Returns false when the pass failed (an exception or a timeout). */
+    private suspend fun runPass(s: Strategy, c: StrategyContext): Boolean = passLock(s.id).withLock {
         val started = clock.now()
+        _busy.update { it + 1 }
         try {
             val r = withTimeoutOrNull(10 * 60_000L) { s.runOnce(c) }
             publish(s.id) { it.copy(lastRunAt = started, lastSummary = r?.summary ?: "timed out", lastError = if (r == null) "pass timed out after 10 min" else null,
                 mode = c.mode, armed = c.liveArmed) }
+            r != null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log(s.id, LogEvent.Level.ERROR, "error", "Pass failed: ${e.javaClass.simpleName}: ${e.message}")
             publish(s.id) { it.copy(lastRunAt = started, lastError = e.message ?: e.javaClass.simpleName) }
+            false
+        } finally {
+            _busy.update { it - 1 }
         }
     }
 
@@ -256,7 +321,9 @@ class Engine(
         job?.cancel()
         job?.join()
         if (callOnStop) withContext(NonCancellable) {
-            runCatching { s.onStop(ctx(s)) }.onFailure { log(s.id, LogEvent.Level.ERROR, "stop", "Stop failed: ${it.message}") }
+            passLock(s.id).withLock {
+                runCatching { s.onStop(ctx(s)) }.onFailure { log(s.id, LogEvent.Level.ERROR, "stop", "Stop failed: ${it.message}") }
+            }
         }
         publish(s.id) { it.copy(running = false, nextRunAt = null) }
     }
@@ -271,6 +338,8 @@ class Engine(
 
     companion object {
         private val CFG = MapSerializer(String.serializer(), String.serializer())
+        /** Strategies that re-run sooner than this keep the CPU awake; slower ones are woken by an alarm. */
+        val CONTINUOUS_BELOW: java.time.Duration = java.time.Duration.ofMinutes(5)
 
         fun defaultClients(c: Credentials): Pair<KalshiClient, PolymarketClient> {
             val ks = if (!c.kalshiKeyId.isNullOrBlank() && !c.kalshiPem.isNullOrBlank()) KalshiSigner(c.kalshiKeyId, c.kalshiPem) else null

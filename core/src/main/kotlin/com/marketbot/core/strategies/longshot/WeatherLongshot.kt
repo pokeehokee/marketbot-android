@@ -207,7 +207,10 @@ class WeatherLongshot : Strategy {
             var orderId: String? = null; var coid: String? = null
             if (live) {
                 val tick = tickSize(q.price, m.raw.priceRanges())
-                val attempt = runCatching { ctx.kalshi.placeOrder(c.ticker, "ask", q.contracts, q.price, tick.value, m.exchangeIndex) }
+                // Dead-man's switch: the exchange cancels the offer itself shortly after the idle
+                // recycle would have, so a phone that dies or sleeps never leaves it resting forever.
+                val expiry = now.plusSeconds(((r.idleQuoteHours + 0.5) * 3600).toLong()).epochSecond
+                val attempt = runCatching { ctx.kalshi.placeOrder(c.ticker, "ask", q.contracts, q.price, tick.value, m.exchangeIndex, expirationEpochS = expiry) }
                 val res = attempt.getOrNull()
                 if (res == null) { ctx.error("order", "Order failed on ${c.ticker}: ${attempt.exceptionOrNull()?.message}"); continue }
                 if (res.filtered) { ctx.info("order", "${c.ticker}: post-only order would cross; not quoted."); continue }
@@ -314,6 +317,15 @@ class WeatherLongshot : Strategy {
             val n = fs.contracts ?: if (fs.filled) q.contracts else 0.0
             if (fs.filled && n >= q.contracts) {
                 ctx.stores.ledger.update(q.copy(filledContracts = n, fillSource = "Kalshi API ${fs.origin}", fillCheckedAt = ctx.clock.now()))
+                continue
+            }
+            val status = order.str("status")?.lowercase()
+            if (status in setOf("canceled", "cancelled", "expired")) {
+                // The exchange already took it down (its dead-man expiry, or a trading pause).
+                ctx.stores.ledger.update(q.copy(cancelledAt = ctx.clock.now(), filledContracts = n,
+                    fillSource = "Kalshi API ${fs.origin}", fillCheckedAt = ctx.clock.now()))
+                freed += (1.0 - q.price) * (q.contracts - n)
+                ctx.info("recycle", "${q.ticker}: the exchange had already closed this offer ($status): ${n.roundToInt()} of ${q.contracts.roundToInt()} filled.")
                 continue
             }
             val ok = runCatching { ctx.kalshi.cancelOrder(q.orderId, q.ticker) }.onFailure {

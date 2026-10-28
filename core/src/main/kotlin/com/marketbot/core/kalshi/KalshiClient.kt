@@ -146,6 +146,7 @@ class KalshiClient(
         exchangeIndex: Int?,
         postOnly: Boolean = true,
         expirationEpochS: Long? = null,
+        cancelOnPause: Boolean = true,
     ): PlacedOrder {
         require(side == "bid" || side == "ask") { "side must be bid or ask" }
         require(count >= 1) { "refusing an order of $count contracts" }
@@ -160,6 +161,8 @@ class KalshiClient(
             put("time_in_force", "good_till_canceled")
             put("self_trade_prevention_type", "taker_at_cross")
             put("post_only", postOnly)
+            // The exchange pulls the order if trading pauses: the phone may not be awake to react.
+            put("cancel_order_on_pause", cancelOnPause)
             if (exchangeIndex != null) put("exchange_index", exchangeIndex)
             if (expirationEpochS != null && expirationEpochS > clock.now().epochSecond) put("expiration_time", expirationEpochS)
         }
@@ -179,6 +182,24 @@ class KalshiClient(
             findByClientOrderId(coid)?.let { return PlacedOrder(it.str("order_id"), coid, raw = it) }
             throw e
         }
+    }
+
+    /**
+     * Move an order's expiry without touching price or size. Kalshi documents an
+     * expiry-only amend (current price and total count resent) as preserving queue
+     * position, which is what makes a short dead-man expiry affordable.
+     */
+    suspend fun renewExpiration(orderId: String, ticker: String, side: String, price: Double, tick: Double,
+                                totalCount: Double, exchangeIndex: Int?, expirationEpochS: Long): JsonObject {
+        val body = buildJsonObject {
+            put("ticker", ticker)
+            put("side", side)
+            put("price", formatPrice(price, tick))
+            put("count", "%.2f".format(java.util.Locale.ROOT, totalCount))
+            put("expiration_time", expirationEpochS)
+            if (exchangeIndex != null) put("exchange_index", exchangeIndex)
+        }
+        return http.post("/portfolio/events/orders/$orderId/amend", body, requireSigner())
     }
 
     /** Cancel, auto-routed by the market ticker (an order id alone cannot identify the shard). */

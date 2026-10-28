@@ -44,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.marketbot.app.EngineService
 import com.marketbot.app.data.toSnapshot
 import com.marketbot.core.provenance.Source
 import com.marketbot.core.strategy.Mode
@@ -56,6 +55,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     val killed by vm.killed.collectAsState()
     val equity by vm.equity.collectAsState()
     val accounts by vm.accounts.collectAsState()
+    val running by vm.engineRunning.collectAsState()
     vm.modes.collectAsState().value
     val ctx = LocalContext.current
     var confirmKill by remember { mutableStateOf(false) }
@@ -65,11 +65,10 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Marketbot", style = MaterialTheme.typography.headlineSmall)
-                val running = EngineService.started
                 Text(if (running) "Engine running" else "Engine stopped", style = MaterialTheme.typography.bodyMedium,
                     color = if (running) LocalDesk.current.gain else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton({ if (EngineService.started) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
+            IconButton({ if (running) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
         }
 
         if (!ignoringBattery(ctx)) Surface(shape = RoundedCornerShape(12.dp), color = LocalDesk.current.warn.copy(alpha = 0.12f),

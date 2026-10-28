@@ -20,6 +20,8 @@ class FakeKalshi : AutoCloseable {
     val server = MockWebServer()
     val requests = CopyOnWriteArrayList<RecordedRequest>()
     val bodies = CopyOnWriteArrayList<JsonObject>()
+    val amends = CopyOnWriteArrayList<JsonObject>()
+    var amendFails = false
 
     /** series ticker -> markets */
     var markets: MutableMap<String, List<String>> = mutableMapOf()
@@ -48,6 +50,11 @@ class FakeKalshi : AutoCloseable {
                         orders[id] = """{"order":{"order_id":"$id","ticker":${body["ticker"]},"status":"resting","fill_count_fp":"0.00","remaining_count_fp":${body["count"]},"initial_count_fp":${body["count"]}}}"""
                         MockResponse().setResponseCode(201).setBody("""{"order_id":"$id","client_order_id":${body["client_order_id"]},"fill_count":"0.00","remaining_count":${body["count"]},"ts_ms":1}""")
                     }
+                    request.method == "POST" && path.endsWith("/amend") -> {
+                        amends += JSON.parseToJsonElement(request.body.readUtf8()) as JsonObject
+                        if (amendFails) MockResponse().setResponseCode(404).setBody("{}")
+                        else ok("""{"order_id":"${path.split('/').dropLast(1).last()}","remaining_count":"5.00","fill_count":"0.00","ts_ms":1}""")
+                    }
                     request.method == "DELETE" -> ok("""{"order_id":"${path.substringAfterLast('/')}","reduced_by":"5.00","ts_ms":1}""")
                     path == "/markets" -> ok("""{"markets":[${(markets[q.queryParameter("series_ticker") ?: ("event:" + q.queryParameter("event_ticker"))]).orEmpty().joinToString(",")}],"cursor":""}""")
                     path.startsWith("/markets/trades") -> ok(trades)
@@ -68,9 +75,9 @@ class FakeKalshi : AutoCloseable {
 
     val base: String get() = server.url("/trade-api/v2").toString().trimEnd('/')
 
-    fun client(signed: Boolean): KalshiClient {
+    fun client(signed: Boolean, clock: com.marketbot.core.util.Clock = com.marketbot.core.util.Clock.SYSTEM): KalshiClient {
         val pem = golden("signatures").o()["rsa_pss"].o()["pkcs1_pem"].s!!
-        return KalshiClient(if (signed) KalshiSigner("kid", pem) else null, base, http = JsonHttp(base, sleep = {}))
+        return KalshiClient(if (signed) KalshiSigner("kid", pem) else null, base, clock = clock, http = JsonHttp(base, sleep = {}))
     }
 
     fun posts() = requests.filter { it.method == "POST" }

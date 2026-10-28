@@ -43,7 +43,15 @@ interface LadderVenue {
     suspend fun result(ticker: String): Sourced<String>?
 
     // live
-    suspend fun place(i: Intent, m: LadderMarket): Pair<String?, String?>
+    /** Rest a bid that the venue itself cancels at [expiresAt] unless renewed (the dead-man's switch). */
+    suspend fun place(i: Intent, m: LadderMarket, expiresAt: Instant): Pair<String?, String?>
+
+    /**
+     * Push a resting order's expiry out to [expiresAt] without losing queue position.
+     * Returns false when the venue cannot do that; the caller then lets the order lapse
+     * and re-places it.
+     */
+    suspend fun renew(q: QuoteRow, expiresAt: Instant): Boolean
     suspend fun cancel(q: QuoteRow)
     suspend fun liveFill(q: QuoteRow): FillRead?
     suspend fun livePnl(q: QuoteRow, result: String): Sourced<Double>?
@@ -81,12 +89,20 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
             Sourced.kalshi(m.result!!, "GET /markets/$ticker#result") else null
     }
 
-    override suspend fun place(i: Intent, m: LadderMarket): Pair<String?, String?> {
+    override suspend fun place(i: Intent, m: LadderMarket, expiresAt: Instant): Pair<String?, String?> {
         // buy YES at q = YES bid at q; buy NO at q = YES ask at 1 - q.
         val (side, px) = if (i.side == "yes") "bid" to i.price else "ask" to (1.0 - i.price)
-        val p = k.placeOrder(i.ticker, side, i.count, px, m.tick, m.exchangeIndex)
+        val p = k.placeOrder(i.ticker, side, i.count, px, m.tick, m.exchangeIndex, expirationEpochS = expiresAt.epochSecond)
         if (p.filtered) return null to null
         return p.orderId to p.clientOrderId
+    }
+
+    override suspend fun renew(q: QuoteRow, expiresAt: Instant): Boolean {
+        val id = q.orderId ?: return false
+        val (side, px) = if (q.action == "buy_yes") "bid" to q.price else "ask" to (1.0 - q.price)
+        val tick = (q.extra["tick"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.01
+        val shard = (q.extra["exchange_index"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+        return runCatching { k.renewExpiration(id, q.ticker, side, px, tick, q.contracts, shard, expiresAt.epochSecond) }.isSuccess
     }
 
     override suspend fun cancel(q: QuoteRow) { q.orderId?.let { k.cancelOrder(it, q.ticker) } }
@@ -193,12 +209,15 @@ class PolymarketBtcLadder(private val pm: PolymarketClient) : LadderVenue {
     override suspend fun result(ticker: String): Sourced<String>? =
         pm.settlement(ticker)?.let { s -> Sourced(if (s.value >= 0.5) "yes" else "no", Source.POLYMARKET_API, s.origin + " (value ${s.value})") }
 
-    override suspend fun place(i: Intent, m: LadderMarket): Pair<String?, String?> {
+    override suspend fun place(i: Intent, m: LadderMarket, expiresAt: Instant): Pair<String?, String?> {
         if (i.side == "no" && !allowNoLive) return null to null
         val intent = pmIntentFor(if (i.side == "yes") "bid" else "ask", 0.0, false)
         val wire = if (i.side == "yes") i.price else 1.0 - i.price
-        return pm.placeOrder(i.ticker, intent, wire, i.count.toDouble()) to null
+        return pm.placeOrderRecovering(i.ticker, intent, wire, i.count.toDouble(), expiresAt) to null
     }
+
+    /** Polymarket can modify price and size but not move an expiry; the order lapses and is re-placed. */
+    override suspend fun renew(q: QuoteRow, expiresAt: Instant): Boolean = false
 
     override suspend fun cancel(q: QuoteRow) { q.orderId?.let { pm.cancel(it, q.ticker) } }
 
