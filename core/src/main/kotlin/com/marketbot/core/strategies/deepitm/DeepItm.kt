@@ -19,6 +19,7 @@ import com.marketbot.core.strategy.bookStats
 import com.marketbot.core.strategy.money
 import com.marketbot.core.strategy.realisedSince
 import com.marketbot.core.strategy.startOfLocalDay
+import com.marketbot.core.strategy.brakeZone
 import com.marketbot.core.strategy.summarise
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -62,6 +63,8 @@ abstract class DeepItmStrategy(
         Param.Text("skip_hours_et", "Skip hours closing at (ET)", "Session opens, where losses ran 3-7x higher.", defaultSkipHours),
         Param.Num("daily_stop", "Daily stop", "Stop for the day at this realised loss.", 15.0, 1.0, 500.0, "$"),
         Param.Num("total_kill", "Total kill", "Stop for good (until reset) at this total realised loss.", 60.0, 5.0, 5000.0, "$"),
+        Param.Int_("min_venues_live", "Price sources needed for live", "Live bids need at least this many of the four spot venues to agree (fresh within 5 s). Paper needs 2.", 3, 2, 4),
+        Param.Text("brake_time_zone", "Daily stop resets at midnight in", "IANA time zone. The original runner used America/Chicago. Blank means the phone's zone.", "America/Chicago"),
         Param.Int_("dead_man_s", "Order lifetime without the app", "Live bids expire at the exchange this long after the app last renewed them, so a phone that dies or sleeps cannot leave a stale bid. Renewed while the app runs.", defaultDeadMan, 30, 3000, "s"),
     )
 
@@ -77,6 +80,9 @@ abstract class DeepItmStrategy(
         if (r.bandLo >= r.bandHi) out += "The lowest bid must be below the highest bid."
         if (r.ttcMinS >= r.ttcMaxS) out += "The earliest time must be closer to the close than the latest."
         if (r.fairMin <= r.bandHi) out += "Minimum model probability must exceed the highest bid, or the rule buys with no modelled edge."
+        config.text("brake_time_zone").trim().takeIf { it.isNotEmpty() }?.let { z ->
+            if (runCatching { java.time.ZoneId.of(z) }.isFailure) out += "\"$z\" is not a time zone name; try America/Chicago."
+        }
         return out
     }
 
@@ -149,8 +155,9 @@ abstract class DeepItmStrategy(
             ctx.notify("$name stopped", "Total realised loss ${money(total)} hit the kill level.")
             return "total_kill"
         }
-        if (realisedSince(rows, startOfLocalDay(now)) <= r.dailyStop) return "daily_stop"
+        if (realisedSince(rows, startOfLocalDay(now, brakeZone(ctx.config.text("brake_time_zone")))) <= r.dailyStop) return "daily_stop"
         if (ctx.btcIndex.age() > com.marketbot.core.btc.STALE_S || ctx.btcIndex.price() == null) return "stale_index"
+        if (ctx.live && ctx.btcIndex.freshVenues() < ctx.config.int("min_venues_live")) return "too_few_venues"
         if (ctx.btcIndex.sigma() == null) return "warming_up"
         return "quote"
     }
@@ -320,6 +327,10 @@ abstract class DeepItmStrategy(
             if (rows.isNotEmpty()) out += bookStats(if (m == Mode.LIVE) "Live" else "Paper", summarise(rows), m == Mode.LIVE)
         }
         ctx.btcIndex.sourcedPrice()?.let { out += Stat("BTC index (proxy)", it.map { v -> "\$%,.2f".format(v) }) }
+        val (w, candles) = ctx.btcIndex.warmup()
+        if (ctx.btcIndex.sigma() == null) out += Stat("Volatility warm-up", Sourced.derived(
+            "${(w * 5).toInt()}/5 min of prices" + if (candles) "" else ", waiting for 1-minute candles", "index samples / 300", "quoting starts once both are in"))
+        out += Stat("Price sources agreeing", Sourced.derived("${ctx.btcIndex.freshVenues()} of 4", "venues fresher than 5 s", "live needs ${ctx.config.int("min_venues_live")}"))
         ctx.btcIndex.sigma()?.let { out += Stat("Volatility, per sqrt(s)", Sourced.derived("%.2e".format(it), "max(index vol, candle vol)", "calculated")) }
         for (m in listOf(Mode.LIVE, Mode.PAPER)) ctx.stores.state.get("$id.${m.name.lowercase()}.killed")?.let {
             out += Stat("${m.name.lowercase()} kill", Sourced.config(it, "kill flag"))

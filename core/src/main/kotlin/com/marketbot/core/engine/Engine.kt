@@ -1,7 +1,10 @@
 package com.marketbot.core.engine
 
 import com.marketbot.core.btc.BtcIndex
+import com.marketbot.core.kalshi.KALSHI_BASE
+import com.marketbot.core.kalshi.KALSHI_DEMO_BASE
 import com.marketbot.core.kalshi.KalshiClient
+import com.marketbot.core.net.NetStats
 import com.marketbot.core.net.KalshiSigner
 import com.marketbot.core.net.PolymarketSigner
 import com.marketbot.core.polymarket.PolymarketClient
@@ -43,6 +46,12 @@ data class Credentials(
     val kalshiPem: String? = null,
     val polymarketKeyId: String? = null,
     val polymarketSecret: String? = null,
+    /** Trade on Kalshi's demo exchange (mock funds, separate account and keys). */
+    val kalshiDemo: Boolean = false,
+    /** Kalshi subaccount the bot trades in; 0 is the primary account. */
+    val kalshiSubaccount: Int = 0,
+    /** A signer whose key never leaves the phone's secure hardware; replaces the PEM when set. */
+    val kalshiSigner: com.marketbot.core.net.RequestSigner? = null,
 )
 
 data class StrategyStatus(
@@ -71,6 +80,8 @@ class Engine(
     private val notifier: suspend (String, String) -> Unit = { _, _ -> },
     val strategies: List<Strategy> = StrategyRegistry.all,
     private val clientFactory: (Credentials) -> Pair<KalshiClient, PolymarketClient> = ::defaultClients,
+    /** Whether the phone has a usable connection. Offline, passes wait instead of failing over and over. */
+    private val online: () -> Boolean = { true },
 ) {
     private val jobs = mutableMapOf<String, Job>()
     private val lock = Mutex()
@@ -161,11 +172,19 @@ class Engine(
         }
     }
 
-    suspend fun stopAll() {
+    /**
+     * Stop every strategy. Returns what stays at the venues afterwards: longshot
+     * offers deliberately keep resting (their queue position is the edge) until
+     * they fill or their exchange-side expiry closes them.
+     */
+    suspend fun stopAll(): String {
         for (s in strategies) stopStrategy(s, callOnStop = true)
+        val resting = strategies.sumOf { s -> stores.ledger.open(s.id, Mode.LIVE).count { it.resting } }
         btcIndex.stop()
         _running.value = false
         scope = null
+        return if (resting == 0) "Engine stopped. No live orders are resting."
+        else "Engine stopped. $resting live offer(s) remain at the exchange until they fill or expire on their own."
     }
 
     /** Switch a strategy's mode. LIVE needs [arm] first; switching away from LIVE disarms it. */
@@ -264,9 +283,17 @@ class Engine(
             if (jobs[s.id]?.isActive == true) return
             jobs[s.id] = sc.launch {
                 publish(s.id) { it.copy(running = true) }
+                var offlineLogged = false
                 while (isActive) {
                     val c = ctx(s)
                     if (c.mode == Mode.OFF) break
+                    if (!online()) {
+                        if (!offlineLogged) { log(s.id, LogEvent.Level.WARN, "offline", "No connection: waiting to run until the phone is back online."); offlineLogged = true }
+                        publish(s.id) { it.copy(lastSummary = "Offline: waiting for a connection") }
+                        waitUntil(clock.now().plusSeconds(15))
+                        continue
+                    }
+                    if (offlineLogged) { log(s.id, LogEvent.Level.INFO, "online", "Connection is back."); offlineLogged = false }
                     val ok = runPass(s, c)
                     var d = runCatching { s.nextDelay(c) }.getOrDefault(java.time.Duration.ofMinutes(1))
                     val n = synchronized(failures) { if (ok) { failures.remove(s.id); 0 } else (failures.merge(s.id, 1, Int::plus) ?: 1) }
@@ -275,6 +302,7 @@ class Engine(
                     val dueAt = clock.now().plus(d)
                     publish(s.id) { it.copy(nextRunAt = dueAt) }
                     waitUntil(dueAt)
+                    noteLateness(s, d, dueAt)
                 }
             }
         }
@@ -290,6 +318,21 @@ class Engine(
             val left = java.time.Duration.between(clock.now(), dueAt).toMillis()
             if (left <= 0) return
             withTimeoutOrNull(minOf(left, 30_000L).coerceAtLeast(200)) { pokes.first() }
+        }
+    }
+
+    /**
+     * A pass that starts well after it was due means the phone stopped the app
+     * (deep sleep without an alarm, the maker's battery manager, a force stop).
+     * Say so, once per gap, with the length of the gap.
+     */
+    private suspend fun noteLateness(s: Strategy, delay: java.time.Duration, dueAt: Instant) {
+        val late = java.time.Duration.between(dueAt, clock.now())
+        val slack = maxOf(java.time.Duration.ofMinutes(2), delay.dividedBy(10))
+        if (late > slack) {
+            val mins = late.toMinutes()
+            log(s.id, LogEvent.Level.WARN, "late", "Ran ${if (mins >= 60) "${mins / 60} h ${mins % 60} min" else "$mins min"} late: the phone paused the app. Check battery settings for Marketbot.")
+            stores.state.put("engine.last_gap", "${clock.now()}|${late.seconds}|${s.id}")
         }
     }
 
@@ -342,9 +385,14 @@ class Engine(
         val CONTINUOUS_BELOW: java.time.Duration = java.time.Duration.ofMinutes(5)
 
         fun defaultClients(c: Credentials): Pair<KalshiClient, PolymarketClient> {
-            val ks = if (!c.kalshiKeyId.isNullOrBlank() && !c.kalshiPem.isNullOrBlank()) KalshiSigner(c.kalshiKeyId, c.kalshiPem) else null
-            val ps = if (!c.polymarketKeyId.isNullOrBlank() && !c.polymarketSecret.isNullOrBlank()) PolymarketSigner(c.polymarketKeyId, c.polymarketSecret) else null
-            return KalshiClient(ks) to PolymarketClient(ps)
+            val base = if (c.kalshiDemo) KALSHI_DEMO_BASE else KALSHI_BASE
+            val kHost = base.removePrefix("https://").substringBefore('/')
+            // Signed timestamps follow the server's clock when the phone's has drifted.
+            val kNow = { System.currentTimeMillis() + NetStats.correctionMs(kHost) }
+            val pNow = { System.currentTimeMillis() + NetStats.correctionMs("api.polymarket.us") }
+            val ks = c.kalshiSigner ?: if (!c.kalshiKeyId.isNullOrBlank() && !c.kalshiPem.isNullOrBlank()) KalshiSigner(c.kalshiKeyId, c.kalshiPem, kNow) else null
+            val ps = if (!c.polymarketKeyId.isNullOrBlank() && !c.polymarketSecret.isNullOrBlank()) PolymarketSigner(c.polymarketKeyId, c.polymarketSecret, pNow) else null
+            return KalshiClient(ks, base, subaccount = c.kalshiSubaccount) to PolymarketClient(ps)
         }
     }
 }

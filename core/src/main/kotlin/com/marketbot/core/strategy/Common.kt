@@ -21,9 +21,13 @@ fun untilNextMinuteOfHour(now: Instant, minute: Int, zone: ZoneId = ZoneId.syste
     return Duration.between(z, next)
 }
 
-/** Start of today in the device's time zone; the daily brakes reset at local midnight, like the originals. */
+/** Start of today in [zone]; the daily brakes reset at that midnight. */
 fun startOfLocalDay(now: Instant, zone: ZoneId = ZoneId.systemDefault()): Instant =
     ZonedDateTime.ofInstant(now, zone).toLocalDate().atStartOfDay(zone).toInstant()
+
+/** A brake time-zone setting: blank means the phone's zone; an invalid name falls back to it too. */
+fun brakeZone(setting: String): ZoneId =
+    setting.trim().takeIf { it.isNotEmpty() }?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
 
 /** Realised P&L of resolved, non-hypothetical rows resolved since [since]. */
 fun realisedSince(rows: List<QuoteRow>, since: Instant?): Double =

@@ -29,6 +29,7 @@ import com.marketbot.core.strategy.money
 import com.marketbot.core.strategy.realisedSince
 import com.marketbot.core.strategy.reconcileKalshi
 import com.marketbot.core.strategy.startOfLocalDay
+import com.marketbot.core.strategy.brakeZone
 import com.marketbot.core.strategy.summarise
 import com.marketbot.core.strategy.untilNextMinuteOfHour
 import com.marketbot.core.util.num
@@ -79,6 +80,7 @@ class WeatherLongshot : Strategy {
         Param.Int_("max_contracts", "Lot ceiling when budget is large", "Upper clamp of the budget-scaled lot.", 10, 1, 10),
         Param.Num("paper_cash", "Paper account size", "Starting cash of the virtual account used in paper mode.", 400.0, 10.0, 100000.0, "$"),
         Param.Int_("run_minute", "Run at minute past each hour", "The original ran at :05.", 5, 0, 59),
+        Param.Text("brake_time_zone", "Daily brake resets at midnight in", "IANA time zone, e.g. America/New_York. Blank means the phone's zone, which moves when you travel.", ""),
     )
 
     fun rules(c: StrategyConfig) = LongshotRules(
@@ -98,6 +100,9 @@ class WeatherLongshot : Strategy {
         if (brake < worst) out += "The daily brake (${money(brake)}) is smaller than one worst-case market at $lot contracts (${money(worst)}): one loss would run past it."
         if (brake > worst * 3) out += "The daily brake (${money(brake)}) allows more than three worst-case losses at $lot contracts (${money(worst * 3)}); it would not act as a brake."
         if (runCatching { parseBands(config.text("excluded_ask_bands")) }.isFailure) out += "Skipped ask bands must look like 0.10-0.15, 0.20-0.25."
+        config.text("brake_time_zone").trim().takeIf { it.isNotEmpty() }?.let { z ->
+            if (runCatching { java.time.ZoneId.of(z) }.isFailure) out += "\"$z\" is not a time zone name; try America/New_York."
+        }
         return out
     }
 
@@ -150,6 +155,16 @@ class WeatherLongshot : Strategy {
                 ctx.warn("blocked", "Settlements have not been read from Kalshi in the last 90 minutes, so the daily brake would be reading stale P&L. No new quotes this pass.")
                 return RunReport("settlements stale")
             }
+            val kill = StageGates.kills(ctx.stores.ledger.all(id, Mode.LIVE), ctx.clock.now()).firstOrNull { it.verdict == StageGates.Verdict.KILL }
+            if (kill != null) {
+                ctx.error("kill", "Kill criterion: ${kill.name} failed (${kill.detail}). Live quoting is stopped; resting offers are left to fill or expire.")
+                val today = java.time.LocalDate.ofInstant(ctx.clock.now(), java.time.ZoneOffset.UTC).toString()
+                if (ctx.stores.state.get(key(ctx, "kill_notified")) != today) {
+                    ctx.stores.state.put(key(ctx, "kill_notified"), today)
+                    ctx.notify("Weather longshot stopped", "Kill criterion: ${kill.name} (${kill.detail}).")
+                }
+                return RunReport("kill criterion")
+            }
             val feeOk = ctx.stores.state.get(key(ctx, "fee_types_ok"))
             if (feeOk == "false") {
                 ctx.error("kill", "A traded weather series no longer has fee_type=quadratic. Resting fills may now pay a maker fee, which removes the edge. Live quoting is stopped until it is re-measured.")
@@ -158,8 +173,9 @@ class WeatherLongshot : Strategy {
             recycleIdleLive(ctx, r)
         } else recycleIdlePaper(ctx, r)
 
-        val realisedToday = realisedSince(ctx.stores.ledger.all(id, mode), startOfLocalDay(ctx.clock.now()))
+        val realisedToday = realisedSince(ctx.stores.ledger.all(id, mode), startOfLocalDay(ctx.clock.now(), brakeZone(ctx.config.text("brake_time_zone"))))
         if (realisedToday <= -r.dailyLossLimit) {
+            recordBrakeTrip(ctx)
             ctx.warn("brake", "Daily loss brake: realised ${money(realisedToday)} today against a ${money(r.dailyLossLimit)} limit. No new quotes until tomorrow.",
                 mapOf("realised_today" to Sourced(realisedToday, if (live) Source.KALSHI_API else Source.PAPER_MODEL, "sum of today's settlement P&L")))
             return RunReport("brake")
@@ -441,8 +457,8 @@ class WeatherLongshot : Strategy {
                 if (preOk) "Last passed $pre." else "Run Preflight: it reads your balance and places one \$0.01-collateral test order, then cancels it."),
             Requirement("settings", "Brake and lot size agree", errs.isEmpty(), true, errs.joinToString(" ").ifEmpty { "One worst-case market fits under the brake." }),
             Requirement("reconcile", "No other bot trading these markets", rec?.clean == true, true, rec?.message ?: "Needs the API key."),
-            Requirement("gate", "Accept: the stage-1 gate failed on 2026-09-16", false, false,
-                "Losses ran at 0.92 of what prices implied against a 0.90 bar (37 of 40.3). The repo's own rule was not to add capital until it passes."),
+            gateRequirement(ctx),
+            killRequirement(ctx),
             Requirement("risk", "Accept: one loss can be up to 98c per contract", false, false,
                 "This wins small and often and loses big and rarely. Days with several losses happen; about 30% of days were red in the realistic replay."),
         )
@@ -497,12 +513,41 @@ class WeatherLongshot : Strategy {
         return out
     }
 
-    /** The mid when quoted: the market's implied P(YES) at the time, which the realised loss count is compared against. */
-    private fun quotedMid(q: QuoteRow): Double {
-        val b = (q.extra["yes_bid"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull()
-        val a = (q.extra["yes_ask"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull()
-        return if (a != null && b != null) (a + b) / 2 else q.price
+    private suspend fun recordBrakeTrip(ctx: StrategyContext) {
+        val k = key(ctx, "brake_trips")
+        val today = java.time.LocalDate.ofInstant(ctx.clock.now(), java.time.ZoneOffset.UTC).toString()
+        val days = ctx.stores.state.get(k)?.split(',')?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
+        if (days.add(today)) ctx.stores.state.put(k, days.sorted().takeLast(60).joinToString(","))
     }
+
+    suspend fun brakeTrips(ctx: StrategyContext, mode: Mode): List<java.time.LocalDate> =
+        ctx.stores.state.get("$id.${mode.name.lowercase()}.brake_trips")?.split(',')?.filter { it.isNotBlank() }
+            ?.mapNotNull { runCatching { java.time.LocalDate.parse(it) }.getOrNull() } ?: emptyList()
+
+    /** When the current capital stage began: set when capital is added, else the first live quote. */
+    suspend fun stageSince(ctx: StrategyContext): Instant =
+        ctx.stores.state.get("$id.stage_since")?.let { runCatching { Instant.parse(it) }.getOrNull() }
+            ?: ctx.stores.ledger.all(id, Mode.LIVE).minOfOrNull { it.placedAt } ?: ctx.clock.now()
+
+    suspend fun gateLines(ctx: StrategyContext) = StageGates.gates(ctx.stores.ledger.all(id, Mode.LIVE), stageSince(ctx), brakeTrips(ctx, Mode.LIVE), ctx.clock.now())
+    suspend fun killLines(ctx: StrategyContext) = StageGates.kills(ctx.stores.ledger.all(id, Mode.LIVE), ctx.clock.now())
+
+    private suspend fun gateRequirement(ctx: StrategyContext): Requirement {
+        val lines = gateLines(ctx)
+        val pass = lines.all { it.verdict == StageGates.Verdict.PASS }
+        return Requirement("gate", if (pass) "Stage gate passes on this app's live record" else "Accept: the stage gate has not passed on this app's live record",
+            pass, false, lines.joinToString("; ") { "${it.name}: ${it.verdict.name.lowercase()} (${it.detail})" } +
+                if (pass) "" else ". The original rule was not to add capital until every gate passes; the last reading from the desktop bot (2026-09-16) failed at 0.92.")
+    }
+
+    private suspend fun killRequirement(ctx: StrategyContext): Requirement {
+        val lines = killLines(ctx)
+        val killed = lines.filter { it.verdict == StageGates.Verdict.KILL }
+        return Requirement("kill", "No kill criterion firing", killed.isEmpty(), true,
+            lines.joinToString("; ") { "${it.name}: ${it.verdict.name.lowercase()} (${it.detail})" })
+    }
+
+    private fun quotedMid(q: QuoteRow) = StageGates.quotedMid(q)
 
     companion object {
         val SETTLED = setOf("settled", "finalized", "closed", "determined")

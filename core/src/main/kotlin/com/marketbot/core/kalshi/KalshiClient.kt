@@ -17,6 +17,10 @@ import java.io.IOException
 import java.util.UUID
 
 const val KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2"
+/** Kalshi's demo exchange: the same API with mock funds and its own accounts and keys. */
+const val KALSHI_DEMO_BASE = "https://external-api.demo.kalshi.co/trade-api/v2"
+const val KALSHI_WS = "wss://external-api-ws.kalshi.com/trade-api/ws/v2"
+const val KALSHI_DEMO_WS = "wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2"
 
 /** What an order create returned. `filtered` = refused because it would have crossed (post-only). */
 data class PlacedOrder(
@@ -34,10 +38,15 @@ data class PlacedOrder(
  */
 class KalshiClient(
     private val signer: RequestSigner?,
-    base: String = KALSHI_BASE,
+    val base: String = KALSHI_BASE,
     private val clock: Clock = Clock.SYSTEM,
     http: JsonHttp? = null,
+    /** 0 is the primary account. A numbered subaccount isolates the bot's money and positions. */
+    val subaccount: Int = 0,
 ) {
+    val demo: Boolean get() = base.contains(".demo.") || base.contains("demo-api")
+    val signerForStream: RequestSigner? get() = signer
+    private fun sub(q: List<Pair<String, String>>) = if (subaccount > 0) q + ("subaccount" to subaccount.toString()) else q
     private val http = http ?: JsonHttp(base, limiter = RateLimiter(8.0))
     private val balanceLimiter = RateLimiter(0.9)
 
@@ -83,21 +92,21 @@ class KalshiClient(
     suspend fun balance(exchangeIndex: Int? = null): KalshiBalance {
         balanceLimiter.acquire()
         val q = exchangeIndex?.let { listOf("exchange_index" to it.toString()) } ?: emptyList()
-        return KalshiBalance.parse(http.get("/portfolio/balance", q, requireSigner()), clock.now())
+        return KalshiBalance.parse(http.get("/portfolio/balance", sub(q), requireSigner()), clock.now())
     }
 
     suspend fun order(orderId: String): JsonObject? = try {
-        val p = http.get("/portfolio/orders/$orderId", signer = requireSigner())
+        val p = http.get("/portfolio/orders/$orderId", sub(emptyList()), requireSigner())
         p.obj("order") ?: p.takeIf { it.isNotEmpty() }
     } catch (e: ApiException) {
         if (e.status == 404) null else throw e
     }
 
     suspend fun orders(status: String, maxPages: Int = 20): List<JsonObject> =
-        paginate("/portfolio/orders", "orders", listOf("status" to status, "limit" to "200"), maxPages, signed = true)
+        paginate("/portfolio/orders", "orders", sub(listOf("status" to status, "limit" to "200")), maxPages, signed = true)
 
     suspend fun positions(): List<JsonObject> =
-        paginate("/portfolio/positions", "market_positions", listOf("limit" to "200", "count_filter" to "position"), 20, signed = true)
+        paginate("/portfolio/positions", "market_positions", sub(listOf("limit" to "200", "count_filter" to "position")), 20, signed = true)
 
     suspend fun queuePosition(orderId: String): Sourced<Double>? =
         http.get("/portfolio/orders/$orderId/queue_position", signer = requireSigner()).num("queue_position_fp")
@@ -106,7 +115,7 @@ class KalshiClient(
     /** Every settlement, newest first, keyed by ticker (first = latest wins). Paginated: the bare call returns 100. */
     suspend fun settlementsByTicker(maxPages: Int = 50): Map<String, JsonObject> {
         val out = LinkedHashMap<String, JsonObject>()
-        for (s in paginate("/portfolio/settlements", "settlements", listOf("limit" to "200"), maxPages, signed = true)) {
+        for (s in paginate("/portfolio/settlements", "settlements", sub(listOf("limit" to "200")), maxPages, signed = true)) {
             val t = s.str("ticker") ?: continue
             out.putIfAbsent(t, s)
         }
@@ -115,7 +124,7 @@ class KalshiClient(
 
     suspend fun fills(ticker: String? = null, maxPages: Int = 20): List<JsonObject> =
         paginate("/portfolio/fills", "fills",
-            listOfNotNull("limit" to "200", ticker?.let { "ticker" to it }), maxPages, signed = true)
+            sub(listOfNotNull("limit" to "200", ticker?.let { "ticker" to it })), maxPages, signed = true)
 
     /** The order carrying [clientOrderId], or null. Kalshi has no filter for it, so recent orders are walked. */
     suspend fun findByClientOrderId(clientOrderId: String): JsonObject? {
@@ -165,6 +174,7 @@ class KalshiClient(
             put("cancel_order_on_pause", cancelOnPause)
             if (exchangeIndex != null) put("exchange_index", exchangeIndex)
             if (expirationEpochS != null && expirationEpochS > clock.now().epochSecond) put("expiration_time", expirationEpochS)
+            if (subaccount > 0) put("subaccount", subaccount)
         }
         return try {
             val r = http.post("/portfolio/events/orders", body, requireSigner())
@@ -198,14 +208,32 @@ class KalshiClient(
             put("count", "%.2f".format(java.util.Locale.ROOT, totalCount))
             put("expiration_time", expirationEpochS)
             if (exchangeIndex != null) put("exchange_index", exchangeIndex)
+            if (subaccount > 0) put("subaccount", subaccount)
         }
         return http.post("/portfolio/events/orders/$orderId/amend", body, requireSigner())
     }
 
     /** Cancel, auto-routed by the market ticker (an order id alone cannot identify the shard). */
     suspend fun cancelOrder(orderId: String, marketTicker: String): Sourced<Double>? {
-        val r = http.delete("/portfolio/events/orders/$orderId", listOf("market_ticker" to marketTicker), requireSigner())
+        val r = http.delete("/portfolio/events/orders/$orderId", sub(listOf("market_ticker" to marketTicker)), requireSigner())
         return r.num("reduced_by")?.let { Sourced.kalshi(it, "DELETE /portfolio/events/orders/$orderId#reduced_by", clock.now()) }
+    }
+
+    /**
+     * Move cash between exchange shards of this account (e.g. into the crypto
+     * shard, index 2, that BTC orders draw on). [amountDollars] is converted to
+     * the endpoint's centicents. Processed asynchronously by the exchange.
+     */
+    suspend fun transferBetweenShards(amountDollars: Double, fromShard: Int, toShard: Int): String? {
+        require(amountDollars > 0) { "transfer amount must be positive" }
+        val body = buildJsonObject {
+            put("source", "event_contract"); put("destination", "event_contract")
+            put("amount", Math.round(amountDollars * 10_000))
+            put("source_exchange_shard", fromShard); put("destination_exchange_shard", toShard)
+            if (subaccount > 0) { put("source_subaccount", subaccount); put("destination_subaccount", subaccount) }
+            else put("client_transfer_id", UUID.randomUUID().toString())
+        }
+        return http.post("/portfolio/intra_exchange_instance_transfer", body, requireSigner()).str("transfer_id")
     }
 
     // ---------------------------------------------------------------- paging

@@ -97,8 +97,11 @@ class JsonHttp(
             signer?.headers(method, url)?.forEach { (k, v) -> rb.header(k, v) }
             rb.method(method, body?.toRequestBody("application/json".toMediaType()))
             try {
+                val sentAt = System.currentTimeMillis()
                 val (code, ok, text) = client.newCall(rb.build()).await().use { resp ->
-                    Triple(resp.code, resp.isSuccessful, resp.body?.string().orEmpty())
+                    val t = resp.body?.string().orEmpty()
+                    NetStats.record(url.host, t.length.toLong() + (body?.length ?: 0) + 400, resp.header("Date"), sentAt, System.currentTimeMillis())
+                    Triple(resp.code, resp.isSuccessful, t)
                 }
                 if (ok) {
                     if (text.isBlank()) return JsonObject(emptyMap())

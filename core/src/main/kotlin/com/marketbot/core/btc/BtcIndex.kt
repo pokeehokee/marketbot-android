@@ -173,6 +173,13 @@ class BtcIndex(
 
     fun age(now: Double = nowS()): Double = synchronized(lock) { samples.lastOrNull()?.let { now - it.first } ?: Double.POSITIVE_INFINITY }
 
+    /** Warm-up progress: share of the 5-minute minimum of index samples, and whether candle volatility is in. */
+    fun warmup(): Pair<Double, Boolean> = synchronized(lock) {
+        val end = samples.lastOrNull()?.first ?: return 0.0 to (candleSig != null)
+        val n = samples.count { end - it.first <= VOL_WINDOW_S }
+        (n.toDouble() / MIN_VOL_SAMPLES).coerceAtMost(1.0) to (candleSig != null)
+    }
+
     fun freshVenues(now: Double = nowS()): Int = synchronized(lock) { quotes.values.count { now - it.first <= STALE_S } }
 
     fun start(scope: CoroutineScope) {

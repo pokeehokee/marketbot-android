@@ -55,6 +55,10 @@ class FakeKalshi : AutoCloseable {
                         if (amendFails) MockResponse().setResponseCode(404).setBody("{}")
                         else ok("""{"order_id":"${path.split('/').dropLast(1).last()}","remaining_count":"5.00","fill_count":"0.00","ts_ms":1}""")
                     }
+                    request.method == "POST" && path == "/portfolio/intra_exchange_instance_transfer" -> {
+                        bodies += JSON.parseToJsonElement(request.body.readUtf8()) as JsonObject
+                        ok("""{"transfer_id":"tr-1"}""")
+                    }
                     request.method == "DELETE" -> ok("""{"order_id":"${path.substringAfterLast('/')}","reduced_by":"5.00","ts_ms":1}""")
                     path == "/markets" -> ok("""{"markets":[${(markets[q.queryParameter("series_ticker") ?: ("event:" + q.queryParameter("event_ticker"))]).orEmpty().joinToString(",")}],"cursor":""}""")
                     path.startsWith("/markets/trades") -> ok(trades)
@@ -75,9 +79,9 @@ class FakeKalshi : AutoCloseable {
 
     val base: String get() = server.url("/trade-api/v2").toString().trimEnd('/')
 
-    fun client(signed: Boolean, clock: com.marketbot.core.util.Clock = com.marketbot.core.util.Clock.SYSTEM): KalshiClient {
+    fun client(signed: Boolean, clock: com.marketbot.core.util.Clock = com.marketbot.core.util.Clock.SYSTEM, subaccount: Int = 0): KalshiClient {
         val pem = golden("signatures").o()["rsa_pss"].o()["pkcs1_pem"].s!!
-        return KalshiClient(if (signed) KalshiSigner("kid", pem) else null, base, clock = clock, http = JsonHttp(base, sleep = {}))
+        return KalshiClient(if (signed) KalshiSigner("kid", pem) else null, base, clock = clock, http = JsonHttp(base, sleep = {}), subaccount = subaccount)
     }
 
     fun posts() = requests.filter { it.method == "POST" }
