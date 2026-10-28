@@ -108,6 +108,7 @@ fun SystemBanners(vm: MainViewModel) {
 /** Demo exchange, subaccount and the shard transfer, under Accounts > Kalshi. */
 @Composable
 fun KalshiAccountOptions(vm: MainViewModel) {
+    val confirm = com.marketbot.app.rememberConfirm()
     val demo by vm.demo.collectAsState()
     val accounts by vm.accounts.collectAsState()
     var confirmDemo by remember { mutableStateOf<Boolean?>(null) }
@@ -131,7 +132,7 @@ fun KalshiAccountOptions(vm: MainViewModel) {
 
     confirmDemo?.let { on ->
         AlertDialog(onDismissRequest = { confirmDemo = null },
-            confirmButton = { Button({ vm.setKalshiDemo(on); confirmDemo = null }) { Text(if (on) "Use demo" else "Use real money") } },
+            confirmButton = { Button({ if (on) vm.setKalshiDemo(true) else confirm("Switch Kalshi to real money") { vm.setKalshiDemo(false) }; confirmDemo = null }) { Text(if (on) "Use demo" else "Use real money") } },
             dismissButton = { TextButton({ confirmDemo = null }) { Text("Cancel") } },
             title = { Text(if (on) "Switch Kalshi to demo?" else "Switch Kalshi to the real exchange?") },
             text = { Text(if (on) "Kalshi strategies will trade fake money. The paper and live ledgers are not reset, so demo fills will appear in the live book until you switch back."
@@ -144,6 +145,7 @@ private fun ShardTransfer(vm: MainViewModel, shards: Map<Int, Double>) {
     var amount by remember { mutableStateOf("") }
     var toCrypto by remember { mutableStateOf(true) }
     var confirm by remember { mutableStateOf(false) }
+    val auth = com.marketbot.app.rememberConfirm()
     val from = if (toCrypto) 0 else 2
     val to = if (toCrypto) 2 else 0
     val amt = amount.toDoubleOrNull()
@@ -160,7 +162,7 @@ private fun ShardTransfer(vm: MainViewModel, shards: Map<Int, Double>) {
         Button({ confirm = true }, enabled = amt != null && amt > 0 && (available == null || amt <= available)) { Text("Move") }
     }
     if (confirm && amt != null) AlertDialog(onDismissRequest = { confirm = false },
-        confirmButton = { Button({ vm.transferShards(amt, from, to); confirm = false; amount = "" }) { Text("Move ${money(amt)}") } },
+        confirmButton = { Button({ auth("Move ${money(amt)} between shards") { vm.transferShards(amt, from, to) }; confirm = false; amount = "" }) { Text("Move ${money(amt)}") } },
         dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
         title = { Text("Move ${money(amt)}?") },
         text = { Text("From shard $from to shard $to of ${if (vm.kalshiSubaccount() == 0) "your primary account" else "subaccount #${vm.kalshiSubaccount()}"}. Kalshi processes transfers in the background; it cannot be undone from here, only reversed by another transfer.") })
@@ -170,10 +172,24 @@ private fun ShardTransfer(vm: MainViewModel, shards: Map<Int, Double>) {
 @Composable
 fun SystemSettings(vm: MainViewModel) {
     val ctx = LocalContext.current
+    val authOff = com.marketbot.app.rememberConfirm()
     var wifi by remember { mutableStateOf(vm.wifiOnly()) }
     var crash by remember { mutableStateOf(vm.lastCrash()) }
     val usage by produceState(vm.netUsage()) { while (true) { delay(10_000); value = vm.netUsage() } }
 
+    var confirmLive by remember { mutableStateOf(com.marketbot.app.Confirm.enabled(ctx)) }
+    Section("Security") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Confirm money actions", style = MaterialTheme.typography.bodyMedium)
+                Text(if (com.marketbot.app.Confirm.available(ctx)) "Fingerprint, face or screen lock before arming live, turning the kill switch off, moving cash or changing keys."
+                    else "This phone has no screen lock, so nothing can be confirmed. Set one in Android settings.",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(confirmLive, { on -> if (on) { com.marketbot.app.Confirm.setEnabled(ctx, true); confirmLive = true }
+                else authOff("Stop asking for confirmation") { com.marketbot.app.Confirm.setEnabled(ctx, false); confirmLive = false } })
+        }
+    }
     Section("Background reliability") {
         Health.oemAdvice()?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         val exact = Alarms.exactAllowed(ctx)
@@ -211,5 +227,66 @@ fun SystemSettings(vm: MainViewModel) {
                 TextButton({ vm.clearCrash(); crash = null }) { Text("Dismiss") }
             }
         }
+    }
+}
+
+
+/** Back up to, and restore from, a password-sealed file the user picks. */
+@Composable
+fun BackupSection(vm: MainViewModel) {
+    var pending by remember { mutableStateOf<Pair<Boolean, android.net.Uri>?>(null) }   // (isRestore, uri)
+    val create = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { it?.let { u -> pending = false to u } }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { u -> pending = true to u } }
+    val running by vm.engineRunning.collectAsState()
+    Section("Backup") {
+        Text("A password-protected file with every order, setting and record. API keys are not included; the Kalshi key cannot leave this phone at all.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+            OutlinedButton({ create.launch("marketbot-${java.time.LocalDate.now()}.mbk") }) { Text("Back up") }
+            OutlinedButton({ pick.launch(arrayOf("*/*")) }, enabled = !running) { Text("Restore") }
+        }
+        if (running) Text("Stop the engine to restore.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    pending?.let { (restore, uri) ->
+        var pw by remember { mutableStateOf("") }
+        var pw2 by remember { mutableStateOf("") }
+        val ok = pw.length >= 8 && (restore || pw == pw2)
+        AlertDialog(onDismissRequest = { pending = null },
+            confirmButton = { Button({ if (restore) vm.restore(uri, pw.toCharArray()) else vm.backup(uri, pw.toCharArray()); pending = null }, enabled = ok) {
+                Text(if (restore) "Replace everything" else "Save backup") } },
+            dismissButton = { TextButton({ pending = null }) { Text("Cancel") } },
+            title = { Text(if (restore) "Restore backup" else "Protect the backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (restore) Text("This replaces every order, setting and record on this phone with the backup's. Strategies come back in paper.",
+                        style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.warn)
+                    OutlinedTextField(pw, { pw = it }, label = { Text("Password") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                    if (!restore) OutlinedTextField(pw2, { pw2 = it }, label = { Text("Repeat password") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        supportingText = { Text("At least 8 characters. It cannot be recovered.") })
+                }
+            })
+    }
+}
+
+
+@Composable
+fun UpdateRow(vm: MainViewModel) {
+    val ctx = LocalContext.current
+    val msg by vm.update.collectAsState()
+    val url by vm.updateUrl.collectAsState()
+    var token by remember { mutableStateOf("") }
+    var showToken by remember { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton({ vm.checkUpdates() }) { Text("Check for updates") }
+        url?.let { u -> Button({ ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(u))) }) { Text("Download") } }
+    }
+    msg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    TextButton({ showToken = !showToken }) { Text(if (vm.hasGithubToken()) "GitHub token saved" else "Private repository? Add a token") }
+    if (showToken) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(token, { token = it }, Modifier.weight(1f), label = { Text("Read-only token (contents: read)") }, singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+        OutlinedButton({ vm.saveGithubToken(token.trim()); token = ""; showToken = false }) { Text("Save") }
     }
 }

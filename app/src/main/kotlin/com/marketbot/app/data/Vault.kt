@@ -50,8 +50,8 @@ class KeystoreCrypter(private val alias: String = "marketbot-credentials") : Cry
 }
 
 /** API keys, encrypted at rest. Nothing here is ever logged or shown back in full. */
-class Vault(private val prefs: SharedPreferences, private val crypter: Crypter) {
-    constructor(ctx: Context) : this(ctx.getSharedPreferences("vault", Context.MODE_PRIVATE), KeystoreCrypter())
+class Vault(private val prefs: SharedPreferences, private val crypter: Crypter, private val hardware: HardwareKey? = null) {
+    constructor(ctx: Context) : this(ctx.getSharedPreferences("vault", Context.MODE_PRIVATE), KeystoreCrypter(), KeystoreKalshiKey())
 
     private fun put(k: String, v: String?) {
         prefs.edit().apply {
@@ -63,8 +63,12 @@ class Vault(private val prefs: SharedPreferences, private val crypter: Crypter) 
         runCatching { String(crypter.decrypt(Base64.getDecoder().decode(it))) }.getOrNull()
     }
 
-    fun credentials() = Credentials(get("kalshi_key_id"), get("kalshi_pem"), get("pm_key_id"), get("pm_secret"),
-        kalshiDemo = kalshiDemo(), kalshiSubaccount = kalshiSubaccount())
+    fun credentials() = Credentials(get("kalshi_key_id"), if (kalshiInHardware()) null else get("kalshi_pem"), get("pm_key_id"), get("pm_secret"),
+        kalshiDemo = kalshiDemo(), kalshiSubaccount = kalshiSubaccount(),
+        kalshiSignBytes = if (kalshiInHardware()) hardware?.signBytes() else null)
+
+    /** Whether the Kalshi key lives in the Keystore (sign-only) rather than encrypted in app storage. */
+    fun kalshiInHardware() = prefs.getBoolean("kalshi_hw", false)
 
     /** Kalshi's demo exchange (fake money) instead of the real one. Not a secret, so stored plainly. */
     fun kalshiDemo() = prefs.getBoolean("kalshi_demo", false)
@@ -74,8 +78,25 @@ class Vault(private val prefs: SharedPreferences, private val crypter: Crypter) 
     fun kalshiSubaccount() = prefs.getInt("kalshi_subaccount", 0)
     fun setKalshiSubaccount(n: Int) { require(n in 0..32) { "subaccount must be 0-32" }; prefs.edit().putInt("kalshi_subaccount", n).apply() }
 
-    fun saveKalshi(keyId: String?, pem: String?) { put("kalshi_key_id", keyId); put("kalshi_pem", pem) }
+    /**
+     * Save the Kalshi key. The private key goes into secure hardware when the phone
+     * can hold it there, and only otherwise is kept encrypted in app storage.
+     */
+    fun saveKalshi(keyId: String?, pem: String?) {
+        put("kalshi_key_id", keyId)
+        if (pem.isNullOrBlank()) {
+            hardware?.delete(); put("kalshi_pem", null); prefs.edit().putBoolean("kalshi_hw", false).apply(); return
+        }
+        val hw = hardware
+        val inHw = hw != null && runCatching { hw.import(pem.trim()) }.isSuccess
+        put("kalshi_pem", if (inHw) null else pem)
+        prefs.edit().putBoolean("kalshi_hw", inHw).apply()
+    }
     fun savePolymarket(keyId: String?, secret: String?) { put("pm_key_id", keyId); put("pm_secret", secret) }
+
+    /** Optional read-only GitHub token, only for checking a private repository for updates. */
+    fun githubToken(): String? = get("gh_token")
+    fun saveGithubToken(t: String?) = put("gh_token", t)
 
     /** For display: the last four characters of the key id, never the secret. */
     fun kalshiHint(): String? = get("kalshi_key_id")?.takeLast(4)

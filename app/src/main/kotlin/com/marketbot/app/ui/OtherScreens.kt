@@ -92,6 +92,7 @@ fun ActivityScreen(vm: MainViewModel) {
 @Composable
 fun AccountsScreen(vm: MainViewModel) {
     val ctx = LocalContext.current
+    val confirm = com.marketbot.app.rememberConfirm()
     val accounts by vm.accounts.collectAsState()
     var kId by remember { mutableStateOf("") }
     var kPem by remember { mutableStateOf("") }
@@ -106,7 +107,7 @@ fun AccountsScreen(vm: MainViewModel) {
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Section("Kalshi") {
-            Text(if (vm.hasKalshi()) "Key saved (id ending ${vm.kalshiHint()})." else "No key saved.", style = MaterialTheme.typography.bodyMedium)
+            Text(if (vm.hasKalshi()) "Key saved (id ending ${vm.kalshiHint()}), ${if (vm.kalshiInHardware()) "private key in secure hardware: it signs requests and cannot be read back out" else "encrypted on this phone"}." else "No key saved.", style = MaterialTheme.typography.bodyMedium)
             Text("Create one at kalshi.com > Account > API keys. You get a key id and a private key file (.pem).", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(kId, { kId = it }, Modifier.fillMaxWidth(), label = { Text("Key id") }, singleLine = true)
@@ -114,8 +115,8 @@ fun AccountsScreen(vm: MainViewModel) {
                 visualTransformation = if (kPem.length > 60) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ pickPem.launch(arrayOf("*/*")) }) { Text("Import .pem file") }
-                Button({ vm.saveKalshi(kId.trim(), kPem); kId = ""; kPem = "" }, enabled = kId.isNotBlank() && kPem.isNotBlank()) { Text("Save") }
-                if (vm.hasKalshi()) TextButton({ vm.clearKalshi() }) { Text("Remove") }
+                Button({ val id = kId.trim(); val pem = kPem; confirm("Save Kalshi key") { vm.saveKalshi(id, pem) }; kId = ""; kPem = "" }, enabled = kId.isNotBlank() && kPem.isNotBlank()) { Text("Save") }
+                if (vm.hasKalshi()) TextButton({ confirm("Remove Kalshi key") { vm.clearKalshi() } }) { Text("Remove") }
             }
             accounts.kalshi?.let { b ->
                 SourcedRow("Cash", b.cash, { money(it) }); b.portfolioValue?.let { SourcedRow("Positions", it, { v -> money(v) }) }
@@ -135,8 +136,8 @@ fun AccountsScreen(vm: MainViewModel) {
             OutlinedTextField(pSecret, { pSecret = it }, Modifier.fillMaxWidth(), label = { Text("Secret key") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ vm.savePolymarket(pId.trim(), pSecret.trim()); pId = ""; pSecret = "" }, enabled = pId.isNotBlank() && pSecret.isNotBlank()) { Text("Save") }
-                if (vm.hasPolymarket()) TextButton({ vm.clearPolymarket() }) { Text("Remove") }
+                Button({ val id = pId.trim(); val sec = pSecret.trim(); confirm("Save Polymarket key") { vm.savePolymarket(id, sec) }; pId = ""; pSecret = "" }, enabled = pId.isNotBlank() && pSecret.isNotBlank()) { Text("Save") }
+                if (vm.hasPolymarket()) TextButton({ confirm("Remove Polymarket key") { vm.clearPolymarket() } }) { Text("Remove") }
             }
             accounts.polymarket?.let { b ->
                 SourcedRow("Balance", b.currentBalance, { money(it) }); SourcedRow("Buying power", b.buyingPower, { money(it) })
@@ -164,6 +165,7 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SystemSettings(vm)
+        BackupSection(vm)
         Section("Data") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onSources) { Text("Data sources") }
@@ -182,6 +184,7 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
         }
         Section("About") {
             Text("Marketbot ${com.marketbot.app.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+            UpdateRow(vm)
             Text("Strategies are ports of pokeehokee/weatherbot and pokeehokee/polymarket, tested against the original Python on recorded inputs.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

@@ -20,7 +20,10 @@ class MarketbotApp : Application() {
     lateinit var db: MarketbotDb
     lateinit var vault: Vault
     lateinit var engine: Engine
-    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Background work outside the engine. A failure here is logged, never allowed to crash the process. */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.e("marketbot", "background task failed", e)
+    })
 
     override fun onCreate() {
         super.onCreate()

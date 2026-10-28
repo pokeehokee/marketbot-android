@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the build number is the commit count
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,6 +27,22 @@ jobs:
         run: ./gradlew --no-daemon :app:testDebugUnitTest
       - name: Build APK
         run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Build release APK (R8, signed with the release key when the secrets are set)
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_B64" ]; then
+            echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export RELEASE_KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+          fi
+          ./gradlew --no-daemon :app:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketbot-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         with:
           name: marketbot-apk
@@ -42,7 +60,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk marketbot-${{ github.run_number }}.apk
-          gh release create "build-${{ github.run_number }}" marketbot-${{ github.run_number }}.apk \
-            --prerelease --title "Marketbot build ${{ github.run_number }}" \
-            --notes "Debug-signed build of ${{ github.sha }}. Install by opening the APK on your phone."
+          n=$((100 + $(git rev-list --count HEAD)))   # = versionCode, see app/build.gradle.kts
+          cp app/build/outputs/apk/release/app-release.apk marketbot-$n.apk
+          gh release view "build-$n" >/dev/null 2>&1 && exit 0
+          gh release create "build-$n" marketbot-$n.apk \
+            --prerelease --title "Marketbot build $n" \
+            --notes "Build $n from ${{ github.sha }}. Install by opening the APK on your phone; the app also checks for this under Settings > About."

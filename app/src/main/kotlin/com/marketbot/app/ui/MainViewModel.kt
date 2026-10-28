@@ -55,7 +55,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toastShown() { _toast.value = null }
     private fun say(s: String) { _toast.value = s }
 
-    fun hasKalshi() = a.vault.credentials().let { !it.kalshiKeyId.isNullOrBlank() && !it.kalshiPem.isNullOrBlank() }
+    fun hasKalshi() = a.vault.credentials().let { !it.kalshiKeyId.isNullOrBlank() && (!it.kalshiPem.isNullOrBlank() || it.kalshiSignBytes != null) }
+    fun kalshiInHardware() = a.vault.kalshiInHardware()
     fun hasPolymarket() = a.vault.credentials().let { !it.polymarketKeyId.isNullOrBlank() && !it.polymarketSecret.isNullOrBlank() }
     fun kalshiHint() = a.vault.kalshiHint()
     fun polymarketHint() = a.vault.polymarketHint()
@@ -165,6 +166,51 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setWifiOnly(on: Boolean) { com.marketbot.app.Connectivity.setWifiOnly(getApplication(), on); say(if (on) "Strategies wait for Wi-Fi." else "Strategies run on any connection.") }
     fun lastCrash() = com.marketbot.app.Health.lastCrash(getApplication())
     fun clearCrash() = com.marketbot.app.Health.clearCrash(getApplication())
+
+    // ---------------------------------------------------------------- updates
+    private val _update = MutableStateFlow<String?>(null)
+    val update = _update.asStateFlow()
+    private val _updateUrl = MutableStateFlow<String?>(null)
+    val updateUrl = _updateUrl.asStateFlow()
+    fun hasGithubToken() = !a.vault.githubToken().isNullOrBlank()
+    fun saveGithubToken(t: String) { a.vault.saveGithubToken(t.ifBlank { null }); say(if (t.isBlank()) "Token removed." else "Token saved.") }
+
+    fun checkUpdates() = viewModelScope.launch(Dispatchers.IO) {
+        _update.value = "Checking..."
+        com.marketbot.app.Updates.check(a.vault.githubToken())
+            .onSuccess { r ->
+                val mine = com.marketbot.app.BuildConfig.VERSION_CODE
+                when {
+                    r == null -> { _update.value = "No builds published yet."; _updateUrl.value = null }
+                    r.build > mine -> { _update.value = "Build ${r.build} is available (this is $mine)."; _updateUrl.value = r.apkUrl ?: r.pageUrl }
+                    else -> { _update.value = "Up to date (build $mine)."; _updateUrl.value = null }
+                }
+            }
+            .onFailure { _update.value = it.message; _updateUrl.value = null }
+    }
+
+    // ---------------------------------------------------------------- backup
+    fun backup(uri: android.net.Uri, password: CharArray) = viewModelScope.launch(Dispatchers.IO) {
+        runCatching {
+            val blob = com.marketbot.app.data.Backup.export(a.db, com.marketbot.app.BuildConfig.VERSION_NAME, password)
+            getApplication<Application>().contentResolver.openOutputStream(uri, "wt")!!.use { it.write(blob) }
+            blob.size
+        }.onSuccess { say("Backup saved (${it / 1024} KB). Keep the password: it cannot be recovered.") }
+            .onFailure { say("Backup failed: ${it.message}") }
+        password.fill(' ')
+    }
+
+    fun restore(uri: android.net.Uri, password: CharArray) = viewModelScope.launch(Dispatchers.IO) {
+        if (engine.running.value) { say("Stop the engine before restoring."); return@launch }
+        runCatching {
+            val blob = getApplication<Application>().contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+            com.marketbot.app.data.Backup.restore(a.db, blob, password)
+        }.onSuccess { c ->
+            a.note(com.marketbot.core.store.LogEvent.Level.WARN, "restore", "Restored a backup from ${java.time.Instant.ofEpochMilli(c.createdAt)}: ${c.quotes.size} orders. Every strategy is in paper; API keys must be entered again.")
+            say("Restored ${c.quotes.size} orders. Strategies are in paper; re-enter keys under Accounts.")
+        }.onFailure { say(it.message ?: "Restore failed") }
+        password.fill(' ')
+    }
 
     fun pruneLogs(days: Int) = viewModelScope.launch(Dispatchers.IO) {
         a.db.events().prune(System.currentTimeMillis() - days * 86_400_000L); say("Activity older than $days days deleted.")

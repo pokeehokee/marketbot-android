@@ -50,8 +50,8 @@ data class Credentials(
     val kalshiDemo: Boolean = false,
     /** Kalshi subaccount the bot trades in; 0 is the primary account. */
     val kalshiSubaccount: Int = 0,
-    /** A signer whose key never leaves the phone's secure hardware; replaces the PEM when set. */
-    val kalshiSigner: com.marketbot.core.net.RequestSigner? = null,
+    /** RSA-PSS by a key that never leaves the phone's secure hardware; replaces the PEM when set. */
+    val kalshiSignBytes: ((ByteArray) -> ByteArray)? = null,
 )
 
 data class StrategyStatus(
@@ -390,7 +390,12 @@ class Engine(
             // Signed timestamps follow the server's clock when the phone's has drifted.
             val kNow = { System.currentTimeMillis() + NetStats.correctionMs(kHost) }
             val pNow = { System.currentTimeMillis() + NetStats.correctionMs("api.polymarket.us") }
-            val ks = c.kalshiSigner ?: if (!c.kalshiKeyId.isNullOrBlank() && !c.kalshiPem.isNullOrBlank()) KalshiSigner(c.kalshiKeyId, c.kalshiPem, kNow) else null
+            val ks = when {
+                c.kalshiKeyId.isNullOrBlank() -> null
+                c.kalshiSignBytes != null -> KalshiSigner.external(c.kalshiKeyId, c.kalshiSignBytes, kNow)
+                !c.kalshiPem.isNullOrBlank() -> KalshiSigner(c.kalshiKeyId, c.kalshiPem, kNow)
+                else -> null
+            }
             val ps = if (!c.polymarketKeyId.isNullOrBlank() && !c.polymarketSecret.isNullOrBlank()) PolymarketSigner(c.polymarketKeyId, c.polymarketSecret, pNow) else null
             return KalshiClient(ks, base, subaccount = c.kalshiSubaccount) to PolymarketClient(ps)
         }

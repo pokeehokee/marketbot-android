@@ -6,6 +6,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// One build number for the APK, the in-app update check and the release tag: 100 + the commit
+// count (the offset keeps it above the run-number builds published before, so they upgrade).
+val buildNumber: Int = 100 + providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD"); isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().toIntOrNull() ?: 0 }.getOrElse(0)
+
 android {
     namespace = "com.marketbot.app"
     compileSdk = 35
@@ -14,8 +20,9 @@ android {
         applicationId = "com.marketbot.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        versionCode = buildNumber
+        versionName = "1.0.$buildNumber"
+        buildConfigField("String", "UPDATE_REPO", "\"pokeehokee/marketbot-android\"")
     }
 
     signingConfigs {
@@ -40,7 +47,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (System.getenv("RELEASE_KEYSTORE_PATH") != null)
                 signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
@@ -55,6 +64,8 @@ android {
         freeCompilerArgs += listOf("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
     }
     buildFeatures { compose = true; buildConfig = true }
+    // Debug builds carry the exported Room schemas (a few KB) so the Robolectric schema test can read them.
+    sourceSets["debug"].assets.srcDir("$projectDir/schemas")
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all { t ->
@@ -90,6 +101,9 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.work.runtime)
+    implementation(libs.bcpkix)
+    implementation(libs.androidx.biometric)
+    implementation(libs.androidx.fragment)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)

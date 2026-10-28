@@ -164,6 +164,7 @@ private fun SettingsForm(vm: MainViewModel, s: Strategy) {
 @Composable
 private fun GoLive(vm: MainViewModel, s: Strategy) {
     val scope = rememberCoroutineScope()
+    val confirm = com.marketbot.app.rememberConfirm()
     var reqs by remember { mutableStateOf<List<Requirement>?>(null) }
     var pre by remember { mutableStateOf<PreflightResult?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -225,7 +226,7 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
             Text("Type LIVE to confirm that this strategy may place real orders with your money.", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("Type LIVE") })
             Spacer(Modifier.size(8.dp))
-            Button({ scope.launch { val (ok, m) = vm.arm(s, acks.toSet()); msg = m; if (ok) reload() } },
+            Button({ confirm("Arm ${s.name} for live trading") { scope.launch { val (ok, m) = vm.arm(s, acks.toSet()); msg = m; if (ok) reload() } } },
                 enabled = ready && typed.trim() == "LIVE" && !killed,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text("Arm live trading") }
             msg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

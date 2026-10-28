@@ -13,7 +13,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(tableName = "quotes", indices = [Index("strategyId", "mode", "resolvedAt")])
 data class QuoteEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -25,15 +27,18 @@ data class QuoteEntity(
     val hypothetical: Boolean?, val extra: String,
 )
 
+@Serializable
 @Entity(tableName = "events", indices = [Index("at"), Index("strategyId")])
 data class EventEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val at: Long, val strategyId: String?, val level: String, val kind: String, val message: String, val values: String,
 )
 
+@Serializable
 @Entity(tableName = "state")
 data class StateEntity(@PrimaryKey val key: String, val value: String)
 
+@Serializable
 @Entity(tableName = "equity", indices = [Index("venue", "mode", "at")])
 data class EquityEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -43,6 +48,7 @@ data class EquityEntity(
     val total: Double?, val totalSource: String?, val totalOrigin: String?,
 )
 
+@Serializable
 @Entity(tableName = "audit")
 data class AuditEntity(@PrimaryKey val key: String, val value: String, val source: String, val origin: String, val note: String?, val at: Long)
 
@@ -95,15 +101,39 @@ interface AuditDao {
     @Query("SELECT * FROM audit ORDER BY `key`") fun watch(): Flow<List<AuditEntity>>
 }
 
-@Database(entities = [QuoteEntity::class, EventEntity::class, StateEntity::class, EquityEntity::class, AuditEntity::class], version = 1, exportSchema = true)
+/** Whole-table reads and writes for backup and restore. */
+@Dao
+interface BackupDao {
+    @Query("SELECT * FROM quotes ORDER BY id") suspend fun quotes(): List<QuoteEntity>
+    @Query("SELECT * FROM events WHERE level NOT IN ('DEBUG', 'INFO') ORDER BY id") suspend fun keyEvents(): List<EventEntity>
+    @Query("SELECT * FROM state") suspend fun state(): List<StateEntity>
+    @Query("SELECT * FROM equity ORDER BY id") suspend fun equity(): List<EquityEntity>
+    @Query("SELECT * FROM audit") suspend fun audit(): List<AuditEntity>
+    @Insert suspend fun putQuotes(r: List<QuoteEntity>)
+    @Insert suspend fun putEvents(r: List<EventEntity>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putState(r: List<StateEntity>)
+    @Insert suspend fun putEquity(r: List<EquityEntity>)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun putAudit(r: List<AuditEntity>)
+    @Query("DELETE FROM quotes") suspend fun clearQuotes()
+    @Query("DELETE FROM events") suspend fun clearEvents()
+    @Query("DELETE FROM state") suspend fun clearState()
+    @Query("DELETE FROM equity") suspend fun clearEquity()
+    @Query("DELETE FROM audit") suspend fun clearAudit()
+}
+
+@Database(entities = [QuoteEntity::class, EventEntity::class, StateEntity::class, EquityEntity::class, AuditEntity::class], version = MarketbotDb.VERSION, exportSchema = true)
 abstract class MarketbotDb : RoomDatabase() {
     abstract fun quotes(): QuoteDao
     abstract fun events(): EventDao
     abstract fun state(): StateDao
     abstract fun equity(): EquityDao
     abstract fun audit(): AuditDao
+    abstract fun backup(): BackupDao
 
     companion object {
+        /** Bump with a new exported schema in app/schemas and a migration; the schema test enforces both. */
+        const val VERSION = 1
+
         fun open(ctx: Context): MarketbotDb = Room.databaseBuilder(ctx, MarketbotDb::class.java, "marketbot.db").build()
         fun inMemory(ctx: Context): MarketbotDb = Room.inMemoryDatabaseBuilder(ctx, MarketbotDb::class.java).allowMainThreadQueries().build()
     }

@@ -18,13 +18,12 @@ import java.util.Base64
  * = digest length) of `timestamp_ms + METHOD + path`, where path excludes the
  * query string. Matches weatherbot's `KalshiAuth.create_auth_headers`.
  */
-class KalshiSigner(
+class KalshiSigner private constructor(
     private val keyId: String,
-    pem: String,
-    private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val signBytes: (ByteArray) -> ByteArray,
+    private val nowMs: () -> Long,
 ) : RequestSigner {
-    private val key: RSAPrivateCrtKeyParameters = parseRsaPrivateKey(pem)
-    private val random = SecureRandom()
+    constructor(keyId: String, pem: String, nowMs: () -> Long = { System.currentTimeMillis() }) : this(keyId, pssSigner(parseRsaPrivateKey(pem)), nowMs)
 
     override fun headers(method: String, url: HttpUrl): Map<String, String> {
         val ts = nowMs().toString()
@@ -35,15 +34,27 @@ class KalshiSigner(
         )
     }
 
-    fun sign(preimage: String): String {
-        val signer = PSSSigner(RSABlindedEngine(), SHA256Digest(), 32)
-        signer.init(true, ParametersWithRandom(key, random))
-        val bytes = preimage.toByteArray(Charsets.UTF_8)
-        signer.update(bytes, 0, bytes.size)
-        return Base64.getEncoder().encodeToString(signer.generateSignature())
-    }
+    fun sign(preimage: String): String = Base64.getEncoder().encodeToString(signBytes(preimage.toByteArray(Charsets.UTF_8)))
 
     companion object {
+        /**
+         * A signer whose RSA-PSS operation is done elsewhere, e.g. by a key held in
+         * the Android Keystore that never leaves secure hardware. [signBytes] must be
+         * RSA-PSS, SHA-256, MGF1 SHA-256, 32-byte salt.
+         */
+        fun external(keyId: String, signBytes: (ByteArray) -> ByteArray, nowMs: () -> Long = { System.currentTimeMillis() }) =
+            KalshiSigner(keyId, signBytes, nowMs)
+
+        private fun pssSigner(key: RSAPrivateCrtKeyParameters): (ByteArray) -> ByteArray {
+            val random = SecureRandom()
+            return { bytes ->
+                val signer = PSSSigner(RSABlindedEngine(), SHA256Digest(), 32)
+                signer.init(true, ParametersWithRandom(key, random))
+                signer.update(bytes, 0, bytes.size)
+                signer.generateSignature()
+            }
+        }
+
         /** Accepts PKCS#1 (`BEGIN RSA PRIVATE KEY`, what Kalshi hands out) and PKCS#8 (`BEGIN PRIVATE KEY`). */
         fun parseRsaPrivateKey(pem: String): RSAPrivateCrtKeyParameters {
             val text = pem.trim()

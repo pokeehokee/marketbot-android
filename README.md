@@ -46,10 +46,15 @@ graded from local size and price. A missing value pauses or skips; it is never r
 
 ## Install
 
-CI builds a debug-signed APK on every push. Pushes to the default branch publish it as a GitHub pre-release; open the
-APK on the phone to install it (allow "install unknown apps" for your browser). The debug key is checked in
-(`signing/debug.keystore`) so each build installs over the last. For a private release key, set the
-`RELEASE_KEYSTORE_*` environment variables in CI.
+CI builds a debug APK and an R8-shrunk release APK (~11 MB) on every push. Pushes to the default branch publish the
+release APK as a pre-release tagged `build-N`, where N is the versionCode (100 + commit count); Settings > About >
+Check for updates compares against it (a private repository needs a read-only token). Open the APK on the phone to
+install it (allow "install unknown apps" for your browser).
+
+Without signing secrets the release APK is signed with the checked-in debug key (`signing/debug.keystore`), so every
+build installs over the last. To use a private key, add repository secrets `RELEASE_KEYSTORE_B64` (base64 of the
+keystore), `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`. Switching keys means
+uninstalling once (Android refuses an update signed by a different key), so export a backup first.
 
 ## Running on a phone: limits to know
 

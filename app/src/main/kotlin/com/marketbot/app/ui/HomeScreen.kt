@@ -59,6 +59,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     vm.modes.collectAsState().value
     val ctx = LocalContext.current
     var confirmKill by remember { mutableStateOf(false) }
+    val confirm = com.marketbot.app.rememberConfirm()
     LaunchedEffect(Unit) { vm.refreshAccounts() }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -89,7 +90,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                     Text(if (killed) "Live trading is off. Paper strategies keep running." else "Cancels every resting order and turns live trading off.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (killed) OutlinedButton({ vm.kill(false) }) { Text("Turn off") }
+                if (killed) OutlinedButton({ confirm("Turn the kill switch off") { vm.kill(false) } }) { Text("Turn off") }
                 else Button({ confirmKill = true }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("KILL") }
             }
         }

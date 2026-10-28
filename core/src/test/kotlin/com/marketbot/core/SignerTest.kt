@@ -57,6 +57,21 @@ class SignerTest {
         assertTrue(pssVerify(r["public_pem"].s!!, r["preimage"].s!!, r["python_signature"].s!!))
     }
 
+    @Test fun `a JCA RSA-PSS key (what the Android Keystore runs) signs exactly like the PEM signer`() {
+        val r = sig["rsa_pss"].o()
+        val der = Base64.getMimeDecoder().decode(r["pkcs8_pem"].s!!.lines().filterNot { it.startsWith("-----") }.joinToString(""))
+        val key = java.security.KeyFactory.getInstance("RSA").generatePrivate(java.security.spec.PKCS8EncodedKeySpec(der))
+        val s = KalshiSigner.external("kid", { bytes ->
+            java.security.Signature.getInstance("RSASSA-PSS").run {
+                setParameter(java.security.spec.PSSParameterSpec("SHA-256", "MGF1", java.security.spec.MGF1ParameterSpec.SHA256, 32, 1))
+                initSign(key); update(bytes); sign()
+            }
+        }, nowMs = { 1_700_000_000_000 })
+        assertTrue(pssVerify(r["public_pem"].s!!, r["preimage"].s!!, s.sign(r["preimage"].s!!)))
+        val h = s.headers("GET", "https://api.elections.kalshi.com/trade-api/v2/portfolio/balance?x=1".toHttpUrl())
+        assertTrue(pssVerify(r["public_pem"].s!!, "1700000000000GET/trade-api/v2/portfolio/balance", h["KALSHI-ACCESS-SIGNATURE"]!!))
+    }
+
     @Test fun `Kalshi headers sign timestamp + method + full path without query`() {
         val r = sig["rsa_pss"].o()
         val s = KalshiSigner("kid", r["pkcs1_pem"].s!!, nowMs = { 1793134000000 })
