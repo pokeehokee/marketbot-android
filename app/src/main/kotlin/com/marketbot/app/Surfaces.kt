@@ -50,6 +50,8 @@ class KillTileService : TileService() {
         }
     }
 
+    // The Intent form is the only one before Android 14; the PendingIntent form is used from 14.
+    @android.annotation.SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         val app = application as MarketbotApp
         if (app.engine.globalKill.value) {

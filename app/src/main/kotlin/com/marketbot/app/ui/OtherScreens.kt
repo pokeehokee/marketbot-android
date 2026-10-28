@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,21 +61,21 @@ fun ActivityScreen(vm: MainViewModel, initialQuery: String = "") {
         (query.isBlank() || it.message.contains(query.trim(), ignoreCase = true) || it.values.contains(query.trim(), ignoreCase = true)) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item {
-            Text("Activity", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.activity), style = MaterialTheme.typography.headlineSmall)
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(top = 8.dp), singleLine = true,
-                placeholder = { Text("Search: a city, a ticker, \"brake\"...") },
+                placeholder = { Text(stringResource(R.string.search_a_city_a_ticker_brake)) },
                 leadingIcon = { Icon(androidx.compose.material.icons.Icons.Outlined.Search, null) })
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(level == null, { level = null }, { Text("All") })
+                FilterChip(level == null, { level = null }, { Text(stringResource(R.string.all)) })
                 listOf("TRADE" to "Trades", "WARN" to "Warnings", "ERROR" to "Errors", "INFO" to "Info").forEach { (l, name) ->
                     FilterChip(level == l, { level = if (level == l) null else l }, { Text(name) }) }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(strat == null, { strat = null }, { Text("Every strategy") })
+                FilterChip(strat == null, { strat = null }, { Text(stringResource(R.string.every_strategy)) })
                 vm.strategies.forEach { s -> FilterChip(strat == s.id, { strat = if (strat == s.id) null else s.id }, { Text(s.name) }) }
             }
         }
-        if (shown.isEmpty()) item { Text("Nothing logged yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (shown.isEmpty()) item { Text(stringResource(R.string.nothing_logged_yet), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(shown, key = { it.id }) { e ->
             var open by remember { mutableStateOf(false) }
             val d = LocalDesk.current
@@ -89,7 +91,7 @@ fun ActivityScreen(vm: MainViewModel, initialQuery: String = "") {
                         color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
                 Text(e.message, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 3)
-                if (!open && e.values().isNotEmpty()) Text("Tap for the figures and where they came from", style = MaterialTheme.typography.labelSmall,
+                if (!open && e.values().isNotEmpty()) Text(stringResource(R.string.tap_for_the_figures_and_where_they_came), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (open) e.values().forEach { v ->
                     ValueRow(v.key.replace('_', ' '), v.value, runCatching { Source.valueOf(v.source) }.getOrNull(), v.origin, v.note, Instant.ofEpochMilli(v.at))
@@ -113,42 +115,42 @@ fun AccountsScreen(vm: MainViewModel) {
         uri?.let { kPem = ctx.contentResolver.openInputStream(it)?.bufferedReader()?.readText().orEmpty() }
     }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Accounts", style = MaterialTheme.typography.headlineSmall)
-        Text("Keys are encrypted with a key held in the phone's secure hardware and never leave the device except to sign requests. Paper mode needs no keys.",
+        Text(stringResource(R.string.accounts), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.keys_are_encrypted_with_a_key_held_in_th),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        Section("Kalshi") {
+        Section(stringResource(R.string.kalshi)) {
             Text(if (vm.hasKalshi()) "Key saved (id ending ${vm.kalshiHint()}), ${if (vm.kalshiInHardware()) "private key in secure hardware: it signs requests and cannot be read back out" else "encrypted on this phone"}." else "No key saved.", style = MaterialTheme.typography.bodyMedium)
-            Text("Create one at kalshi.com > Account > API keys. You get a key id and a private key file (.pem).", style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(R.string.create_one_at_kalshi_com_account_api_key), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(kId, { kId = it }, Modifier.fillMaxWidth(), label = { Text("Key id") }, singleLine = true)
-            OutlinedTextField(kPem, { kPem = it }, Modifier.fillMaxWidth(), label = { Text("Private key (paste PEM)") }, minLines = 3, maxLines = 6,
+            OutlinedTextField(kId, { kId = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.key_id)) }, singleLine = true)
+            OutlinedTextField(kPem, { kPem = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.private_key_paste_pem)) }, minLines = 3, maxLines = 6,
                 visualTransformation = if (kPem.length > 60) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ pickPem.launch(arrayOf("*/*")) }) { Text("Import .pem file") }
-                Button({ val id = kId.trim(); val pem = kPem; confirm("Save Kalshi key") { vm.saveKalshi(id, pem) }; kId = ""; kPem = "" }, enabled = kId.isNotBlank() && kPem.isNotBlank()) { Text("Save") }
-                if (vm.hasKalshi()) TextButton({ confirm("Remove Kalshi key") { vm.clearKalshi() } }) { Text("Remove") }
+                OutlinedButton({ pickPem.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.import_pem_file)) }
+                Button({ val id = kId.trim(); val pem = kPem; confirm("Save Kalshi key") { vm.saveKalshi(id, pem) }; kId = ""; kPem = "" }, enabled = kId.isNotBlank() && kPem.isNotBlank()) { Text(stringResource(R.string.save)) }
+                if (vm.hasKalshi()) TextButton({ confirm("Remove Kalshi key") { vm.clearKalshi() } }) { Text(stringResource(R.string.remove)) }
             }
             accounts.kalshi?.let { b ->
                 SourcedRow("Cash", b.cash, { money(it) }); b.portfolioValue?.let { SourcedRow("Positions", it, { v -> money(v) }) }
                 b.byExchangeIndex.toSortedMap().forEach { (i, v) -> SourcedRow("Shard $i cash${if (i == 2) " (crypto)" else ""}", v, { money(it) }) }
             }
             accounts.kalshiError?.let { ErrorCard("Kalshi: $it") { vm.refreshAccounts() } }
-            Text("BTC deep-ITM trades on Kalshi's crypto shard (index 2), which needs its own cash.",
+            Text(stringResource(R.string.btc_deep_itm_trades_on_kalshi_s_crypto_s),
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             KalshiAccountOptions(vm)
         }
 
-        Section("Polymarket US") {
+        Section(stringResource(R.string.polymarket_us)) {
             Text(if (vm.hasPolymarket()) "Key saved (id ending ${vm.polymarketHint()})." else "No key saved.", style = MaterialTheme.typography.bodyMedium)
-            Text("Create one at polymarket.us/developer after finishing KYC. The secret is shown once.", style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(R.string.create_one_at_polymarket_us_developer_af), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(pId, { pId = it }, Modifier.fillMaxWidth(), label = { Text("Key id") }, singleLine = true)
-            OutlinedTextField(pSecret, { pSecret = it }, Modifier.fillMaxWidth(), label = { Text("Secret key") }, singleLine = true,
+            OutlinedTextField(pId, { pId = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.key_id)) }, singleLine = true)
+            OutlinedTextField(pSecret, { pSecret = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.secret_key)) }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ val id = pId.trim(); val sec = pSecret.trim(); confirm("Save Polymarket key") { vm.savePolymarket(id, sec) }; pId = ""; pSecret = "" }, enabled = pId.isNotBlank() && pSecret.isNotBlank()) { Text("Save") }
-                if (vm.hasPolymarket()) TextButton({ confirm("Remove Polymarket key") { vm.clearPolymarket() } }) { Text("Remove") }
+                Button({ val id = pId.trim(); val sec = pSecret.trim(); confirm("Save Polymarket key") { vm.savePolymarket(id, sec) }; pId = ""; pSecret = "" }, enabled = pId.isNotBlank() && pSecret.isNotBlank()) { Text(stringResource(R.string.save)) }
+                if (vm.hasPolymarket()) TextButton({ confirm("Remove Polymarket key") { vm.clearPolymarket() } }) { Text(stringResource(R.string.remove)) }
             }
             accounts.polymarket?.let { b ->
                 SourcedRow("Balance", b.currentBalance, { money(it) }); SourcedRow("Buying power", b.buyingPower, { money(it) })
@@ -156,7 +158,7 @@ fun AccountsScreen(vm: MainViewModel) {
             }
             accounts.polymarketError?.let { ErrorCard("Polymarket: $it") { vm.refreshAccounts() } }
         }
-        OutlinedButton({ vm.refreshAccounts() }) { Text("Test connections") }
+        OutlinedButton({ vm.refreshAccounts() }) { Text(stringResource(R.string.test_connections)) }
     }
 }
 
@@ -165,40 +167,40 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall)
-        Section("Running in the background") {
+        Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall)
+        Section(stringResource(R.string.running_in_the_background)) {
             val resumed = rememberResumeCount()
             val exempt = remember(resumed) { ignoringBattery(ctx) }
             Text(if (exempt) "Battery optimisation: exempt." else "Battery optimisation: ON. Android may pause the engine with the screen off.",
                 style = MaterialTheme.typography.bodyMedium, color = if (exempt) LocalDesk.current.gain else LocalDesk.current.warn)
             Spacer(Modifier.size(6.dp))
-            OutlinedButton({ requestBatteryExemption(ctx) }) { Text("Battery settings") }
+            OutlinedButton({ requestBatteryExemption(ctx) }) { Text(stringResource(R.string.battery_settings)) }
             Spacer(Modifier.size(6.dp))
-            Text("Some phones (Samsung, Xiaomi, OnePlus) also kill background apps in their own battery manager; set Marketbot to Unrestricted there. Keep the phone charging and on Wi-Fi for BTC deep-ITM, which re-quotes every few seconds.",
+            Text(stringResource(R.string.some_phones_samsung_xiaomi_oneplus_also),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SystemSettings(vm)
         BackupSection(vm)
-        Section("Data") {
+        Section(stringResource(R.string.data)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onSources) { Text("Data sources") }
+                OutlinedButton(onSources) { Text(stringResource(R.string.data_sources)) }
                 OutlinedButton({
                     scope.launch {
                         val uri = vm.exportCsvUri()
                         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri)
                             .putExtra(Intent.EXTRA_SUBJECT, "Marketbot orders").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export orders"))
                     }
-                }) { Text("Export orders (CSV)") }
+                }) { Text(stringResource(R.string.export_orders_csv)) }
             }
             Spacer(Modifier.size(6.dp))
-            OutlinedButton({ vm.pruneLogs(30) }) { Text("Delete activity older than 30 days") }
-            Text("Orders, fills and settlements are kept forever; they are the record. Routine activity lines are deleted after 14 days automatically.", style = MaterialTheme.typography.labelSmall,
+            OutlinedButton({ vm.pruneLogs(30) }) { Text(stringResource(R.string.delete_activity_older_than_30_days)) }
+            Text(stringResource(R.string.orders_fills_and_settlements_are_kept_fo), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Section("About") {
-            Text("Marketbot ${com.marketbot.app.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+        Section(stringResource(R.string.about)) {
+            Text(stringResource(R.string.marketbot_2, (com.marketbot.app.BuildConfig.VERSION_NAME).toString()), style = MaterialTheme.typography.bodyMedium)
             UpdateRow(vm)
-            Text("Strategies are ports of pokeehokee/weatherbot and pokeehokee/polymarket, tested against the original Python on recorded inputs.",
+            Text(stringResource(R.string.strategies_are_ports_of_pokeehokee_weath),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -217,16 +219,16 @@ fun SourcesScreen(vm: MainViewModel, onBack: () -> Unit, onFind: (String) -> Uni
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
-                Text("Data sources", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.data_sources), style = MaterialTheme.typography.headlineSmall)
             }
-            Text("The latest reading of every value the app has used, where it came from and how old it is. Exchange values are always preferred; CALC means the API has no field for it and the formula is shown. Tap a value to see its origin; Find shows the activity lines that used it.",
+            Text(stringResource(R.string.the_latest_reading_of_every_value_the_ap),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
             val counts = audit.groupingBy { it.source }.eachCount()
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 counts.forEach { (s, n) -> runCatching { Source.valueOf(s) }.getOrNull()?.let { Row(verticalAlignment = Alignment.CenterVertically) { SourceChip(it); Text(" $n", style = MaterialTheme.typography.labelSmall) } } }
             }
         }
-        if (audit.isEmpty()) item { Text("Nothing read yet. Values appear once a strategy runs or you refresh balances.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (audit.isEmpty()) item { Text(stringResource(R.string.nothing_read_yet_values_appear_once_a_st), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         groups.forEach { (g, rows) ->
             item(key = g) {
                 Section(g) {
@@ -238,7 +240,7 @@ fun SourcesScreen(vm: MainViewModel, onBack: () -> Unit, onFind: (String) -> Uni
                             Text(when { ageMin < 1 -> "just now"; ageMin < 60 -> "$ageMin min ago"; ageMin < 2880 -> "${ageMin / 60} h ago"; else -> "${ageMin / 1440} days ago" } +
                                 if (stale) " · stale" else "", style = MaterialTheme.typography.labelSmall,
                                 color = if (stale) LocalDesk.current.warn else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                            TextButton({ onFind(a.key.substringAfter('.').replace('_', ' ')) }) { Text("Find") }
+                            TextButton({ onFind(a.key.substringAfter('.').replace('_', ' ')) }) { Text(stringResource(R.string.find)) }
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
@@ -255,21 +257,21 @@ fun HelpScreen(vm: MainViewModel, id: String, onBack: () -> Unit) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
-            Text("How ${s.name} works", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.how_works, (s.name).toString()), style = MaterialTheme.typography.headlineSmall)
         }
-        Section("How it makes money") { Text(s.help.makes, style = MaterialTheme.typography.bodyMedium) }
-        Section("How it loses money") { Text(s.help.loses, style = MaterialTheme.typography.bodyMedium) }
-        if (s.help.notes.isNotEmpty()) Section("Good to know") { s.help.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp)) } }
-        Section("Every setting") {
+        Section(stringResource(R.string.how_it_makes_money)) { Text(s.help.makes, style = MaterialTheme.typography.bodyMedium) }
+        Section(stringResource(R.string.how_it_loses_money)) { Text(s.help.loses, style = MaterialTheme.typography.bodyMedium) }
+        if (s.help.notes.isNotEmpty()) Section(stringResource(R.string.good_to_know)) { s.help.notes.forEach { Text(stringResource(R.string.s_2, (it).toString()), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 3.dp)) } }
+        Section(stringResource(R.string.every_setting)) {
             s.params.forEach { p ->
                 Text(p.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
                 Text(p.help + " Default: ${p.default.ifEmpty { "none" }}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Section("Evidence") {
+        Section(stringResource(R.string.evidence)) {
             EvidenceBadge(s.evidence.level)
             Text(s.evidence.headline, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
-            Text("Source: ${s.evidence.source}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.source, (s.evidence.source).toString()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

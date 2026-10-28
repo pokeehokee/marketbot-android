@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,9 +75,9 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
             if (showBack) IconButton({ if (vm.dirty(s)) askLeave = true else onBack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
             else Spacer(Modifier.width(12.dp))
             if (askLeave) androidx.compose.material3.AlertDialog(onDismissRequest = { askLeave = false },
-                confirmButton = { androidx.compose.material3.TextButton({ vm.drafts.remove(s.id); askLeave = false; onBack() }) { Text("Discard changes") } },
-                dismissButton = { androidx.compose.material3.TextButton({ askLeave = false }) { Text("Keep editing") } },
-                title = { Text("Unsaved changes") }, text = { Text("${s.name} has changed settings that are not saved.") })
+                confirmButton = { androidx.compose.material3.TextButton({ vm.drafts.remove(s.id); askLeave = false; onBack() }) { Text(stringResource(R.string.discard_changes)) } },
+                dismissButton = { androidx.compose.material3.TextButton({ askLeave = false }) { Text(stringResource(R.string.keep_editing)) } },
+                title = { Text(stringResource(R.string.unsaved_changes)) }, text = { Text(stringResource(R.string.has_changed_settings_that_are_not_saved, (s.name).toString())) })
             Column(Modifier.weight(1f)) {
                 Text(s.name, style = MaterialTheme.typography.titleLarge)
                 Text(s.venue.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -107,10 +109,10 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
     LaunchedEffect(st?.lastRunAt) { vm.loadStats(s) }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(s.summary, style = MaterialTheme.typography.bodyLarge)
-        Section("Mode") {
+        Section(stringResource(R.string.mode)) {
             val mode = st?.mode ?: vm.modeOf(s.id)
             ModeControl(vm, s, mode, onGoLive)
-            if (mode != Mode.OFF && !running) Text("The engine is off, so nothing runs. Start it from Home.", style = MaterialTheme.typography.bodySmall,
+            if (mode != Mode.OFF && !running) Text(stringResource(R.string.the_engine_is_off_so_nothing_runs_start), style = MaterialTheme.typography.bodySmall,
                 color = LocalDesk.current.warn, modifier = Modifier.padding(top = 6.dp))
             if (s.needsBtcIndex && mode != Mode.OFF && running) WarmUp(vm)
             Spacer(Modifier.size(8.dp))
@@ -119,27 +121,27 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             st?.nextRunAt?.let { ValueRow("Next pass", it.short(), null) }
             st?.lastError?.let { ErrorCard(it) { vm.runNow(s) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ vm.runNow(s) }) { Text("Run one pass now") }
-                if (s is DeepItmStrategy || s is RewardFarm) OutlinedButton({ vm.resetKill(s) }) { Text("Reset stop") }
+                OutlinedButton({ vm.runNow(s) }) { Text(stringResource(R.string.run_one_pass_now)) }
+                if (s is DeepItmStrategy || s is RewardFarm) OutlinedButton({ vm.resetKill(s) }) { Text(stringResource(R.string.reset_stop)) }
             }
         }
-        Section("Results") {
+        Section(stringResource(R.string.results)) {
             when {
                 stats == null -> repeat(3) { SkeletonLine() }
-                stats.isEmpty() -> Text("Nothing yet. Turn on paper mode to start a record.", style = MaterialTheme.typography.bodyMedium,
+                stats.isEmpty() -> Text(stringResource(R.string.nothing_yet_turn_on_paper_mode_to_start), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) }
             }
         }
         RecordSection(vm, s)
-        Section("Evidence") {
+        Section(stringResource(R.string.evidence)) {
             EvidenceBadge(s.evidence.level)
             Spacer(Modifier.size(6.dp))
             Text(s.evidence.headline, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.size(6.dp))
-            s.evidence.details.forEach { Text("- $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp)) }
+            s.evidence.details.forEach { Text(stringResource(R.string.s_3, (it).toString()), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp)) }
             Spacer(Modifier.size(6.dp))
-            Text("Source: ${s.evidence.source}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.source, (s.evidence.source).toString()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -172,19 +174,19 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
     LaunchedEffect(s.id) { vm.loadGoLive(s) }
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        if (Mode.LIVE !in s.supportedModes) { Text("This strategy has no live order path."); return@Column }
+        if (Mode.LIVE !in s.supportedModes) { Text(stringResource(R.string.this_strategy_has_no_live_order_path)); return@Column }
         ui.arm?.let { a ->
-            Section("Live is armed") {
+            Section(stringResource(R.string.live_is_armed)) {
                 Text("Armed ${runCatching { java.time.Instant.parse(a.at).short() }.getOrDefault(a.at)}. Acknowledged: ${a.acknowledged.joinToString().ifEmpty { "none outstanding" }}.",
                     style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.size(8.dp))
                 Text(s.onLeaveLive, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.size(8.dp))
-                Button({ vm.disarmLive(s) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("Disarm and switch to paper") }
+                Button({ vm.disarmLive(s) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text(stringResource(R.string.disarm_and_switch_to_paper)) }
             }
         }
-        if (killed) Text("The kill switch is on. Turn it off on Home before arming anything.", color = LocalDesk.current.loss)
-        Section("Checklist") {
+        if (killed) Text(stringResource(R.string.the_kill_switch_is_on_turn_it_off_on_hom), color = LocalDesk.current.loss)
+        Section(stringResource(R.string.checklist)) {
             val r = ui.reqs
             if (r == null) repeat(4) { SkeletonLine() }
             r?.forEach { q ->
@@ -206,10 +208,10 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             Spacer(Modifier.size(8.dp))
-            OutlinedButton({ vm.loadGoLive(s, force = true) }) { Text("Re-check") }
+            OutlinedButton({ vm.loadGoLive(s, force = true) }) { Text(stringResource(R.string.re_check)) }
         }
-        Section("Preflight") {
-            Text("Reads your balance and the markets, and where the venue allows it places one tiny test order and cancels it.",
+        Section(stringResource(R.string.preflight)) {
+            Text(stringResource(R.string.reads_your_balance_and_the_markets_and_w),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.size(8.dp))
             Button({ vm.runPreflight(s) }, enabled = !ui.preflightBusy) { Text(if (ui.preflightBusy) "Running..." else "Run preflight") }
@@ -225,17 +227,17 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
                 Text(p.message, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        if (ui.arm == null) Section("Arm live trading") {
+        if (ui.arm == null) Section(stringResource(R.string.arm_live_trading)) {
             val reqs = ui.reqs
             val ready = reqs?.all { it.met || !it.hard } == true && reqs.filter { !it.hard && !it.met }.all { it.id in acks }
-            Text("Type LIVE to confirm that this strategy may place real orders with your money.", style = MaterialTheme.typography.bodyMedium)
-            OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("Type LIVE") })
+            Text(stringResource(R.string.type_live_to_confirm_that_this_strategy), style = MaterialTheme.typography.bodyMedium)
+            OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(stringResource(R.string.type_live)) })
             Spacer(Modifier.size(8.dp))
             Button({ confirm("Arm ${s.name} for live trading") { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.armLive(s, acks.toSet()) } },
                 enabled = ready && typed.trim() == "LIVE" && !killed,
-                colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text("Arm live trading") }
+                colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text(stringResource(R.string.arm_live_trading)) }
             ui.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            if (!ready) Text("Meet every red item and tick every acknowledgement first.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!ready) Text(stringResource(R.string.meet_every_red_item_and_tick_every_ackno), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

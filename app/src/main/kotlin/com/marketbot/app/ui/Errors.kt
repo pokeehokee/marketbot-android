@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -61,7 +63,7 @@ fun ErrorCard(raw: String, onRetry: (() -> Unit)? = null) {
             if (details) Text(raw, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             Row {
                 if (plainError(raw) != raw) TextButton({ details = !details }) { Text(if (details) "Hide details" else "Details") }
-                onRetry?.let { TextButton(it) { Text("Retry") } }
+                onRetry?.let { TextButton(it) { Text(stringResource(R.string.retry)) } }
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -68,7 +70,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Marketbot", style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.marketbot), style = MaterialTheme.typography.headlineSmall)
                 Text(if (running) "Engine running" else "Engine stopped", style = MaterialTheme.typography.bodyMedium,
                     color = if (running) LocalDesk.current.gain else MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -84,7 +86,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.BatteryAlert, null, tint = LocalDesk.current.warn)
                 Spacer(Modifier.width(12.dp))
-                Text("Battery optimisation can pause the engine while the screen is off. Tap to exempt Marketbot.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.battery_optimisation_can_pause_the_engin), style = MaterialTheme.typography.bodyMedium)
             }
         }
 
@@ -97,13 +99,13 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                     Text(if (killed) "Live trading is off. Paper strategies keep running." else "Cancels every resting order and turns live trading off.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (killed) OutlinedButton({ confirm("Turn the kill switch off") { vm.kill(false) } }) { Text("Turn off") }
-                else Button({ confirmKill = true }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("KILL") }
+                if (killed) OutlinedButton({ confirm("Turn the kill switch off") { vm.kill(false) } }) { Text(stringResource(R.string.turn_off)) }
+                else Button({ confirmKill = true }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text(stringResource(R.string.kill)) }
             }
         }
 
-        Section("Accounts", trailing = { IconButton({ vm.refreshAccounts() }) { Icon(Icons.Outlined.Refresh, "Refresh balances") } }) {
-            if (!vm.hasKalshi() && !vm.hasPolymarket()) Text("No API keys yet. Paper mode works without them; add keys under Accounts to see balances and trade live.",
+        Section(stringResource(R.string.accounts), trailing = { IconButton({ vm.refreshAccounts() }) { Icon(Icons.Outlined.Refresh, "Refresh balances") } }) {
+            if (!vm.hasKalshi() && !vm.hasPolymarket()) Text(stringResource(R.string.no_api_keys_yet_paper_mode_works_without),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             accounts.kalshi?.let { b ->
                 SourcedRow("Kalshi cash", b.cash, { money(it) })
@@ -117,15 +119,15 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                 SourcedRow("Polymarket buying power", b.buyingPower, { money(it) })
             }
             accounts.polymarketError?.let { ErrorCard("Polymarket: $it") { vm.refreshAccounts() } }
-            accounts.readAt?.let { Text("Read ${it.short()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            accounts.readAt?.let { Text(stringResource(R.string.read, (it.short()).toString()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
 
         val paper = equity.filter { it.mode == Mode.PAPER.name }
-        if (paper.isNotEmpty()) Section("Paper accounts") {
+        if (paper.isNotEmpty()) Section(stringResource(R.string.paper_accounts)) {
             paper.forEach { e -> val s = e.toSnapshot(); SourcedRow("${e.venue.replaceFirstChar { it.uppercase() }} paper equity", s.cash, { money(it) }) }
         }
 
-        Section("Strategies") {
+        Section(stringResource(R.string.strategies)) {
             vm.strategies.forEach { s ->
                 val st = status[s.id]
                 val mode = st?.mode ?: vm.modeOf(s.id)
@@ -141,18 +143,18 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Tags show where each number came from.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            TextButton(onSources) { Text("Data sources") }
+            Text(stringResource(R.string.tags_show_where_each_number_came_from), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            TextButton(onSources) { Text(stringResource(R.string.data_sources)) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf(Source.KALSHI_API, Source.POLYMARKET_API, Source.DERIVED, Source.PAPER_MODEL, Source.CONFIG).forEach { SourceChip(it) } }
     }
     }
 
     if (confirmKill) AlertDialog(onDismissRequest = { confirmKill = false },
-        confirmButton = { Button({ confirmKill = false; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.kill(true) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("Cancel everything") } },
-        dismissButton = { TextButton({ confirmKill = false }) { Text("Back") } },
-        title = { Text("Turn on the kill switch?") },
-        text = { Text("Every resting order of every strategy is cancelled at the exchange and live trading is disarmed. Filled positions are kept and settle normally.") })
+        confirmButton = { Button({ confirmKill = false; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.kill(true) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text(stringResource(R.string.cancel_everything)) } },
+        dismissButton = { TextButton({ confirmKill = false }) { Text(stringResource(R.string.back)) } },
+        title = { Text(stringResource(R.string.turn_on_the_kill_switch)) },
+        text = { Text(stringResource(R.string.every_resting_order_of_every_strategy_is)) })
 }
 
 fun ignoringBattery(ctx: Context): Boolean = (ctx.getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(ctx.packageName)

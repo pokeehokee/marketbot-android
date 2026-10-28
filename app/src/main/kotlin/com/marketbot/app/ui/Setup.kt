@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -80,39 +82,39 @@ fun SetupWizard(vm: MainViewModel, onDone: (goToAccounts: Boolean) -> Unit) {
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 when (step) {
                     0 -> {
-                        Text("Welcome to Marketbot", style = MaterialTheme.typography.headlineMedium)
-                        Text("It runs trading strategies on Kalshi and Polymarket from this phone, around the clock, the way they ran on a desktop.", style = MaterialTheme.typography.bodyLarge)
-                        Text("Every number shows where it came from: the exchange (KALSHI / POLYMARKET), a calculation (CALC), the simulator (PAPER) or your settings. Tap a number for the exact field or formula.",
+                        Text(stringResource(R.string.welcome_to_marketbot), style = MaterialTheme.typography.headlineMedium)
+                        Text(stringResource(R.string.it_runs_trading_strategies_on_kalshi_and), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.every_number_shows_where_it_came_from_th),
                             style = MaterialTheme.typography.bodyMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { com.marketbot.core.provenance.Source.entries.forEach { SourceChip(it) } }
-                        Text("Your keys stay on this phone and are only used to sign requests to the exchanges.", style = MaterialTheme.typography.bodyMedium,
+                        Text(stringResource(R.string.your_keys_stay_on_this_phone_and_are_onl), style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     1 -> {
-                        Text("Paper first, real money only on purpose", style = MaterialTheme.typography.headlineSmall)
-                        Text("Everything starts in paper mode: live public prices, simulated orders, nothing sent to an exchange.", style = MaterialTheme.typography.bodyLarge)
-                        Text("Live trading needs a checklist, a preflight, typing LIVE and your fingerprint or screen lock, per strategy.", style = MaterialTheme.typography.bodyMedium)
-                        Text("These strategies win small and often and lose big and rarely: one contract can lose up to about a dollar. Only the weather longshot has made money live, and its last stage check failed. Each card says how strong its evidence is.",
+                        Text(stringResource(R.string.paper_first_real_money_only_on_purpose), style = MaterialTheme.typography.headlineSmall)
+                        Text(stringResource(R.string.everything_starts_in_paper_mode_live_pub), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.live_trading_needs_a_checklist_a_preflig), style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.these_strategies_win_small_and_often_and),
                             style = MaterialTheme.typography.bodyMedium)
-                        Text("Run one bot per account. If a computer is trading the same account, stop it first.", style = MaterialTheme.typography.bodyMedium, color = LocalDesk.current.warn)
+                        Text(stringResource(R.string.run_one_bot_per_account_if_a_computer_is), style = MaterialTheme.typography.bodyMedium, color = LocalDesk.current.warn)
                         Row(Modifier.fillMaxWidth().toggleable(understood, role = Role.Checkbox) { understood = it }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(if (understood) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(10.dp)); Text("I understand this can lose money", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.i_understand_this_can_lose_money), style = MaterialTheme.typography.titleSmall)
                         }
                     }
                     2 -> KeepRunning(ctx)
                     3 -> {
-                        Text("Accounts (optional)", style = MaterialTheme.typography.headlineSmall)
-                        Text("Paper mode needs no keys. Keys let the app show your balances and, when you arm it, trade.", style = MaterialTheme.typography.bodyLarge)
-                        Text("Kalshi: kalshi.com > Account > API keys gives a key id and a .pem file. Its private key goes into this phone's secure hardware and cannot be read back out.",
+                        Text(stringResource(R.string.accounts_optional), style = MaterialTheme.typography.headlineSmall)
+                        Text(stringResource(R.string.paper_mode_needs_no_keys_keys_let_the_ap), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.kalshi_kalshi_com_account_api_keys_gives),
                             style = MaterialTheme.typography.bodyMedium)
-                        Text("Polymarket US: polymarket.us/developer, after verification.", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.polymarket_us_polymarket_us_developer_af), style = MaterialTheme.typography.bodyMedium)
                         Choice("Add keys after setup", addKeys) { addKeys = true }
                         Choice("Later", !addKeys) { addKeys = false }
                     }
                     else -> {
-                        Text("Your first strategy", style = MaterialTheme.typography.headlineSmall)
-                        Text("Start the weather longshot in paper: it sells cheap YES on Kalshi's daily temperature buckets and is the one method with a live record. You'll see its first simulated offers on the next hourly pass.",
+                        Text(stringResource(R.string.your_first_strategy), style = MaterialTheme.typography.headlineSmall)
+                        Text(stringResource(R.string.start_the_weather_longshot_in_paper_it_s),
                             style = MaterialTheme.typography.bodyLarge)
                         Choice("Start it in paper (recommended)", startPaper) { startPaper = true }
                         Choice("Not yet: I'll look around first", !startPaper) { startPaper = false }
@@ -120,14 +122,14 @@ fun SetupWizard(vm: MainViewModel, onDone: (goToAccounts: Boolean) -> Unit) {
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (step > 0) TextButton({ step-- }) { Text("Back") }
+                if (step > 0) TextButton({ step-- }) { Text(stringResource(R.string.back)) }
                 Spacer(Modifier.weight(1f))
-                if (step < steps - 1) Button({ step++ }, enabled = step != 1 || understood) { Text("Next") }
+                if (step < steps - 1) Button({ step++ }, enabled = step != 1 || understood) { Text(stringResource(R.string.next)) }
                 else Button({
                     Setup.finish(ctx)
                     if (startPaper) vm.strategies.firstOrNull { it is WeatherLongshot }?.let { vm.setMode(it, Mode.PAPER) }
                     onDone(addKeys)
-                }) { Text("Finish") }
+                }) { Text(stringResource(R.string.finish)) }
             }
         }
     }
@@ -149,8 +151,8 @@ private fun KeepRunning(ctx: Context) {
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notif = notificationsAllowed(ctx) }
     val battery = remember(resumed) { ignoringBattery(ctx) }
     val exact = remember(resumed) { Alarms.exactAllowed(ctx) }
-    Text("Keep it running", style = MaterialTheme.typography.headlineSmall)
-    Text("A phone pauses background apps to save battery. Three settings stop that from pausing your strategies.", style = MaterialTheme.typography.bodyLarge)
+    Text(stringResource(R.string.keep_it_running), style = MaterialTheme.typography.headlineSmall)
+    Text(stringResource(R.string.a_phone_pauses_background_apps_to_save_b), style = MaterialTheme.typography.bodyLarge)
     SetupItem("Battery: let Marketbot run in the background", battery, "Allow") { requestBatteryExemption(ctx) }
     SetupItem("Notifications: hear about fills, brakes and the kill switch", notif, "Allow") {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)

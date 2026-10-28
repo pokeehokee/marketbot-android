@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,8 +33,8 @@ fun StrategiesScreen(vm: MainViewModel, onGoLive: (String) -> Unit = {}, onOpen:
     vm.modes.collectAsState().value
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("Strategies", style = MaterialTheme.typography.headlineSmall)
-            Text("Each starts in paper. Live needs its checklist, a preflight and your confirmation.", style = MaterialTheme.typography.bodyMedium,
+            Text(stringResource(R.string.strategies), style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.each_starts_in_paper_live_needs_its_chec), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(vm.strategies, key = { it.id }) { s ->

@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -85,8 +87,11 @@ fun SystemBanners(vm: MainViewModel) {
     var notifOk by remember(resumed) { mutableStateOf(notificationsAllowed(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifOk = notificationsAllowed(ctx) }
     // Clock skew is measured from responses, so re-read it now and then.
-    val skew by produceState<Long?>(vm.clockSkewMs()) { while (true) { delay(15_000); value = vm.clockSkewMs() } }
-    val wasLive by produceState(emptyList<String>(), killed) { value = if (killed) vm.liveBeforeKill() else emptyList() }
+    val skew by produceState<Long?>(vm.clockSkewMs()) {
+        while (true) { value = vm.clockSkewMs(); delay(15_000) }
+    }
+    var wasLive by remember { mutableStateOf(emptyList<String>()) }
+    LaunchedEffect(killed) { wasLive = if (killed) vm.liveBeforeKill() else emptyList() }
 
     val running by vm.engineRunning.collectAsState()
     val missedBoot = com.marketbot.app.Health.missedBootRestart(ctx, com.marketbot.app.EngineService.wasRunning(ctx), running)
@@ -121,25 +126,25 @@ fun KalshiAccountOptions(vm: MainViewModel) {
     var sub by remember { mutableStateOf(vm.kalshiSubaccount().toString()) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("Demo exchange", style = MaterialTheme.typography.bodyMedium)
-            Text("Kalshi's practice exchange with fake money. Needs a key made on demo.kalshi.co.", style = MaterialTheme.typography.labelSmall,
+            Text(stringResource(R.string.demo_exchange), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.kalshi_s_practice_exchange_with_fake_mon), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(demo, { confirmDemo = it })
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(sub, { sub = it.filter(Char::isDigit).take(2) }, Modifier.weight(1f), label = { Text("Subaccount (0 = primary)") }, singleLine = true,
+        OutlinedTextField(sub, { sub = it.filter(Char::isDigit).take(2) }, Modifier.weight(1f), label = { Text(stringResource(R.string.subaccount_0_primary)) }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-        OutlinedButton({ vm.setKalshiSubaccount(sub.toIntOrNull() ?: 0) }, enabled = (sub.toIntOrNull() ?: -1) != vm.kalshiSubaccount()) { Text("Use") }
+        OutlinedButton({ vm.setKalshiSubaccount(sub.toIntOrNull() ?: 0) }, enabled = (sub.toIntOrNull() ?: -1) != vm.kalshiSubaccount()) { Text(stringResource(R.string.use)) }
     }
-    Text("A subaccount keeps the bot's cash and positions apart from anything you trade by hand.", style = MaterialTheme.typography.labelSmall,
+    Text(stringResource(R.string.a_subaccount_keeps_the_bot_s_cash_and_po), style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant)
     if (vm.hasKalshi()) ShardTransfer(vm, accounts.kalshi?.byExchangeIndex?.mapValues { it.value.value } ?: emptyMap())
 
     confirmDemo?.let { on ->
         AlertDialog(onDismissRequest = { confirmDemo = null },
             confirmButton = { Button({ if (on) vm.setKalshiDemo(true) else confirm("Switch Kalshi to real money") { vm.setKalshiDemo(false) }; confirmDemo = null }) { Text(if (on) "Use demo" else "Use real money") } },
-            dismissButton = { TextButton({ confirmDemo = null }) { Text("Cancel") } },
+            dismissButton = { TextButton({ confirmDemo = null }) { Text(stringResource(R.string.cancel)) } },
             title = { Text(if (on) "Switch Kalshi to demo?" else "Switch Kalshi to the real exchange?") },
             text = { Text(if (on) "Kalshi strategies will trade fake money. The paper and live ledgers are not reset, so demo fills will appear in the live book until you switch back."
                 else "Live Kalshi strategies will trade real money again, with your real key.") })
@@ -156,21 +161,21 @@ private fun ShardTransfer(vm: MainViewModel, shards: Map<Int, Double>) {
     val to = if (toCrypto) 2 else 0
     val amt = amount.toDoubleOrNull()
     val available = shards[from]
-    Text("Move cash between shards", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+    Text(stringResource(R.string.move_cash_between_shards), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(toCrypto, { toCrypto = true }, { Text("Main → crypto (2)") })
-        FilterChip(!toCrypto, { toCrypto = false }, { Text("Crypto → main") })
+        FilterChip(toCrypto, { toCrypto = true }, { Text(stringResource(R.string.main_crypto_2)) })
+        FilterChip(!toCrypto, { toCrypto = false }, { Text(stringResource(R.string.crypto_main)) })
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }.take(9) }, Modifier.weight(1f), label = { Text("Amount, $") }, singleLine = true,
+        OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' }.take(9) }, Modifier.weight(1f), label = { Text(stringResource(R.string.amount)) }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            supportingText = { available?.let { Text("Shard $from has ${money(it)}") } })
-        Button({ confirm = true }, enabled = amt != null && amt > 0 && (available == null || amt <= available)) { Text("Move") }
+            supportingText = { available?.let { Text(stringResource(R.string.shard_has, (from).toString(), (money(it)).toString())) } })
+        Button({ confirm = true }, enabled = amt != null && amt > 0 && (available == null || amt <= available)) { Text(stringResource(R.string.move)) }
     }
     if (confirm && amt != null) AlertDialog(onDismissRequest = { confirm = false },
-        confirmButton = { Button({ auth("Move ${money(amt)} between shards") { vm.transferShards(amt, from, to) }; confirm = false; amount = "" }) { Text("Move ${money(amt)}") } },
-        dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },
-        title = { Text("Move ${money(amt)}?") },
+        confirmButton = { Button({ auth("Move ${money(amt)} between shards") { vm.transferShards(amt, from, to) }; confirm = false; amount = "" }) { Text(stringResource(R.string.move_2, (money(amt)).toString())) } },
+        dismissButton = { TextButton({ confirm = false }) { Text(stringResource(R.string.cancel)) } },
+        title = { Text(stringResource(R.string.move_3, (money(amt)).toString())) },
         text = { Text("From shard $from to shard $to of ${if (vm.kalshiSubaccount() == 0) "your primary account" else "subaccount #${vm.kalshiSubaccount()}"}. Kalshi processes transfers in the background; it cannot be undone from here, only reversed by another transfer.") })
 }
 
@@ -184,25 +189,25 @@ fun SystemSettings(vm: MainViewModel) {
     val usage by produceState(vm.netUsage()) { while (true) { delay(10_000); value = vm.netUsage() } }
 
     var confirmLive by remember { mutableStateOf(com.marketbot.app.Confirm.enabled(ctx)) }
-    Section("Appearance") {
-        Text("Theme", style = MaterialTheme.typography.bodyMedium)
+    Section(stringResource(R.string.appearance)) {
+        Text(stringResource(R.string.theme), style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(Appearance.Mode.SYSTEM to "System", Appearance.Mode.LIGHT to "Light", Appearance.Mode.DARK to "Dark").forEach { (m, l) ->
                 FilterChip(Appearance.mode == m, { Appearance.mode = m; Appearance.save(ctx) }, { Text(l) }) }
         }
         if (Build.VERSION.SDK_INT >= 31) Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Wallpaper colours", style = MaterialTheme.typography.bodyMedium)
-                Text("Material You. Source tags and gains/losses keep their fixed colours.", style = MaterialTheme.typography.labelSmall,
+                Text(stringResource(R.string.wallpaper_colours), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.material_you_source_tags_and_gains_losse), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(Appearance.dynamic, { Appearance.dynamic = it; Appearance.save(ctx) })
         }
     }
-    Section("Security") {
+    Section(stringResource(R.string.security)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Confirm money actions", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.confirm_money_actions), style = MaterialTheme.typography.bodyMedium)
                 Text(if (com.marketbot.app.Confirm.available(ctx)) "Fingerprint, face or screen lock before arming live, turning the kill switch off, moving cash or changing keys."
                     else "This phone has no screen lock, so nothing can be confirmed. Set one in Android settings.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -211,20 +216,20 @@ fun SystemSettings(vm: MainViewModel) {
                 else authOff("Stop asking for confirmation") { com.marketbot.app.Confirm.setEnabled(ctx, false); confirmLive = false } })
         }
     }
-    Section("Background reliability") {
+    Section(stringResource(R.string.background_reliability)) {
         Health.oemAdvice()?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         val exact = Alarms.exactAllowed(ctx)
         Text(if (exact) "Exact alarms: allowed. Hourly passes run on time with the screen off." else "Exact alarms: not allowed. Android may run hourly passes a few minutes late.",
             style = MaterialTheme.typography.bodySmall, color = if (exact) LocalDesk.current.gain else LocalDesk.current.warn)
         if (!exact && Build.VERSION.SDK_INT >= 31) OutlinedButton({
             ctx.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${ctx.packageName}")))
-        }) { Text("Allow exact alarms") }
+        }) { Text(stringResource(R.string.allow_exact_alarms)) }
     }
-    Section("Network") {
+    Section(stringResource(R.string.network)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Wi-Fi only", style = MaterialTheme.typography.bodyMedium)
-                Text("Strategies wait on mobile data. BTC deep-ITM and reward farming poll every few seconds.", style = MaterialTheme.typography.labelSmall,
+                Text(stringResource(R.string.wi_fi_only), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.strategies_wait_on_mobile_data_btc_deep), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(wifi, { wifi = it; vm.setWifiOnly(it) })
@@ -238,14 +243,14 @@ fun SystemSettings(vm: MainViewModel) {
         }
     }
     crash?.let { c ->
-        Section("Last crash") {
+        Section(stringResource(R.string.last_crash)) {
             Text(c.lineSequence().take(4).joinToString("\n"), style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({
                     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, c)
                         .putExtra(Intent.EXTRA_SUBJECT, "Marketbot crash report"), "Share crash report"))
-                }) { Text("Share") }
-                TextButton({ vm.clearCrash(); crash = null }) { Text("Dismiss") }
+                }) { Text(stringResource(R.string.share)) }
+                TextButton({ vm.clearCrash(); crash = null }) { Text(stringResource(R.string.dismiss)) }
             }
         }
     }
@@ -259,14 +264,14 @@ fun BackupSection(vm: MainViewModel) {
     val create = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { it?.let { u -> pending = false to u } }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let { u -> pending = true to u } }
     val running by vm.engineRunning.collectAsState()
-    Section("Backup") {
-        Text("A password-protected file with every order, setting and record. API keys are not included; the Kalshi key cannot leave this phone at all.",
+    Section(stringResource(R.string.backup)) {
+        Text(stringResource(R.string.a_password_protected_file_with_every_ord),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
-            OutlinedButton({ create.launch("marketbot-${java.time.LocalDate.now()}.mbk") }) { Text("Back up") }
-            OutlinedButton({ pick.launch(arrayOf("*/*")) }, enabled = !running) { Text("Restore") }
+            OutlinedButton({ create.launch("marketbot-${java.time.LocalDate.now()}.mbk") }) { Text(stringResource(R.string.back_up)) }
+            OutlinedButton({ pick.launch(arrayOf("*/*")) }, enabled = !running) { Text(stringResource(R.string.restore)) }
         }
-        if (running) Text("Stop the engine to restore.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (running) Text(stringResource(R.string.stop_the_engine_to_restore), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     pending?.let { (restore, uri) ->
         var pw by remember { mutableStateOf("") }
@@ -275,17 +280,17 @@ fun BackupSection(vm: MainViewModel) {
         AlertDialog(onDismissRequest = { pending = null },
             confirmButton = { Button({ if (restore) vm.restore(uri, pw.toCharArray()) else vm.backup(uri, pw.toCharArray()); pending = null }, enabled = ok) {
                 Text(if (restore) "Replace everything" else "Save backup") } },
-            dismissButton = { TextButton({ pending = null }) { Text("Cancel") } },
+            dismissButton = { TextButton({ pending = null }) { Text(stringResource(R.string.cancel)) } },
             title = { Text(if (restore) "Restore backup" else "Protect the backup") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (restore) Text("This replaces every order, setting and record on this phone with the backup's. Strategies come back in paper.",
+                    if (restore) Text(stringResource(R.string.this_replaces_every_order_setting_and_re),
                         style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.warn)
-                    OutlinedTextField(pw, { pw = it }, label = { Text("Password") }, singleLine = true,
+                    OutlinedTextField(pw, { pw = it }, label = { Text(stringResource(R.string.password)) }, singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-                    if (!restore) OutlinedTextField(pw2, { pw2 = it }, label = { Text("Repeat password") }, singleLine = true,
+                    if (!restore) OutlinedTextField(pw2, { pw2 = it }, label = { Text(stringResource(R.string.repeat_password)) }, singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        supportingText = { Text("At least 8 characters. It cannot be recovered.") })
+                        supportingText = { Text(stringResource(R.string.at_least_8_characters_it_cannot_be_recov)) })
                 }
             })
     }
@@ -300,14 +305,14 @@ fun UpdateRow(vm: MainViewModel) {
     var token by remember { mutableStateOf("") }
     var showToken by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton({ vm.checkUpdates() }) { Text("Check for updates") }
-        url?.let { u -> Button({ ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(u))) }) { Text("Download") } }
+        OutlinedButton({ vm.checkUpdates() }) { Text(stringResource(R.string.check_for_updates)) }
+        url?.let { u -> Button({ ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(u))) }) { Text(stringResource(R.string.download)) } }
     }
     msg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     TextButton({ showToken = !showToken }) { Text(if (vm.hasGithubToken()) "GitHub token saved" else "Private repository? Add a token") }
     if (showToken) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(token, { token = it }, Modifier.weight(1f), label = { Text("Read-only token (contents: read)") }, singleLine = true,
+        OutlinedTextField(token, { token = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.read_only_token_contents_read)) }, singleLine = true,
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-        OutlinedButton({ vm.saveGithubToken(token.trim()); token = ""; showToken = false }) { Text("Save") }
+        OutlinedButton({ vm.saveGithubToken(token.trim()); token = ""; showToken = false }) { Text(stringResource(R.string.save)) }
     }
 }

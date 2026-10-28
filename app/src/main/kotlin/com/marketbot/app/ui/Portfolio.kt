@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,14 +49,14 @@ fun PortfolioHeader(vm: MainViewModel) {
     val acc by vm.accounts.collectAsState()
     var showPaper by rememberSaveable { mutableStateOf(false) }
     val liveEquity = listOfNotNull(acc.kalshi?.let { it.equity ?: it.cash }, acc.polymarket?.currentBalance)
-    Section("Portfolio") {
+    Section(stringResource(R.string.portfolio)) {
         if (liveEquity.isNotEmpty()) {
             Text(money(liveEquity.sumOf { it.value }), style = Figures.copy(fontSize = 32.sp, fontWeight = FontWeight.SemiBold))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Live accounts", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.live_accounts), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 liveEquity.map { it.source }.distinct().forEach { SourceChip(it) }
             }
-        } else Text("No live accounts connected. Paper results below.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else Text(stringResource(R.string.no_live_accounts_connected_paper_results), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth()) {
             Stat("Live today", p.liveToday, Source.KALSHI_API, Modifier.weight(1f))
@@ -66,11 +68,11 @@ fun PortfolioHeader(vm: MainViewModel) {
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(!showPaper, { showPaper = false }, { Text("Live P&L (${p.liveN})") })
-            FilterChip(showPaper, { showPaper = true }, { Text("Paper P&L (${p.paperN})") })
+            FilterChip(!showPaper, { showPaper = false }, { Text(stringResource(R.string.live_p_l, (p.liveN).toString())) })
+            FilterChip(showPaper, { showPaper = true }, { Text(stringResource(R.string.paper_p_l, (p.paperN).toString())) })
         }
         LineChart(if (showPaper) p.paperCurve else p.liveCurve, label = if (showPaper) "Paper cumulative P&L" else "Live cumulative P&L")
-        Text("Realised only: settled positions, from the exchange's settlement figures (live) or the simulator (paper).",
+        Text(stringResource(R.string.realised_only_settled_positions_from_the),
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -96,7 +98,7 @@ fun EquitySection(vm: MainViewModel) {
     var pick by rememberSaveable { mutableStateOf<String?>(null) }
     val keys = curves.keys.sortedWith(compareBy({ it.second != "LIVE" }, { it.first }))
     val k = keys.firstOrNull { "${it.first}/${it.second}" == pick } ?: keys.first()
-    Section("Equity, 30 days") {
+    Section(stringResource(R.string.equity_30_days)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             keys.forEach { key -> FilterChip(key == k, { pick = "${key.first}/${key.second}" },
                 { Text("${key.first.replaceFirstChar { it.uppercase() }} ${key.second.lowercase()}") }) }
@@ -112,16 +114,16 @@ fun RecordSection(vm: MainViewModel, s: Strategy) {
     var mode by rememberSaveable { mutableStateOf(Mode.LIVE) }
     val rec = vm.record(s.id, mode)
     val exp = s.evidence.expectation
-    Section("Record vs evidence") {
+    Section(stringResource(R.string.record_vs_evidence)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(mode == Mode.LIVE, { mode = Mode.LIVE }, { Text("Live") })
-            FilterChip(mode == Mode.PAPER, { mode = Mode.PAPER }, { Text("Paper") })
+            FilterChip(mode == Mode.LIVE, { mode = Mode.LIVE }, { Text(stringResource(R.string.live)) })
+            FilterChip(mode == Mode.PAPER, { mode = Mode.PAPER }, { Text(stringResource(R.string.paper)) })
         }
         fun c(v: Double) = "%+.2fc".format(v * 100)
-        if (rec == null) Text("Needs at least two settled ${mode.name.lowercase()} positions.", style = MaterialTheme.typography.bodySmall,
+        if (rec == null) Text(stringResource(R.string.needs_at_least_two_settled_positions, (mode.name.lowercase()).toString()), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         else {
-            Text("${mode.name.lowercase().replaceFirstChar { it.uppercase() }} ${c(rec.perContract)}/contract over ${rec.n} positions " +
+            Text(stringResource(R.string.contract_over_positions, (mode.name.lowercase().replaceFirstChar { it.uppercase() }).toString(), (c(rec.perContract)).toString(), (rec.n).toString()) +
                 "(${"%.0f".format(rec.contracts)} contracts), 95% range ${c(rec.low)} to ${c(rec.high)}" +
                 (exp?.let { e -> val l = e.low; val h = e.high; " against ${c(e.perContract)} expected" + if (l != null && h != null) " [${c(l)}, ${c(h)}]." else "." } ?: "."),
                 style = MaterialTheme.typography.bodyMedium)
@@ -132,7 +134,7 @@ fun RecordSection(vm: MainViewModel, s: Strategy) {
                     rec.low > (exp.high ?: exp.perContract) -> "The record is above the evidence."
                     else -> "Consistent with the evidence so far; the range narrows as positions settle."
                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Top line: expected (${exp.basis}). Bottom: this app's record.", style = MaterialTheme.typography.labelSmall,
+                Text(stringResource(R.string.top_line_expected_bottom_this_app_s_reco, (exp.basis).toString()), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -170,7 +172,7 @@ fun OrdersList(vm: MainViewModel, s: Strategy) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("all" to "Live and paper", "LIVE" to "Live", "PAPER" to "Paper").forEach { (k, l) -> FilterChip(mode == k, { mode = k }, { Text(l) }) }
             }
-            if (all.any { it.mode == Mode.LIVE && it.resting }) Text("Swipe a resting live order left to cancel it.", style = MaterialTheme.typography.labelSmall,
+            if (all.any { it.mode == Mode.LIVE && it.resting }) Text(stringResource(R.string.swipe_a_resting_live_order_left_to_cance), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (shown.isEmpty()) item { Text(if (all.isEmpty()) "No orders yet. Turn on paper mode to see what this strategy would do." else "Nothing matches these filters.",
@@ -187,7 +189,7 @@ fun OrdersList(vm: MainViewModel, s: Strategy) {
                 if (q.mode == Mode.LIVE && q.resting && q.orderId != null) {
                     val st = rememberSwipeToDismissBoxState(confirmValueChange = { v -> if (v == SwipeToDismissBoxValue.EndToStart) cancel = q; false })
                     SwipeToDismissBox(st, enableDismissFromStartToEnd = false, backgroundContent = {
-                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) { Text("Cancel", color = LocalDesk.current.loss) }
+                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) { Text(stringResource(R.string.cancel), color = LocalDesk.current.loss) }
                     }) { OrderCard(q) }
                 } else OrderCard(q)
             }
@@ -195,9 +197,9 @@ fun OrdersList(vm: MainViewModel, s: Strategy) {
     }
     cancel?.let { q ->
         AlertDialog(onDismissRequest = { cancel = null },
-            confirmButton = { TextButton({ vm.cancelOrder(s.id, q.id); cancel = null }) { Text("Cancel order", color = LocalDesk.current.loss) } },
-            dismissButton = { TextButton({ cancel = null }) { Text("Keep it") } },
-            title = { Text("Cancel this order?") },
+            confirmButton = { TextButton({ vm.cancelOrder(s.id, q.id); cancel = null }) { Text(stringResource(R.string.cancel_order), color = LocalDesk.current.loss) } },
+            dismissButton = { TextButton({ cancel = null }) { Text(stringResource(R.string.keep_it)) } },
+            title = { Text(stringResource(R.string.cancel_this_order)) },
             text = { Text("${Tickers.describe(q.ticker)}: ${q.action.replace('_', ' ')} ${q.contracts.toInt()} at ${"%.0f".format(q.price * 100)}c. " +
                 "Anything already filled is read from the exchange first and kept. A resting offer's place in the queue is lost.") })
     }

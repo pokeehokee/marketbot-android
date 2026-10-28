@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -74,13 +76,13 @@ fun ParametersForm(vm: MainViewModel, s: Strategy, onLeave: () -> Unit) {
     BackHandler(dirty) { askLeave = true }
 
     LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { Text("Defaults are the measured values from the original repos. A dot marks a changed setting.",
+        item { Text(stringResource(R.string.defaults_are_the_measured_values_from_th),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
-            Section("What these settings mean") {
+            Section(stringResource(R.string.what_these_settings_mean)) {
                 if (problems.isNotEmpty()) problems.forEach { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
-                else if (effects.isEmpty()) Text("No money limits to show for this strategy.", style = MaterialTheme.typography.bodySmall)
-                else effects.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp)) }
+                else if (effects.isEmpty()) Text(stringResource(R.string.no_money_limits_to_show_for_this_strateg), style = MaterialTheme.typography.bodySmall)
+                else effects.forEach { Text(stringResource(R.string.s_2, (it).toString()), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp)) }
             }
         }
         items(s.params, key = { it.key }) { p ->
@@ -90,16 +92,16 @@ fun ParametersForm(vm: MainViewModel, s: Strategy, onLeave: () -> Unit) {
         item {
             saveErrors.forEach { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ vm.saveDraft(s) { saveErrors = it } }, enabled = dirty && problems.isEmpty()) { Text("Save") }
-                OutlinedButton({ vm.drafts.remove(s.id); saveErrors = emptyList() }, enabled = dirty) { Text("Discard") }
-                TextButton({ vm.drafts[s.id] = s.params.associate { it.key to it.default } }) { Text("All defaults") }
+                Button({ vm.saveDraft(s) { saveErrors = it } }, enabled = dirty && problems.isEmpty()) { Text(stringResource(R.string.save)) }
+                OutlinedButton({ vm.drafts.remove(s.id); saveErrors = emptyList() }, enabled = dirty) { Text(stringResource(R.string.discard)) }
+                TextButton({ vm.drafts[s.id] = s.params.associate { it.key to it.default } }) { Text(stringResource(R.string.all_defaults)) }
             }
         }
     }
     if (askLeave) AlertDialog(onDismissRequest = { askLeave = false },
-        confirmButton = { TextButton({ vm.drafts.remove(s.id); askLeave = false; onLeave() }) { Text("Discard changes") } },
-        dismissButton = { TextButton({ askLeave = false }) { Text("Keep editing") } },
-        title = { Text("Unsaved changes") }, text = { Text("Leave without saving the changed settings?") })
+        confirmButton = { TextButton({ vm.drafts.remove(s.id); askLeave = false; onLeave() }) { Text(stringResource(R.string.discard_changes)) } },
+        dismissButton = { TextButton({ askLeave = false }) { Text(stringResource(R.string.keep_editing)) } },
+        title = { Text(stringResource(R.string.unsaved_changes)) }, text = { Text(stringResource(R.string.leave_without_saving_the_changed_setting)) })
 }
 
 private fun fmt(v: Double, decimals: Int) = "%.${decimals}f".format(Locale.ROOT, v)
@@ -132,21 +134,21 @@ private fun ParamRow(p: Param, v: String, changed: Boolean, problem: String?, on
                 Param.TextKind.HOURS -> {
                     val on = v.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        (0..23).forEach { h -> FilterChip(h in on, { onChange((if (h in on) on - h else on + h).sorted().joinToString(",")) }, { Text("%02d".format(h)) }) }
+                        (0..23).forEach { h -> FilterChip(h in on, { onChange((if (h in on) on - h else on + h).sorted().joinToString(",")) }, { Text(stringResource(R.string.s_02d).format(h)) }) }
                     }
                 }
                 Param.TextKind.KINDS -> {
                     val on = v.split(',').map { it.trim().uppercase() }.filter { it.isNotEmpty() }.toSet()
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("HIGH" to "Daily highs", "LOW" to "Daily lows").forEach { (k, l) ->
-                            FilterChip(k in on, { onChange((if (k in on) on - k else on + k).sorted().joinToString(",")) }, { Text("Pause $l") }) }
+                            FilterChip(k in on, { onChange((if (k in on) on - k else on + k).sorted().joinToString(",")) }, { Text(stringResource(R.string.pause, (l).toString())) }) }
                     }
                 }
                 Param.TextKind.ZONE -> {
                     val zones = listOf("" to "Phone's zone", "America/New_York" to "Eastern", "America/Chicago" to "Central",
                         "America/Denver" to "Mountain", "America/Los_Angeles" to "Pacific")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) { zones.forEach { (z, l) -> FilterChip(v.trim() == z, { onChange(z) }, { Text(l) }) } }
-                    if (zones.none { it.first == v.trim() }) OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Time zone") })
+                    if (zones.none { it.first == v.trim() }) OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.time_zone)) })
                 }
                 Param.TextKind.BANDS -> BandsControl(v, onChange)
                 Param.TextKind.FREE -> OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true)
@@ -179,13 +181,13 @@ private fun BandsControl(v: String, onChange: (String) -> Unit) {
     fun emit(l: List<Pair<Double, Double>>) = onChange(l.joinToString(", ") { "${fmt(it.first, 2)}-${fmt(it.second, 2)}" })
     bands.forEachIndexed { i, (lo, hi) ->
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${(lo * 100).roundToInt()}c to ${(hi * 100).roundToInt()}c", style = Figures, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.c_to_c, ((lo * 100).roundToInt()).toString(), ((hi * 100).roundToInt()).toString()), style = Figures, modifier = Modifier.weight(1f))
             IconButton({ emit(bands.filterIndexed { j, _ -> j != i }) }) { Icon(Icons.Outlined.Close, "Remove this band") }
         }
         RangeSlider(lo.toFloat()..hi.toFloat(), { r ->
             emit(bands.mapIndexed { j, b -> if (j == i) ((r.start * 100).roundToInt() / 100.0) to ((r.endInclusive * 100).roundToInt() / 100.0) else b })
         }, valueRange = 0f..0.5f, steps = 49)
     }
-    TextButton({ emit(bands + (0.20 to 0.25)) }) { Text("Add a skipped band") }
-    if (bands.isEmpty()) Text("No bands skipped.", style = MaterialTheme.typography.bodySmall)
+    TextButton({ emit(bands + (0.20 to 0.25)) }) { Text(stringResource(R.string.add_a_skipped_band)) }
+    if (bands.isEmpty()) Text(stringResource(R.string.no_bands_skipped), style = MaterialTheme.typography.bodySmall)
 }

@@ -104,12 +104,18 @@ class EngineService : LifecycleService() {
         }
     }
 
+    /**
+     * The continuous wake lock is time-limited and re-armed on every power check
+     * (every 5 s), so if this service ever dies without releasing it, Android drops
+     * it within ten minutes instead of draining the battery.
+     */
     private fun holdWake(on: Boolean) {
-        if (on && wake == null) {
-            wake = (getSystemService(POWER_SERVICE) as PowerManager)
-                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "marketbot:engine").apply { setReferenceCounted(false); acquire() }
-        } else if (!on && wake != null) {
-            wake?.release(); wake = null
+        if (on) {
+            val w = wake ?: (getSystemService(POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "marketbot:engine").apply { setReferenceCounted(false) }.also { wake = it }
+            w.acquire(10 * 60_000L)
+        } else {
+            wake?.let { if (it.isHeld) it.release() }; wake = null
         }
     }
 

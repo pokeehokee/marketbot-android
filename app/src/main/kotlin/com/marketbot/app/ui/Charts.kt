@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,7 +41,7 @@ private val dayFmt = DateTimeFormatter.ofPattern("MMM d").withZone(ZoneId.system
 fun LineChart(series: Series, modifier: Modifier = Modifier, height: Dp = 140.dp, color: Color? = null, label: String = "",
               format: (Double) -> String = { money(it) }) {
     if (series.size < 2) {
-        Text("Not enough points for a chart yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.not_enough_points_for_a_chart_yet), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
     val pts = series.sortedBy { it.first }
@@ -67,7 +69,7 @@ fun LineChart(series: Series, modifier: Modifier = Modifier, height: Dp = 140.dp
         }
         Row(Modifier.fillMaxWidth()) {
             Text(format(lo), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Text("${dayFmt.format(Instant.ofEpochMilli(t0))} - ${dayFmt.format(Instant.ofEpochMilli(t1))}", style = MaterialTheme.typography.labelSmall,
+            Text(stringResource(R.string.date_range, (dayFmt.format(Instant.ofEpochMilli(t0))).toString(), (dayFmt.format(Instant.ofEpochMilli(t1))).toString()), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

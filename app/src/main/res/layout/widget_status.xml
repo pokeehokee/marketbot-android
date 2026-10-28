@@ -13,13 +13,13 @@
         android:layout_weight="1"
         android:orientation="vertical">
         <TextView android:id="@+id/w_state" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="Marketbot" android:textColor="#E3EAED" android:textSize="15sp" android:textStyle="bold" />
+            android:text="@string/app_name" android:textColor="#E3EAED" android:textSize="15sp" android:textStyle="bold" />
         <TextView android:id="@+id/w_live" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:textColor="#A9B7BD" android:textSize="13sp" />
         <TextView android:id="@+id/w_paper" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:textColor="#A493FF" android:textSize="13sp" />
     </LinearLayout>
     <Button android:id="@+id/w_kill" android:layout_width="wrap_content" android:layout_height="48dp"
-        android:minWidth="72dp" android:text="KILL" android:textColor="#2D0503" android:backgroundTint="#F0645A"
-        android:contentDescription="Kill switch: cancel every resting order" />
+        android:minWidth="72dp" android:text="@string/widget_kill" android:textColor="#2D0503" android:backgroundTint="#F0645A"
+        android:contentDescription="@string/widget_kill_description" />
 </LinearLayout>

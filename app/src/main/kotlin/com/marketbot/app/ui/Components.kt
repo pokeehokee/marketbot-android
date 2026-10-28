@@ -1,5 +1,7 @@
 package com.marketbot.app.ui
 
+import androidx.compose.ui.res.stringResource
+import com.marketbot.app.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -85,15 +87,15 @@ fun ValueRow(label: String, value: String, source: Source?, origin: String? = nu
             textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = if (value.length > 20) Modifier.weight(1.4f) else Modifier)
         if (source != null) { Spacer(Modifier.width(8.dp)); SourceChip(source) }
     }
-    if (show && origin != null) AlertDialog(onDismissRequest = { show = false }, confirmButton = { TextButton({ show = false }) { Text("Close") } },
+    if (show && origin != null) AlertDialog(onDismissRequest = { show = false }, confirmButton = { TextButton({ show = false }) { Text(stringResource(R.string.close)) } },
         title = { Text(label) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(value, style = Figures)
-                source?.let { Text("Source: ${it.label}", style = MaterialTheme.typography.bodyMedium) }
-                Text("From: $origin", style = MaterialTheme.typography.bodySmall)
-                note?.let { Text("Why: $it", style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.derived) }
-                at?.let { Text("Read at ${it.short()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                source?.let { Text(stringResource(R.string.source, (it.label).toString()), style = MaterialTheme.typography.bodyMedium) }
+                Text(stringResource(R.string.from, (origin).toString()), style = MaterialTheme.typography.bodySmall)
+                note?.let { Text(stringResource(R.string.why, (it).toString()), style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.derived) }
+                at?.let { Text(stringResource(R.string.read_at, (it.short()).toString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         })
 }
@@ -166,9 +168,9 @@ fun ModeControl(vm: MainViewModel, s: com.marketbot.core.strategy.Strategy, curr
     leaving?.let { m ->
         AlertDialog(onDismissRequest = { leaving = null },
             confirmButton = { TextButton({ vm.setMode(s, m); leaving = null }) { Text(if (m == Mode.OFF) "Turn off" else "Switch to paper") } },
-            dismissButton = { TextButton({ leaving = null }) { Text("Stay live") } },
-            title = { Text("Stop live trading ${s.name}?") },
-            text = { Text("Live is disarmed and has to be armed again from its checklist. ${s.onLeaveLive}") })
+            dismissButton = { TextButton({ leaving = null }) { Text(stringResource(R.string.stay_live)) } },
+            title = { Text(stringResource(R.string.stop_live_trading, (s.name).toString())) },
+            text = { Text(stringResource(R.string.live_is_disarmed_and_has_to_be_armed_aga, (s.onLeaveLive).toString())) })
     }
 }
 

@@ -25,6 +25,8 @@ jobs:
         run: ./gradlew --no-daemon :core:test
       - name: App tests (Room stores, vault, screens)
         run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Android lint (errors fail the build)
+        run: ./gradlew --no-daemon :app:lintDebug
       - name: Build APK
         run: ./gradlew --no-daemon :app:assembleDebug
       - name: Build release APK (R8, signed with the release key when the secrets are set)
