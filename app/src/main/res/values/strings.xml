@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Marketbot</string>
+    <string name="widget_description">Engine state, today\u2019s P&amp;L and a kill switch</string>
 </resources>

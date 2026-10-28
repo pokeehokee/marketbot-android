@@ -182,7 +182,7 @@ class Engine(
 
     fun context(s: Strategy, mode: Mode, cfg: StrategyConfig, armed: Boolean, killed: Boolean) = StrategyContext(
         s.id, mode, cfg, stores, clock, kalshi, polymarket, btcIndex,
-        liveArmed = mode == Mode.LIVE && armed && !killed, notify = notifier)
+        liveArmed = mode == Mode.LIVE && armed && !killed, notify = notifier, tradeNotify = tradeNotifier)
 
     private suspend fun ctx(s: Strategy, mode: Mode? = null): StrategyContext {
         val m = mode ?: mode(s.id)
@@ -313,6 +313,34 @@ class Engine(
         }
         log(strategyId, LogEvent.Level.TRADE, "cancel", "Cancelled an order on ${com.marketbot.core.util.Tickers.describe(q.ticker)} by hand.")
         "Order cancelled at ${if (q.venue == "kalshi") "Kalshi" else "Polymarket"}."
+    }
+
+    /**
+     * Yesterday in one notification, once a day after 08:00 local: realised P&L per
+     * strategy, live and paper apart, from settled positions only. Null when it was
+     * already sent today or nothing settled.
+     */
+    suspend fun dailySummaryIfDue(zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Pair<String, String>? {
+        val now = clock.now().atZone(zone)
+        if (now.hour < 8) return null
+        val today = now.toLocalDate().toString()
+        if (stores.state.get("engine.summary_day") == today) return null
+        stores.state.put("engine.summary_day", today)
+        val from = now.toLocalDate().minusDays(1).atStartOfDay(zone).toInstant(); val to = now.toLocalDate().atStartOfDay(zone).toInstant()
+        val lines = mutableListOf<String>(); var live = 0.0; var paper = 0.0
+        for (s in strategies) for (m in listOf(Mode.LIVE, Mode.PAPER)) {
+            val rows = stores.ledger.all(s.id, m).filter { it.resolvedAt != null && it.hypothetical == false && it.pnl != null &&
+                !it.resolvedAt.isBefore(from) && it.resolvedAt.isBefore(to) }
+            if (rows.isEmpty()) continue
+            val p = rows.sumOf { it.pnl!! }
+            if (m == Mode.LIVE) live += p else paper += p
+            lines += "${s.name} (${m.name.lowercase()}): ${com.marketbot.core.strategy.money(p)} on ${rows.size} settled, ${rows.count { it.pnl!! < 0 }} lost"
+        }
+        if (lines.isEmpty()) return null
+        val title = "Yesterday: " + listOfNotNull(
+            "live ${com.marketbot.core.strategy.money(live)}".takeIf { lines.any { "(live)" in it } },
+            "paper ${com.marketbot.core.strategy.money(paper)}".takeIf { lines.any { "(paper)" in it } }).joinToString(", ")
+        return title to lines.joinToString("\n")
     }
 
     /** Strategies that were live when the kill switch went on (they stay in paper until re-armed). */

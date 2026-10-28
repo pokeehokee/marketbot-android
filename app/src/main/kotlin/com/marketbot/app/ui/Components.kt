@@ -68,7 +68,7 @@ fun SourceChip(source: Source, modifier: Modifier = Modifier) {
         Source.PAPER_MODEL -> "PAPER"
         Source.CONFIG -> "SETTING"
     }
-    Text(label, style = MaterialTheme.typography.labelSmall, color = c, maxLines = 1,
+    Text(label, style = MaterialTheme.typography.labelSmall, color = c, maxLines = 1, softWrap = false,
         modifier = modifier.clip(RoundedCornerShape(4.dp)).background(c.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
@@ -194,6 +194,11 @@ fun moneyColor(v: Double?): Color? {
 /** A placeholder line while a value loads. */
 @Composable
 fun SkeletonLine(widthFraction: Float = 1f) {
+    if (reducedMotion(androidx.compose.ui.platform.LocalContext.current)) {
+        Box(Modifier.padding(vertical = 7.dp).fillMaxWidth(widthFraction).height(14.dp).clip(RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)))
+        return
+    }
     val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "skeleton")
     val a by t.animateFloat(initialValue = 0.25f, targetValue = 0.55f, animationSpec = androidx.compose.animation.core.infiniteRepeatable(
         androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "alpha")

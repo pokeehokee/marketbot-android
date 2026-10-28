@@ -41,11 +41,6 @@ class EngineService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) { stopEngine(); return START_NOT_STICKY }
-        val app0 = application as MarketbotApp
-        if (intent?.action == ACTION_KILL) {
-            app0.appScope.launch { app0.engine.setGlobalKill(true) }
-            if (engineScope == null) { stopSelf(); return START_NOT_STICKY }
-        }
         val type = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, NOTIF_ID, notification("Starting strategies..."), type)
         val app = application as MarketbotApp
@@ -80,6 +75,7 @@ class EngineService : LifecycleService() {
                     val next = active.mapNotNull { it.nextRunAt }.minOrNull()
                     val lines = active.map { s0 -> "${app.engine.strategies.firstOrNull { it.id == s0.id }?.name ?: s0.id}: ${if (s0.mode == Mode.LIVE && s0.armed) "LIVE" else "paper"}" +
                         (s0.lastSummary?.let { " - $it" } ?: "") }
+                    Surfaces.refresh(this@EngineService)
                     getSystemService(android.app.NotificationManager::class.java).notify(NOTIF_ID,
                         notification(title, next?.let { "Next pass ${it.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0)}" } ?: "Idle", lines, live.isNotEmpty() && !killed))
                 }
@@ -102,6 +98,7 @@ class EngineService : LifecycleService() {
             }
             if (app.engine.busy.value == 0) AlarmReceiver.releasePassLock()
             Health.beat(this)
+            app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.trade(this, t, b) }
             if (System.currentTimeMillis() - lastPrune > 86_400_000L) { lastPrune = System.currentTimeMillis(); app.pruneRoutine() }
             delay(5_000)
         }
@@ -125,8 +122,7 @@ class EngineService : LifecycleService() {
         if (lines.isNotEmpty()) b.setStyle(NotificationCompat.InboxStyle().also { st -> lines.take(5).forEach { st.addLine(it) }; st.setSummaryText(text) })
         if (live) {
             // One tap from the shade: cancel every resting order and drop to paper.
-            val kill = PendingIntent.getService(this, 2, Intent(this, EngineService::class.java).setAction(ACTION_KILL), PendingIntent.FLAG_IMMUTABLE)
-            b.addAction(0, "Kill switch", kill)
+            b.addAction(0, "Kill switch", KillReceiver.intent(this))
         }
         return b.build()
     }
@@ -155,7 +151,6 @@ class EngineService : LifecycleService() {
     companion object {
         const val NOTIF_ID = 1
         const val ACTION_STOP = "com.marketbot.app.STOP"
-        const val ACTION_KILL = "com.marketbot.app.KILL"
         const val EXTRA_BOOT = "boot"
 
         fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, EngineService::class.java))

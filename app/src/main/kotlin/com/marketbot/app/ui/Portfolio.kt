@@ -75,12 +75,14 @@ fun PortfolioHeader(vm: MainViewModel) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun Stat(label: String, v: Double, src: Source, modifier: Modifier) {
     Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Wraps instead of truncating the tag at large font sizes.
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(6.dp)); SourceChip(src)
+            SourceChip(src)
         }
         Text(money(v), style = Figures, color = moneyColor(v) ?: MaterialTheme.colorScheme.onSurface)
     }

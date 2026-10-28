@@ -184,6 +184,21 @@ fun SystemSettings(vm: MainViewModel) {
     val usage by produceState(vm.netUsage()) { while (true) { delay(10_000); value = vm.netUsage() } }
 
     var confirmLive by remember { mutableStateOf(com.marketbot.app.Confirm.enabled(ctx)) }
+    Section("Appearance") {
+        Text("Theme", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(Appearance.Mode.SYSTEM to "System", Appearance.Mode.LIGHT to "Light", Appearance.Mode.DARK to "Dark").forEach { (m, l) ->
+                FilterChip(Appearance.mode == m, { Appearance.mode = m; Appearance.save(ctx) }, { Text(l) }) }
+        }
+        if (Build.VERSION.SDK_INT >= 31) Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Wallpaper colours", style = MaterialTheme.typography.bodyMedium)
+                Text("Material You. Source tags and gains/losses keep their fixed colours.", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(Appearance.dynamic, { Appearance.dynamic = it; Appearance.save(ctx) })
+        }
+    }
     Section("Security") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

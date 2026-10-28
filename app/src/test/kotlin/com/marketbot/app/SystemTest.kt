@@ -84,4 +84,14 @@ class SystemTest {
         Health.markStarted(ctx, at = now - 1_000)
         assertFalse(Health.missedBootRestart(ctx, shouldRun = true, running = false, now = now, sinceBoot = 3_600_000), "started after boot")
     }
+
+    @Test fun `the kill broadcast turns the kill switch on without the engine running`() {
+        val app = ApplicationProvider.getApplicationContext<MarketbotApp>()
+        assertFalse(app.engine.running.value)
+        KillReceiver().onReceive(app, android.content.Intent(app, KillReceiver::class.java))
+        val until = System.currentTimeMillis() + 5_000
+        while (!app.engine.globalKill.value && System.currentTimeMillis() < until) Thread.sleep(20)
+        assertTrue(app.engine.globalKill.value)
+        kotlinx.coroutines.runBlocking { app.engine.setGlobalKill(false) }
+    }
 }

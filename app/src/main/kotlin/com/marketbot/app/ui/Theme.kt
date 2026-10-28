@@ -8,6 +8,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -55,8 +57,9 @@ private val light = lightColorScheme(
     error = Color(0xFFC23A30), errorContainer = Color(0xFFFFDAD5), onErrorContainer = Color(0xFF410002),
 )
 
-private val mono = FontFamily.Monospace
-val Figures = TextStyle(fontFamily = mono, fontWeight = FontWeight.Medium, fontSize = 15.sp, letterSpacing = 0.sp)
+/** Numbers in the body font with tabular figures, so columns of money line up without a dated monospace face. */
+val Figures = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 15.sp, letterSpacing = 0.sp,
+    fontFeatureSettings = "tnum")
 
 private val type = Typography().let { t ->
     t.copy(
@@ -67,13 +70,43 @@ private val type = Typography().let { t ->
     )
 }
 
+/** Appearance choices, kept in preferences and observed by the theme. */
+object Appearance {
+    enum class Mode { SYSTEM, LIGHT, DARK }
+    var mode by androidx.compose.runtime.mutableStateOf(Mode.SYSTEM)
+    var dynamic by androidx.compose.runtime.mutableStateOf(false)
+
+    fun load(ctx: android.content.Context) {
+        val p = ctx.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE)
+        mode = runCatching { Mode.valueOf(p.getString("theme_mode", "SYSTEM")!!) }.getOrDefault(Mode.SYSTEM)
+        dynamic = p.getBoolean("dynamic_color", false)
+    }
+
+    fun save(ctx: android.content.Context) = ctx.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE).edit()
+        .putString("theme_mode", mode.name).putBoolean("dynamic_color", dynamic).apply()
+}
+
+/**
+ * Dark, light or the system's choice; Material You wallpaper colours when asked
+ * for (Android 12+). The source-tag and money colours never follow the
+ * wallpaper: a KALSHI tag is the same green on every phone, so it reads the same.
+ */
 @Composable
 fun MarketbotTheme(content: @Composable () -> Unit) {
-    val darkMode = isSystemInDarkTheme()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(Unit) { Appearance.load(ctx) }
+    val darkMode = when (Appearance.mode) { Appearance.Mode.DARK -> true; Appearance.Mode.LIGHT -> false; else -> isSystemInDarkTheme() }
+    val scheme = if (Appearance.dynamic && android.os.Build.VERSION.SDK_INT >= 31)
+        (if (darkMode) androidx.compose.material3.dynamicDarkColorScheme(ctx) else androidx.compose.material3.dynamicLightColorScheme(ctx))
+    else if (darkMode) dark else light
     androidx.compose.runtime.CompositionLocalProvider(LocalDesk provides if (darkMode) DarkDesk else LightDesk) {
-        MaterialTheme(colorScheme = if (darkMode) dark else light, typography = type, content = content)
+        MaterialTheme(colorScheme = scheme, typography = type, content = content)
     }
 }
+
+/** True when the user turned animations off in Android's accessibility settings. */
+fun reducedMotion(ctx: android.content.Context): Boolean =
+    android.provider.Settings.Global.getFloat(ctx.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
 @Composable
 fun sourceColor(s: Source): Color {

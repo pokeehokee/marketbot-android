@@ -148,6 +148,8 @@ class StrategyContext(
     /** False whenever the global kill switch is on or live has not been armed for this strategy. */
     val liveArmed: Boolean,
     val notify: suspend (title: String, body: String) -> Unit = { _, _ -> },
+    /** Trade notices (fills, settlements): a quieter channel than [notify]'s alerts. */
+    val tradeNotify: suspend (title: String, body: String) -> Unit = { _, _ -> },
 ) {
     suspend fun log(level: LogEvent.Level, kind: String, message: String, values: Map<String, Sourced<*>> = emptyMap()) {
         stores.events.log(LogEvent(clock.now(), strategyId, level, kind, message, values))
@@ -156,7 +158,11 @@ class StrategyContext(
     suspend fun info(kind: String, msg: String, values: Map<String, Sourced<*>> = emptyMap()) = log(LogEvent.Level.INFO, kind, msg, values)
     suspend fun warn(kind: String, msg: String, values: Map<String, Sourced<*>> = emptyMap()) = log(LogEvent.Level.WARN, kind, msg, values)
     suspend fun error(kind: String, msg: String, values: Map<String, Sourced<*>> = emptyMap()) = log(LogEvent.Level.ERROR, kind, msg, values)
-    suspend fun trade(kind: String, msg: String, values: Map<String, Sourced<*>> = emptyMap()) = log(LogEvent.Level.TRADE, kind, msg, values)
+    suspend fun trade(kind: String, msg: String, values: Map<String, Sourced<*>> = emptyMap()) {
+        log(LogEvent.Level.TRADE, kind, msg, values)
+        // Live settlements reach the phone's Trades notifications; offers would be dozens an hour, so they stay in Activity.
+        if (live && kind == "settled") tradeNotify("Settled", msg)
+    }
 
     /** The book a row belongs to. Paper and live are never mixed in any sum. */
     val live: Boolean get() = mode == Mode.LIVE && liveArmed

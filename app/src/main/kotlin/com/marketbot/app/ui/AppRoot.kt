@@ -63,25 +63,37 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
     // After the graph exists: navigating in the frame that first composes the NavHost would fail.
     LaunchedEffect(goAccounts) { if (goAccounts) { nav.navigate("accounts"); goAccounts = false } }
 
+    val width = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val rail = width >= 600          // tablets, foldables open, phones in landscape
+    val twoPane = width >= 840       // room for the strategy list beside its detail
+    val entry by nav.currentBackStackEntryAsState()
+    val route = entry?.destination?.route
+    fun selected(t: Tab) = route == t.route || (t.route == "strategies" && route?.startsWith("strategy/") == true)
+    // At large font sizes five labels cannot fit: show only the selected one, never a word broken in two.
+    val bigText = androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f
+    fun go(t: Tab) = nav.navigate(t.route) { popUpTo("home") { saveState = true }; launchSingleTop = true; restoreState = true }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snack) },
         bottomBar = {
-            val entry by nav.currentBackStackEntryAsState()
-            val route = entry?.destination?.route
-            NavigationBar {
-                tabs.forEach { t ->
-                    NavigationBarItem(selected = route == t.route || (t.route == "strategies" && route?.startsWith("strategy/") == true),
-                        onClick = { nav.navigate(t.route) { popUpTo("home") { saveState = true }; launchSingleTop = true; restoreState = true } },
-                        icon = { Icon(t.icon, null) }, label = { Text(t.label) })
-                }
+            if (!rail) NavigationBar {
+                tabs.forEach { t -> NavigationBarItem(selected = selected(t), onClick = { go(t) }, icon = { Icon(t.icon, t.label) },
+                    label = if (bigText) null else ({ Text(t.label, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) })) }
             }
         },
     ) { pad ->
-        Column(Modifier.padding(pad)) {
+        androidx.compose.foundation.layout.Row(Modifier.padding(pad)) {
+        if (rail) androidx.compose.material3.NavigationRail {
+            tabs.forEach { t -> androidx.compose.material3.NavigationRailItem(selected = selected(t), onClick = { go(t) }, icon = { Icon(t.icon, null) }, label = { Text(t.label) }) }
+        }
+        Column(Modifier.weight(1f)) {
         SystemBanners(vm)
         NavHost(nav, startDestination = "home", modifier = Modifier.weight(1f)) {
             composable("home") { HomeScreen(vm, onOpen = { nav.navigate("strategy/$it") }, onSources = { nav.navigate("sources") }) }
-            composable("strategies") { StrategiesScreen(vm, onGoLive = { nav.navigate("strategy/$it?tab=2") }) { nav.navigate("strategy/$it") } }
+            composable("strategies") {
+                if (twoPane) StrategiesTwoPane(vm) else
+                StrategiesScreen(vm, onGoLive = { nav.navigate("strategy/$it?tab=2") }) { nav.navigate("strategy/$it") }
+            }
             composable("strategy/{id}?tab={tab}", arguments = listOf(navArgument("id") { type = NavType.StringType },
                 navArgument("tab") { type = NavType.IntType; defaultValue = 0 })) { e ->
                 StrategyScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, initialTab = e.arguments!!.getInt("tab"))
@@ -91,6 +103,23 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
             composable("settings") { SettingsScreen(vm, onSources = { nav.navigate("sources") }) }
             composable("sources") { SourcesScreen(vm, onBack = { nav.popBackStack() }) }
         }
+        }
+        }
+    }
+}
+
+/** Wide screens: the strategy list on the left, the chosen strategy on the right. */
+@Composable
+private fun StrategiesTwoPane(vm: MainViewModel) {
+    var pick by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(vm.strategies.first().id) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0) }
+    androidx.compose.foundation.layout.Row {
+        Column(Modifier.weight(0.42f)) {
+            StrategiesScreen(vm, onGoLive = { pick = it; tab = 2 }) { pick = it; tab = 0 }
+        }
+        androidx.compose.material3.VerticalDivider()
+        Column(Modifier.weight(0.58f)) {
+            androidx.compose.runtime.key(pick, tab) { StrategyScreen(vm, pick, onBack = {}, initialTab = tab, showBack = false) }
         }
     }
 }

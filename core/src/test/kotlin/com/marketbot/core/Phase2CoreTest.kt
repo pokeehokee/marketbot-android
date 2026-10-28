@@ -180,4 +180,20 @@ class Phase2CoreTest {
         assertEquals("KXHIGHNY-26OCT29-B70.5", fake.deletes().single().requestUrl!!.queryParameter("market_ticker"))
         assertTrue("no longer resting" in engine.cancelOne("kalshi_weather_longshot", id))
     }
+
+    @Test fun `the daily summary covers yesterday's settled positions once a day`() = runTest {
+        val stores = inMemoryStores()
+        val clock = MutableClock(Instant.parse("2026-10-28T09:00:00Z"))
+        val engine = com.marketbot.core.engine.Engine(stores, clock, clientFactory = { _ -> fake.client(true) to PolymarketClient(null) }, fillStreamFactory = null)
+        listOf(0.35 to "2026-10-27T13:00:00Z", -4.65 to "2026-10-27T14:00:00Z", 9.0 to "2026-10-26T13:00:00Z").forEach { (p, at) ->
+            stores.ledger.insert(row(1, 5.0, if (p < 0) "yes" else "no").copy(strategyId = "kalshi_weather_longshot", resolvedAt = Instant.parse(at), pnl = p))
+        }
+        clock.at = Instant.parse("2026-10-28T07:00:00Z")
+        assertNull(engine.dailySummaryIfDue(ZoneOffset.UTC), "not before 08:00")
+        clock.at = Instant.parse("2026-10-28T09:00:00Z")
+        val (title, body) = engine.dailySummaryIfDue(ZoneOffset.UTC)!!
+        assertEquals("Yesterday: live -\$4.30", title)
+        assertTrue("2 settled, 1 lost" in body, body)
+        assertNull(engine.dailySummaryIfDue(ZoneOffset.UTC), "once a day")
+    }
 }

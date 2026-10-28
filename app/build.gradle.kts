@@ -104,6 +104,7 @@ dependencies {
     implementation(libs.bcpkix)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.fragment)
+    implementation(libs.androidx.splashscreen)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)

@@ -60,6 +60,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     val ctx = LocalContext.current
     var confirmKill by remember { mutableStateOf(false) }
     val confirm = com.marketbot.app.rememberConfirm()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     LaunchedEffect(Unit) { vm.refreshAccounts() }
 
     val refreshing by vm.refreshing.collectAsState()
@@ -101,7 +102,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             }
         }
 
-        Section("Accounts", trailing = { IconButton({ vm.refreshAccounts() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Refresh, "Refresh") } }) {
+        Section("Accounts", trailing = { IconButton({ vm.refreshAccounts() }) { Icon(Icons.Outlined.Refresh, "Refresh balances") } }) {
             if (!vm.hasKalshi() && !vm.hasPolymarket()) Text("No API keys yet. Paper mode works without them; add keys under Accounts to see balances and trade live.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             accounts.kalshi?.let { b ->
@@ -148,7 +149,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     }
 
     if (confirmKill) AlertDialog(onDismissRequest = { confirmKill = false },
-        confirmButton = { Button({ confirmKill = false; vm.kill(true) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("Cancel everything") } },
+        confirmButton = { Button({ confirmKill = false; haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.kill(true) }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text("Cancel everything") } },
         dismissButton = { TextButton({ confirmKill = false }) { Text("Back") } },
         title = { Text("Turn on the kill switch?") },
         text = { Text("Every resting order of every strategy is cancelled at the exchange and live trading is disarmed. Filled positions are kept and settle normally.") })

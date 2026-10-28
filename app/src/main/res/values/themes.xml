@@ -4,6 +4,12 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+    <!-- Launch: the Android 12+ splash screen with the app icon, then the app theme. -->
+    <style name="Theme.Marketbot.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_fg</item>
+        <item name="postSplashScreenTheme">@style/Theme.Marketbot</item>
+    </style>
     <color name="bg">#0E1214</color>
     <color name="brand">#2FB37A</color>
 </resources>

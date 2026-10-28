@@ -62,14 +62,15 @@ import com.marketbot.core.strategies.rewards.RewardFarm
 import kotlinx.coroutines.launch
 
 @Composable
-fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab: Int = 0) {
+fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab: Int = 0, showBack: Boolean = true) {
     val s = vm.strategies.first { it.id == id }
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(initialTab) }
     val running by vm.engineRunning.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = 4.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             var askLeave by remember { mutableStateOf(false) }
-            IconButton({ if (vm.dirty(s)) askLeave = true else onBack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+            if (showBack) IconButton({ if (vm.dirty(s)) askLeave = true else onBack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+            else Spacer(Modifier.width(12.dp))
             if (askLeave) androidx.compose.material3.AlertDialog(onDismissRequest = { askLeave = false },
                 confirmButton = { androidx.compose.material3.TextButton({ vm.drafts.remove(s.id); askLeave = false; onBack() }) { Text("Discard changes") } },
                 dismissButton = { androidx.compose.material3.TextButton({ askLeave = false }) { Text("Keep editing") } },
@@ -160,6 +161,7 @@ private fun Modifier.checkToggle(on: Boolean, onChange: (Boolean) -> Unit) =
 @Composable
 private fun GoLive(vm: MainViewModel, s: Strategy) {
     val confirm = com.marketbot.app.rememberConfirm()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val all by vm.strategyUi.collectAsState()
     val ui = all[s.id] ?: MainViewModel.StrategyUi()
     var typed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
@@ -227,7 +229,7 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
             Text("Type LIVE to confirm that this strategy may place real orders with your money.", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text("Type LIVE") })
             Spacer(Modifier.size(8.dp))
-            Button({ confirm("Arm ${s.name} for live trading") { vm.armLive(s, acks.toSet()) } },
+            Button({ confirm("Arm ${s.name} for live trading") { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.armLive(s, acks.toSet()) } },
                 enabled = ready && typed.trim() == "LIVE" && !killed,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text("Arm live trading") }
             ui.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

@@ -100,5 +100,12 @@ class ScreensTest {
         rule.activityRule.scenario.recreate()
     }
 
+    @Test fun `launcher icon renders`() {
+        val bmp = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bmp)
+        for (id in listOf(R.drawable.ic_launcher_bg, R.drawable.ic_launcher_fg)) c.getDrawable(id)!!.apply { setBounds(0, 0, 432, 432); draw(cv) }
+        File(File("build/screens").apply { mkdirs() }, "icon.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Suppress("unused") private val c: Context get() = ApplicationProvider.getApplicationContext()
 }
