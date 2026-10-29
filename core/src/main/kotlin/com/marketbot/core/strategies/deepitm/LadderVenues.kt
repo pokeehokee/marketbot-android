@@ -59,6 +59,8 @@ interface LadderVenue {
 }
 
 // =========================================================================== Kalshi KXBTCD
+private const val TAPE_TTL_S = 15L
+
 class KalshiBtcLadder(private val k: KalshiClient, private val series: String = "KXBTCD") : LadderVenue {
     override val venueKey = "kalshi"
     override val label = "Kalshi $series"
@@ -70,13 +72,32 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
     override suspend fun tradingOpen(): Boolean = k.tradingActive(2).value
 
     override suspend fun ladder(now: Instant, spot: Double, sigma: Double): List<LadderMarket> {
-        val (event, _) = DeepItmRule.nextHourEvent(now, series)
+        val (event, close) = DeepItmRule.nextHourEvent(now, series)
         cachedEvent = event
-        return k.eventMarkets(event).mapNotNull { toLadder(it) }
+        // Only markets closing at this hour: on the night clocks go back, two hours carry the same ET label,
+        // and the listing for the second must never return the first one's (already closed) strikes.
+        return k.eventMarkets(event).mapNotNull { toLadder(it) }.filter { kotlin.math.abs(java.time.Duration.between(it.close, close).seconds) <= 60 }
     }
 
+    private class Tape(val minTs: Long, val at: Instant, val trades: List<kotlinx.serialization.json.JsonObject>)
+    private val tapes = mutableMapOf<String, Tape>()
+
+    /**
+     * The public tape since [minTs], shared by every quote on [ticker] for [TAPE_TTL_S].
+     * Re-reading up to 20,000 trades per quote on every 2-s pass churned the heap
+     * and the data plan; the fill model filters by each quote's own placement time.
+     */
+    private suspend fun tape(ticker: String, minTs: Long, now: Instant): List<kotlinx.serialization.json.JsonObject> {
+        tapes.values.removeIf { java.time.Duration.between(it.at, now).seconds > 600 }
+        tapes[ticker]?.takeIf { it.minTs <= minTs && java.time.Duration.between(it.at, now).seconds < TAPE_TTL_S }?.let { return it.trades }
+        return k.trades(ticker, minTs).also { tapes[ticker] = Tape(minTs, now, it) }
+    }
+
+    internal val cachedTapes get() = tapes.size
+    init { com.marketbot.core.util.Diagnostics.track(this, "Kalshi BTC paper tapes cached") { v -> v.tapes.values.sumOf { it.trades.size } } }
+
     override suspend fun paperFill(q: QuoteRow, now: Instant, book: LadderMarket?): FillRead? {
-        val trades = k.trades(q.ticker, q.placedAt.epochSecond)
+        val trades = tape(q.ticker, q.placedAt.epochSecond, now)
         val side = if (q.action == "buy_yes") "yes" else "no"
         val f = TapeFillModel.fill(q.placedAt, q.cancelledAt, side, q.price, q.contracts, q.queueAhead ?: 0.0, trades)
         return FillRead(f.filled, "paper: Kalshi public tape, FIFO")
@@ -166,8 +187,13 @@ class PolymarketBtcLadder(private val pm: PolymarketClient) : LadderVenue {
     var allowNoLive: Boolean = false
     override val venueKey = "polymarket"
     override val label = "Polymarket BTC 5PM ET"
-    private val trackers = mutableMapOf<Long, BookFillTracker>()
+    // Bounded: one tracker per open quote, and books only while they are fresh enough to reuse.
+    private val trackers = object : LinkedHashMap<Long, BookFillTracker>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, BookFillTracker>?) = size > 500
+    }
     private val books = mutableMapOf<String, PmBook>()
+    internal val cachedBooks get() = books.size
+    init { com.marketbot.core.util.Diagnostics.track(this, "Polymarket BTC books + fill trackers") { it.books.size + it.trackers.size } }
 
     override suspend fun tradingOpen() = true
 
@@ -197,6 +223,7 @@ class PolymarketBtcLadder(private val pm: PolymarketClient) : LadderVenue {
     }
 
     override suspend fun paperFill(q: QuoteRow, now: Instant, book: LadderMarket?): FillRead? {
+        books.values.removeIf { java.time.Duration.between(it.at, now).seconds > 600 }
         val b = books[q.ticker]?.takeIf { java.time.Duration.between(it.at, now).seconds < 5 } ?: pm.book(q.ticker).also { books[q.ticker] = it }
         // buy YES = rest a YES bid at q; buy NO at q = rest a YES ask at 1 - q.
         val (side, px) = if (q.action == "buy_yes") "bid" to q.price else "ask" to (1.0 - q.price)

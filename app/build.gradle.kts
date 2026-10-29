@@ -11,6 +11,10 @@ plugins {
 val buildNumber: Int = 100 + providers.exec {
     commandLine("git", "rev-list", "--count", "HEAD"); isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim().toIntOrNull() ?: 0 }.getOrElse(0)
+// The commit a build came from, stamped into crash reports so a stack trace can be retraced against its mapping.
+val gitSha: String = providers.exec {
+    commandLine("git", "rev-parse", "--short=12", "HEAD"); isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().ifEmpty { "unknown" } }.getOrElse("unknown")
 
 android {
     namespace = "com.marketbot.app"
@@ -23,6 +27,7 @@ android {
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
         buildConfigField("String", "UPDATE_REPO", "\"pokeehokee/marketbot-android\"")
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
     }
 
     signingConfigs {
@@ -110,6 +115,8 @@ dependencies {
     implementation(libs.androidx.fragment)
     implementation(libs.androidx.splashscreen)
     debugImplementation(libs.compose.ui.tooling)
+    // Debug builds only: reports an Activity, ViewModel or service still reachable after it was destroyed.
+    debugImplementation(libs.leakcanary)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test)

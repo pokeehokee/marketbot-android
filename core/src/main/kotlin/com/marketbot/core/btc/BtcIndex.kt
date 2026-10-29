@@ -123,6 +123,7 @@ class BtcIndex(
 ) {
     private val quotes = mutableMapOf<String, Pair<Double, Double>>()
     private val samples = ArrayDeque<Pair<Double, Double>>()
+    init { com.marketbot.core.util.Diagnostics.track(this, "BTC index samples") { synchronized(it.lock) { it.samples.size } } }
     private var candleSig: Double? = null
     private var candleAt = 0.0
     val errors = mutableMapOf<String, Int>()

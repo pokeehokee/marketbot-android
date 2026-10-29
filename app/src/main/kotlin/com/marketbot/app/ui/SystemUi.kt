@@ -63,7 +63,7 @@ import kotlin.math.abs
 
 @Composable
 private fun Banner(icon: ImageVector, tint: Color, text: String, onClick: (() -> Unit)? = null, action: String? = null) {
-    Surface(color = tint.copy(alpha = 0.14f), shape = RoundedCornerShape(12.dp),
+    Surface(color = tint.copy(alpha = 0.14f), shape = Radius.banner,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp).let { if (onClick != null) it.clickable(onClick = onClick) else it }) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
@@ -95,7 +95,23 @@ fun SystemBanners(vm: MainViewModel) {
 
     val running by vm.engineRunning.collectAsState()
     val missedBoot = com.marketbot.app.Health.missedBootRestart(ctx, com.marketbot.app.EngineService.wasRunning(ctx), running)
+    val limit = remember(resumed) { com.marketbot.app.Background.limit(ctx) }
+    val state by vm.modes.collectAsState()
+    val now = LocalNow.current
+    val gap = com.marketbot.app.Background.recentGap(state.firstOrNull { it.key == "engine.last_gap" }?.value, now)
+    val status by vm.status.collectAsState()
+    val overdue = if (running) overdue(status.values, now).mapNotNull { (id, mins) -> vm.strategies.firstOrNull { it.id == id }?.name?.let { it to mins } } else emptyList()
     Column(Modifier.padding(top = 4.dp)) {
+        if (running && limit != com.marketbot.app.Background.Limit.NONE) Banner(Icons.Outlined.WarningAmber, LocalDesk.current.loss,
+            if (limit == com.marketbot.app.Background.Limit.RESTRICTED) "Android has restricted Marketbot in the background: passes stop when the screen is off."
+            else "Android has put Marketbot in a rarely-used group: passes can run hours late. Set its battery use to Unrestricted.",
+            action = "Fix", onClick = { com.marketbot.app.Background.openSettings(ctx) })
+        else if (running && gap != null) Banner(Icons.Outlined.Schedule, LocalDesk.current.warn,
+            "The phone paused the engine for ${gap.second / 60} min at ${gap.first.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0).withSecond(0)}. " +
+                (com.marketbot.app.Health.oemAdvice() ?: "Set Marketbot's battery use to Unrestricted."),
+            action = "Fix", onClick = { com.marketbot.app.Background.openSettings(ctx) })
+        overdue.firstOrNull()?.let { (name, mins) -> Banner(Icons.Outlined.Schedule, LocalDesk.current.warn,
+            "$name is $mins min overdue: figures on its screen are older than they look." + if (overdue.size > 1) " (${overdue.size - 1} more overdue)" else "") }
         if (missedBoot) Banner(Icons.Outlined.WarningAmber, LocalDesk.current.loss,
             "The engine didn't restart after the phone rebooted, so nothing has run since. Check battery settings for Marketbot.",
             action = "Start", onClick = { vm.ensureService() })
@@ -242,6 +258,17 @@ fun SystemSettings(vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+    Section(stringResource(R.string.diagnostics)) {
+        // Memory over time is what the 13-hour crash of build 116 needed and nobody could see.
+        val mem by produceState(MemoryReading.now()) { while (true) { delay(5_000); value = MemoryReading.now() } }
+        val warn = mem.usedMb > mem.maxMb * 0.75
+        Text("Memory: ${mem.usedMb} MB of ${mem.maxMb} MB", style = MaterialTheme.typography.bodySmall, color = if (warn) LocalDesk.current.warn else MaterialTheme.colorScheme.onSurface)
+        androidx.compose.material3.LinearProgressIndicator(progress = { (mem.usedMb.toFloat() / mem.maxMb).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = if (warn) LocalDesk.current.warn else MaterialTheme.colorScheme.primary)
+        mem.caches.forEach { (n, v) -> Text("$n: $v", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Text("Build ${com.marketbot.app.BuildConfig.VERSION_NAME} · ${com.marketbot.app.BuildConfig.GIT_SHA}", style = Mono,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+    }
     crash?.let { c ->
         Section(stringResource(R.string.last_crash)) {
             Text(c.lineSequence().take(4).joinToString("\n"), style = MaterialTheme.typography.bodySmall)
@@ -315,4 +342,24 @@ fun UpdateRow(vm: MainViewModel) {
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
         OutlinedButton({ vm.saveGithubToken(token.trim()); token = ""; showToken = false }) { Text(stringResource(R.string.save)) }
     }
+}
+
+
+/** Heap use and the size of every long-lived structure, for the diagnostics card. */
+data class MemoryReading(val usedMb: Long, val maxMb: Long, val caches: List<Pair<String, Int>>) {
+    companion object {
+        fun now(rt: Runtime = Runtime.getRuntime()) = MemoryReading((rt.totalMemory() - rt.freeMemory()) / 1_048_576, rt.maxMemory() / 1_048_576,
+            com.marketbot.core.util.Diagnostics.sizes())
+    }
+}
+
+/**
+ * Running strategies whose next pass is late by more than its own period (and two
+ * minutes): (id, minutes late). A pass that is late means every figure it feeds is old.
+ */
+fun overdue(status: Collection<com.marketbot.core.engine.StrategyStatus>, now: java.time.Instant): List<Pair<String, Long>> = status.filter { it.running }.mapNotNull { st ->
+    val next = st.nextRunAt ?: return@mapNotNull null
+    val period = st.lastRunAt?.let { java.time.Duration.between(it, next) }?.takeIf { !it.isNegative } ?: java.time.Duration.ZERO
+    val late = java.time.Duration.between(next, now)
+    if (late > maxOf(period, java.time.Duration.ofMinutes(2))) st.id to late.toMinutes() else null
 }

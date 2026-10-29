@@ -138,4 +138,27 @@ class SecurityAndDataTest {
         helper.createDatabase("mig.db", version).close()
         helper.runMigrationsAndValidate("mig.db", version, true)
     }
+
+    @Test fun `a version 1 database keeps its ledger and state across every migration`() {
+        helper.createDatabase("old.db", 1).use { db ->
+            db.execSQL("""INSERT INTO quotes (strategyId, mode, venue, ticker, action, price, contracts, placedAt, closeTime, orderId, clientOrderId,
+                marketKind, queueAhead, filledContracts, fillSource, fillCheckedAt, cancelledAt, resolvedAt, result, pnl, pnlSource, pnlOrigin, hypothetical, extra)
+                VALUES ('kalshi_weather_longshot','LIVE','kalshi','KXHIGHNY-26OCT29-B70.5','sell_yes',0.07,5,1,NULL,'o1',NULL,'HIGH',9,5,'api',NULL,NULL,2,'no',0.35,'KALSHI_API','settlement',0,'{}')""")
+            db.execSQL("INSERT INTO state (`key`, value) VALUES ('global.kill', 'false')")
+        }
+        helper.runMigrationsAndValidate("old.db", MarketbotDb.VERSION, true).use { db ->
+            db.query("SELECT ticker, pnl FROM quotes").use { c -> assertTrue(c.moveToFirst()); assertEquals("KXHIGHNY-26OCT29-B70.5", c.getString(0)); assertEquals(0.35, c.getDouble(1)) }
+            db.query("SELECT value FROM state WHERE `key` = 'global.kill'").use { c -> assertTrue(c.moveToFirst()); assertEquals("false", c.getString(0)) }
+            db.query("SELECT COUNT(*) FROM checks").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+        }
+    }
+
+    @Test fun `every schema version migrates to the next`() {
+        val versions = java.io.File("schemas/com.marketbot.app.data.MarketbotDb").listFiles()!!.map { it.nameWithoutExtension.toInt() }.sorted()
+        assertEquals((1..MarketbotDb.VERSION).toList(), versions, "a schema json per version, none skipped")
+        for (v in 1 until MarketbotDb.VERSION) {
+            helper.createDatabase("step$v.db", v).close()
+            helper.runMigrationsAndValidate("step$v.db", v + 1, true).close()   // throws when no migration covers v -> v + 1
+        }
+    }
 }

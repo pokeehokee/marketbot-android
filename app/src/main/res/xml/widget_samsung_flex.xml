@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lets One UI offer the status widget on a Flip's cover screen (Flex Window). Ignored elsewhere. -->
+<samsung-appwidget-provider display="sub_screen" />

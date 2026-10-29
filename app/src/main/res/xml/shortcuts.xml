@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the launcher icon. Each opens the app and asks first: nothing here acts on money without a confirmation. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="kill" android:enabled="true" android:icon="@drawable/ic_shortcut_kill"
+        android:shortcutShortLabel="@string/shortcut_kill_short" android:shortcutLongLabel="@string/shortcut_kill_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.marketbot.app" android:targetClass="com.marketbot.app.MainActivity">
+            <extra android:name="shortcut" android:value="kill" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="trades" android:enabled="true" android:icon="@drawable/ic_shortcut_trades"
+        android:shortcutShortLabel="@string/shortcut_trades_short" android:shortcutLongLabel="@string/shortcut_trades_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.marketbot.app" android:targetClass="com.marketbot.app.MainActivity">
+            <extra android:name="shortcut" android:value="trades" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="stop" android:enabled="true" android:icon="@drawable/ic_shortcut_stop"
+        android:shortcutShortLabel="@string/shortcut_stop_short" android:shortcutLongLabel="@string/shortcut_stop_long">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="com.marketbot.app" android:targetClass="com.marketbot.app.MainActivity">
+            <extra android:name="shortcut" android:value="stop" />
+        </intent>
+    </shortcut>
+</shortcuts>

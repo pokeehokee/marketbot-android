@@ -38,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
 import com.marketbot.core.strategy.EvidenceLevel
@@ -71,20 +73,48 @@ fun SourceChip(source: Source, modifier: Modifier = Modifier) {
         Source.CONFIG -> "SETTING"
     }
     Text(label, style = MaterialTheme.typography.labelSmall, color = c, maxLines = 1, softWrap = false,
-        modifier = modifier.clip(RoundedCornerShape(4.dp)).background(c.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 2.dp))
+        modifier = modifier.clip(Radius.chip).background(c.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
-/** A label/value line with the value's source chip. Tapping shows its origin. */
+/** The wall clock for staleness, ticking every 30 s from the app root; screens never read Instant.now() per row. */
+val LocalNow = androidx.compose.runtime.compositionLocalOf { Instant.now() }
+
+/**
+ * How old a reading may be before it is shown as old. Screens set it from what
+ * they show: a strategy's own figures go stale after a few of its passes, a
+ * balance after a quarter of an hour. Null never marks anything stale.
+ */
+val LocalStaleAfter = androidx.compose.runtime.compositionLocalOf<java.time.Duration?> { java.time.Duration.ofMinutes(15) }
+
+/** True when a reading taken [at] is older than [after] at [now]. */
+fun isStale(at: Instant?, now: Instant, after: java.time.Duration?): Boolean =
+    at != null && after != null && java.time.Duration.between(at, now) > after
+
+private val hhmm = DateTimeFormatter.ofPattern("HH:mm")
+
+/** Three of a strategy's periods (from its last and next pass), never under two minutes; 15 minutes when the period is unknown. */
+fun staleAfter(lastRunAt: Instant?, nextRunAt: Instant?): java.time.Duration {
+    val period = if (lastRunAt != null && nextRunAt != null && nextRunAt.isAfter(lastRunAt)) java.time.Duration.between(lastRunAt, nextRunAt) else null
+    return period?.multipliedBy(3)?.coerceAtLeast(java.time.Duration.ofMinutes(2)) ?: java.time.Duration.ofMinutes(15)
+}
+
+/** A label/value line with the value's source chip. Tapping shows its origin. An old reading is dimmed and says when it was read. */
 @Composable
 fun ValueRow(label: String, value: String, source: Source?, origin: String? = null, note: String? = null, at: Instant? = null, valueColor: Color? = null) {
     var show by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().clickable(enabled = origin != null) { show = true }.padding(vertical = 7.dp),
+    val stale = isStale(at, LocalNow.current, LocalStaleAfter.current)
+    Row(Modifier.fillMaxWidth().clickable(enabled = origin != null) { show = true }.padding(vertical = 7.dp)
+        .then(if (stale) Modifier.semantics { stateDescription = "old reading" } else Modifier),
         verticalAlignment = Alignment.CenterVertically) {
         // Both share the row: a long value wraps onto a second line instead of crushing the label.
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(8.dp))
-        Text(value, style = Figures, color = valueColor ?: MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = if (value.length > 20) Modifier.weight(1.4f) else Modifier)
+        Column(horizontalAlignment = Alignment.End, modifier = if (value.length > 20) Modifier.weight(1.4f) else Modifier) {
+            Text(value, style = Figures, color = (valueColor ?: MaterialTheme.colorScheme.onSurface).let { if (stale) it.copy(alpha = 0.45f) else it },
+                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            if (stale) Text(stringResource(R.string.as_of, hhmm.format(at!!.atZone(ZoneId.systemDefault()))), style = MaterialTheme.typography.labelSmall,
+                color = LocalDesk.current.warn)
+        }
         if (source != null) { Spacer(Modifier.width(8.dp)); SourceChip(source) }
     }
     if (show && origin != null) AlertDialog(onDismissRequest = { show = false }, confirmButton = { TextButton({ show = false }) { Text(stringResource(R.string.close)) } },
@@ -106,7 +136,7 @@ fun <T> SourcedRow(label: String, v: Sourced<T>, fmt: (T) -> String = { it.toStr
 
 @Composable
 fun Section(title: String, modifier: Modifier = Modifier, trailing: @Composable (() -> Unit)? = null, content: @Composable () -> Unit) {
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer,
+    Surface(modifier.fillMaxWidth(), shape = Radius.card, color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -129,7 +159,7 @@ fun ModePill(mode: Mode, armed: Boolean, engineRunning: Boolean = true) {
         mode == Mode.PAPER -> "PAPER" to d.paper
         else -> "OFF" to d.muted
     }
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(RoundedCornerShape(50)).background(c.copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clip(Radius.pill).background(c.copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
         Box(Modifier.size(7.dp).clip(CircleShape).background(c))
         Spacer(Modifier.width(6.dp))
         Text(text, style = MaterialTheme.typography.labelSmall, color = c, fontWeight = FontWeight.Bold)
@@ -146,7 +176,7 @@ fun EvidenceBadge(level: EvidenceLevel) {
         EvidenceLevel.UNPROVEN -> d.loss
     }
     Text(level.label, style = MaterialTheme.typography.labelSmall, color = c,
-        modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(c.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
+        modifier = Modifier.clip(Radius.chip).background(c.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
 /**
@@ -197,7 +227,7 @@ fun moneyColor(v: Double?): Color? {
 @Composable
 fun SkeletonLine(widthFraction: Float = 1f) {
     if (reducedMotion(androidx.compose.ui.platform.LocalContext.current)) {
-        Box(Modifier.padding(vertical = 7.dp).fillMaxWidth(widthFraction).height(14.dp).clip(RoundedCornerShape(4.dp))
+        Box(Modifier.padding(vertical = 7.dp).fillMaxWidth(widthFraction).height(14.dp).clip(Radius.chip)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)))
         return
     }
@@ -205,7 +235,7 @@ fun SkeletonLine(widthFraction: Float = 1f) {
     val a by t.animateFloat(initialValue = 0.25f, targetValue = 0.55f, animationSpec = androidx.compose.animation.core.infiniteRepeatable(
         androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "alpha")
     Box(Modifier.padding(vertical = 7.dp).fillMaxWidth(widthFraction).height(14.dp)
-        .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = a * 0.25f)))
+        .clip(Radius.chip).background(MaterialTheme.colorScheme.onSurface.copy(alpha = a * 0.25f)))
 }
 
 /** Bumps each time the screen comes back to the foreground, so checks of system settings re-run after the user changes one. */

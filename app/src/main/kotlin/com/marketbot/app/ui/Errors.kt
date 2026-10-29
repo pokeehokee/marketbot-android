@@ -53,7 +53,7 @@ fun plainError(raw: String?): String {
 @Composable
 fun ErrorCard(raw: String, onRetry: (() -> Unit)? = null) {
     var details by remember { mutableStateOf(false) }
-    Surface(color = LocalDesk.current.loss.copy(alpha = 0.10f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Surface(color = LocalDesk.current.loss.copy(alpha = 0.10f), shape = Radius.banner, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Icon(Icons.Outlined.ErrorOutline, null, tint = LocalDesk.current.loss)

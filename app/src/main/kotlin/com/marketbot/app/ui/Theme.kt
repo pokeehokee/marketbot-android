@@ -14,7 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.marketbot.core.provenance.Source
 
 /**
@@ -57,9 +59,39 @@ private val light = lightColorScheme(
     error = Color(0xFFC23A30), errorContainer = Color(0xFFFFDAD5), onErrorContainer = Color(0xFF410002),
 )
 
-/** Numbers in the body font with tabular figures, so columns of money line up without a dated monospace face. */
+/** Numbers in the body font with tabular figures (and a slashed zero), so columns of money line up and 0 never reads as O. */
 val Figures = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 15.sp, letterSpacing = 0.sp,
-    fontFeatureSettings = "tnum")
+    fontFeatureSettings = "tnum, zero")
+
+/** Tickers, order ids and other strings a person may copy: monospace so similar characters stay apart. */
+val Mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp)
+
+/**
+ * The spacing scale. Every gap on screen is one of these, so screens line up with
+ * each other and a density change is one edit.
+ */
+object Space {
+    val xxs = 2.dp; val xs = 4.dp; val s = 8.dp; val m = 12.dp; val l = 16.dp; val xl = 24.dp; val xxl = 32.dp
+}
+
+/** Corner radii: small for tags, larger the more a surface is a container. */
+object Radius {
+    val chip = RoundedCornerShape(4.dp)
+    val banner = RoundedCornerShape(12.dp)
+    val card = RoundedCornerShape(14.dp)
+    val sheet = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+    val pill = RoundedCornerShape(50)
+}
+
+/**
+ * Surfaces by how close they are to money. Tonal only (no shadows, which read as
+ * mud on a dark ground); a LIVE surface adds a thin loss-tinted border instead.
+ */
+object Elevation {
+    @Composable fun section() = MaterialTheme.colorScheme.surfaceContainer
+    @Composable fun raised() = MaterialTheme.colorScheme.surfaceContainerHigh
+    @Composable fun sunken() = MaterialTheme.colorScheme.surfaceContainerLow
+}
 
 private val type = Typography().let { t ->
     t.copy(
@@ -99,7 +131,10 @@ fun MarketbotTheme(content: @Composable () -> Unit) {
     val scheme = if (Appearance.dynamic && android.os.Build.VERSION.SDK_INT >= 31)
         (if (darkMode) androidx.compose.material3.dynamicDarkColorScheme(ctx) else androidx.compose.material3.dynamicLightColorScheme(ctx))
     else if (darkMode) dark else light
-    androidx.compose.runtime.CompositionLocalProvider(LocalDesk provides if (darkMode) DarkDesk else LightDesk) {
+    // One clock for every staleness check, ticking twice a minute.
+    var now by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(java.time.Instant.now()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(30_000); now = java.time.Instant.now() } }
+    androidx.compose.runtime.CompositionLocalProvider(LocalDesk provides if (darkMode) DarkDesk else LightDesk, LocalNow provides now) {
         MaterialTheme(colorScheme = scheme, typography = type, content = content)
     }
 }

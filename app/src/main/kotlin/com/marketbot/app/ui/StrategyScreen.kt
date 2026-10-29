@@ -72,6 +72,8 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = 4.dp, end = 16.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             var askLeave by remember { mutableStateOf(false) }
+            // The system back gesture asks too, from every tab (the Parameters tab has its own).
+            androidx.activity.compose.BackHandler(showBack && tab != 1 && vm.dirty(s)) { askLeave = true }
             if (showBack) IconButton({ if (vm.dirty(s)) askLeave = true else onBack() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
             else Spacer(Modifier.width(12.dp))
             if (askLeave) androidx.compose.material3.AlertDialog(onDismissRequest = { askLeave = false },
@@ -106,7 +108,12 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
     val running by vm.engineRunning.collectAsState()
     val st = status[s.id]
     val stats = ui[s.id]?.stats
+    val busy by vm.inFlight.collectAsState()
     LaunchedEffect(st?.lastRunAt) { vm.loadStats(s) }
+    // A strategy's own figures are old once a few of its passes have gone by without them.
+    val staleAfter = staleAfter(st?.lastRunAt, st?.nextRunAt)
+    // Pull down to read the strategy's figures again (it reads the venue where a figure comes from one).
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox("stats:${s.id}" in busy, { vm.loadStats(s) }) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(s.summary, style = MaterialTheme.typography.bodyLarge)
         Section(stringResource(R.string.mode)) {
@@ -119,9 +126,11 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             ValueRow("Last pass", st?.lastRunAt?.short() ?: "never", null)
             ValueRow("Result", st?.lastSummary ?: "-", null)
             st?.nextRunAt?.let { ValueRow("Next pass", it.short(), null) }
+            st?.funnel?.let { FunnelView(it) }
             st?.lastError?.let { ErrorCard(it) { vm.runNow(s) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ vm.runNow(s) }) { Text(stringResource(R.string.run_one_pass_now)) }
+                OutlinedButton({ vm.runNow(s) }, enabled = "run:${s.id}" !in busy) {
+                    Text(stringResource(if ("run:${s.id}" in busy) R.string.running else R.string.run_one_pass_now)) }
                 if (s is DeepItmStrategy || s is RewardFarm) OutlinedButton({ vm.resetKill(s) }) { Text(stringResource(R.string.reset_stop)) }
             }
         }
@@ -130,10 +139,14 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
                 stats == null -> repeat(3) { SkeletonLine() }
                 stats.isEmpty() -> Text(stringResource(R.string.nothing_yet_turn_on_paper_mode_to_start), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) }
+                else -> androidx.compose.runtime.CompositionLocalProvider(LocalStaleAfter provides staleAfter) {
+                    stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) } }
             }
         }
         RecordSection(vm, s)
+        HealthSection(vm, s)
+        OutcomesSection(vm, s)
+        CollateralSection(vm, s)
         Section(stringResource(R.string.evidence)) {
             EvidenceBadge(s.evidence.level)
             Spacer(Modifier.size(6.dp))
@@ -143,6 +156,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             Spacer(Modifier.size(6.dp))
             Text(stringResource(R.string.source, (s.evidence.source).toString()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
     }
 }
 
@@ -171,6 +185,7 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
     var typed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val acks = remember { mutableStateListOf<String>() }
     val killed by vm.killed.collectAsState()
+    val busy by vm.inFlight.collectAsState()
     LaunchedEffect(s.id) { vm.loadGoLive(s) }
 
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -234,7 +249,7 @@ private fun GoLive(vm: MainViewModel, s: Strategy) {
             OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(stringResource(R.string.type_live)) })
             Spacer(Modifier.size(8.dp))
             Button({ confirm("Arm ${s.name} for live trading") { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); vm.armLive(s, acks.toSet()) } },
-                enabled = ready && typed.trim() == "LIVE" && !killed,
+                enabled = ready && typed.trim() == "LIVE" && !killed && "arm:${s.id}" !in busy,
                 colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.live)) { Text(stringResource(R.string.arm_live_trading)) }
             ui.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             if (!ready) Text(stringResource(R.string.meet_every_red_item_and_tick_every_ackno), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

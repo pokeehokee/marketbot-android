@@ -18,9 +18,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +55,7 @@ fun PortfolioHeader(vm: MainViewModel) {
     val liveEquity = listOfNotNull(acc.kalshi?.let { it.equity ?: it.cash }, acc.polymarket?.currentBalance)
     Section(stringResource(R.string.portfolio)) {
         if (liveEquity.isNotEmpty()) {
-            Text(money(liveEquity.sumOf { it.value }), style = Figures.copy(fontSize = 32.sp, fontWeight = FontWeight.SemiBold))
+            MoneyTicker(liveEquity.sumOf { it.value }, Figures.copy(fontSize = 32.sp, fontWeight = FontWeight.SemiBold), MaterialTheme.colorScheme.onSurface)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.live_accounts), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 liveEquity.map { it.source }.distinct().forEach { SourceChip(it) }
@@ -86,7 +90,7 @@ private fun Stat(label: String, v: Double, src: Source, modifier: Modifier) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SourceChip(src)
         }
-        Text(money(v), style = Figures, color = moneyColor(v) ?: MaterialTheme.colorScheme.onSurface)
+        MoneyTicker(v, Figures, moneyColor(v) ?: MaterialTheme.colorScheme.onSurface, announce = label.endsWith("today"))
     }
 }
 
@@ -110,9 +114,10 @@ fun EquitySection(vm: MainViewModel) {
 /** A strategy's own record against what its evidence predicts, and its curve. */
 @Composable
 fun RecordSection(vm: MainViewModel, s: Strategy) {
-    vm.settled.collectAsState().value
+    val settled by vm.settled.collectAsState()
     var mode by rememberSaveable { mutableStateOf(Mode.LIVE) }
-    val rec = vm.record(s.id, mode)
+    val rec = remember(settled, s.id, mode) { vm.record(s.id, mode) }
+    val curve = remember(settled, s.id, mode) { vm.strategyCurve(s.id, mode) }
     val exp = s.evidence.expectation
     Section(stringResource(R.string.record_vs_evidence)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -139,7 +144,7 @@ fun RecordSection(vm: MainViewModel, s: Strategy) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        LineChart(vm.strategyCurve(s.id, mode), label = "${s.name} cumulative P&L")
+        LineChart(curve, label = "${s.name} cumulative P&L")
     }
 }
 
@@ -148,10 +153,14 @@ private val dayHeader = DateTimeFormatter.ofPattern("EEEE, MMM d")
 /** Orders: filter by state and mode, grouped by day with the day's realised P&L, swipe a live resting order to cancel it. */
 @Composable
 fun OrdersList(vm: MainViewModel, s: Strategy) {
-    val rows by vm.quotes(s.id).collectAsState(initial = emptyList())
+    // remember: a new Room flow per recomposition re-ran the query and resubscribed every frame.
+    val rows by remember(s.id) { vm.quotes(s.id) }.collectAsState(initial = emptyList())
     var state by rememberSaveable { mutableStateOf("all") }
     var mode by rememberSaveable { mutableStateOf("all") }
     var cancel by remember { mutableStateOf<QuoteRow?>(null) }
+    var detail by remember { mutableStateOf<QuoteRow?>(null) }
+    val busy by vm.inFlight.collectAsState()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val all = rows.map { it.toRow() }
     val shown = all.filter { q ->
         (mode == "all" || q.mode.name == mode) && when (state) {
@@ -186,12 +195,28 @@ fun OrdersList(vm: MainViewModel, s: Strategy) {
                 }
             }
             items(list, key = { it.id }) { q ->
-                if (q.mode == Mode.LIVE && q.resting && q.orderId != null) {
+                // The row stays until the exchange confirms: an unconfirmed cancel is not a cancel.
+                val cancelling = "cancel:${q.id}" in busy
+                if (q.mode == Mode.LIVE && q.resting && q.orderId != null && !cancelling) {
                     val st = rememberSwipeToDismissBoxState(confirmValueChange = { v -> if (v == SwipeToDismissBoxValue.EndToStart) cancel = q; false })
+                    // A tick as the swipe crosses the point where letting go asks to cancel.
+                    LaunchedEffect(st.targetValue) {
+                        if (st.targetValue == SwipeToDismissBoxValue.EndToStart) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    }
                     SwipeToDismissBox(st, enableDismissFromStartToEnd = false, backgroundContent = {
                         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) { Text(stringResource(R.string.cancel), color = LocalDesk.current.loss) }
-                    }) { OrderCard(q) }
-                } else OrderCard(q)
+                    }) { OrderRow(q) { detail = q } }
+                } else OrderRow(q, cancelling) { detail = q }
+            }
+        }
+    }
+    // The whole order, with every value's source, in a sheet over the list.
+    detail?.let { q ->
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { detail = null }, shape = Radius.sheet) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+                OrderCard(rows.firstOrNull { it.id == q.id }?.toRow() ?: q, "cancel:${q.id}" in busy)
+                if (q.mode == Mode.LIVE && q.resting && q.orderId != null)
+                    TextButton({ cancel = q; detail = null }, enabled = "cancel:${q.id}" !in busy) { Text(stringResource(R.string.cancel_order), color = LocalDesk.current.loss) }
             }
         }
     }
@@ -205,10 +230,48 @@ fun OrdersList(vm: MainViewModel, s: Strategy) {
     }
 }
 
+/** One line per order: what, where it stands, and its P&L. Tap for the full record. */
 @Composable
-private fun OrderCard(q: QuoteRow) {
-    Section(Tickers.describe(q.ticker), trailing = { ModePill(q.mode, q.mode == Mode.LIVE) }) {
-        val action = when (q.action) { "sell_yes" -> "Sell YES"; "buy_yes" -> "Buy YES"; "buy_no" -> "Buy NO"; else -> q.action.replace('_', ' ') }
+private fun OrderRow(q: QuoteRow, cancelling: Boolean = false, onOpen: () -> Unit) {
+    val action = actionLabel(q.action)
+    val state = when {
+        cancelling -> stringResource(R.string.cancelling)
+        q.resolvedAt != null -> "Settled ${q.result?.uppercase() ?: ""}".trim()
+        q.cancelledAt != null -> "Withdrawn" + (q.filledContracts?.takeIf { it > 0 }?.let { ", %.0f filled".format(it) } ?: "")
+        (q.filledContracts ?: 0.0) >= q.contracts -> "Filled"
+        (q.filledContracts ?: 0.0) > 0 -> "%.0f of %.0f filled".format(q.filledContracts, q.contracts)
+        else -> "Resting"
+    }
+    Surface(onClick = onOpen, shape = Radius.banner, color = Elevation.section(),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (q.mode == Mode.LIVE) LocalDesk.current.live.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().then(if (cancelling) Modifier.alpha(0.6f) else Modifier)) {
+        Row(Modifier.padding(horizontal = Space.m, vertical = Space.s), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(Tickers.describe(q.ticker), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text("$action ${q.contracts.toInt()} at ${"%.1f".format(q.price * 100)}c · $state", style = MaterialTheme.typography.labelSmall,
+                    color = if (cancelling) LocalDesk.current.warn else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            q.pnl?.let { p ->
+                Text(money(p), style = Figures, color = if (q.hypothetical == true) MaterialTheme.colorScheme.onSurfaceVariant else moneyColor(p) ?: MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(Space.s))
+            }
+            Text(if (q.mode == Mode.LIVE) "LIVE" else "PAPER", style = MaterialTheme.typography.labelSmall,
+                color = if (q.mode == Mode.LIVE) LocalDesk.current.live else LocalDesk.current.paper)
+        }
+    }
+}
+
+private fun actionLabel(a: String) = when (a) { "sell_yes" -> "Sell YES"; "buy_yes" -> "Buy YES"; "buy_no" -> "Buy NO"; else -> a.replace('_', ' ') }
+
+@Composable
+private fun OrderCard(q: QuoteRow, cancelling: Boolean = false) {
+    Section(Tickers.describe(q.ticker), modifier = if (cancelling) Modifier.alpha(0.6f) else Modifier, trailing = { ModePill(q.mode, q.mode == Mode.LIVE) }) {
+        if (cancelling) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.cancelling), style = MaterialTheme.typography.labelSmall, color = LocalDesk.current.warn)
+        }
+        val action = actionLabel(q.action)
         ValueRow("Order", "$action ${q.contracts.toInt()} at ${"%.1f".format(q.price * 100)}c", Source.CONFIG, "the strategy's own order")
         ValueRow("Placed", q.placedAt.short(), null)
         q.closeTime?.let { ValueRow("Market closes", it.closeLabel(), null) }
@@ -220,6 +283,8 @@ private fun OrderCard(q: QuoteRow) {
         q.resolvedAt?.let { ValueRow("Settled", "${it.short()}  ${q.result?.uppercase() ?: ""}", null) }
         q.pnl?.let { ValueRow(if (q.hypothetical == true) "P&L if filled (not counted)" else "P&L", money(it), q.pnlSource, q.pnlOrigin,
             valueColor = if (q.hypothetical == true) null else moneyColor(it)) }
-        Text(q.ticker + (q.orderId?.let { " · order $it" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.foundation.text.selection.SelectionContainer {
+            Text(q.ticker + (q.orderId?.let { " · order $it" } ?: ""), style = Mono, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

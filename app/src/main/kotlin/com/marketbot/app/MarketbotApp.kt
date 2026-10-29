@@ -41,7 +41,15 @@ class MarketbotApp : Application() {
     }
 
     /** Routine activity lines older than 14 days; warnings, errors, trades and the ledger are kept. */
-    suspend fun pruneRoutine() = db.events().pruneRoutine(System.currentTimeMillis() - 14 * 86_400_000L)
+    suspend fun pruneRoutine() {
+        db.events().pruneRoutine(System.currentTimeMillis() - 14 * 86_400_000L)
+        db.checks().prune(System.currentTimeMillis() - 180 * 86_400_000L)
+    }
+
+    /** Keep a reconciliation in the history shown under Settings. */
+    suspend fun recordCheck(r: com.marketbot.core.strategy.PnlReconciliation) = db.checks().insert(com.marketbot.app.data.CheckEntity(
+        at = runCatching { java.time.Instant.parse(r.at).toEpochMilli() }.getOrDefault(System.currentTimeMillis()), kind = "pnl_recon", ok = r.clean,
+        summary = r.summary, detail = com.marketbot.core.util.JSON.encodeToString(com.marketbot.core.strategy.PnlReconciliation.serializer(), r)))
 
     /** Log an engine-level line from outside the engine (boot restart, a gap found at start). */
     suspend fun note(level: com.marketbot.core.store.LogEvent.Level, kind: String, message: String) {

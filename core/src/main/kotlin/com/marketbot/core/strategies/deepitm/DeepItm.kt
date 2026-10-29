@@ -1,5 +1,6 @@
 package com.marketbot.core.strategies.deepitm
 
+import com.marketbot.core.strategy.FunnelStep
 import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
 import com.marketbot.core.store.QuoteRow
@@ -115,8 +116,15 @@ abstract class DeepItmStrategy(
     private class Runtime {
         var mode = "start"; var lastFill = 0L; var lastGrade = 0L; var lastListingOk = Long.MIN_VALUE / 2
         var lastStatusAt = Long.MIN_VALUE / 2; var exchangeOpen = false; var lastError: String? = null; var started = false
+        var funnel: List<FunnelStep> = emptyList()
     }
     private val runtimes = mutableMapOf<Mode, Runtime>()
+
+    override val outcomeBands get() = com.marketbot.core.strategy.AdverseSelection.DEEP_BANDS
+
+    /** The generic criterion: losses against what the bid prices implied, over 60 days. */
+    override suspend fun healthChecks(ctx: StrategyContext, mode: Mode) =
+        listOf(com.marketbot.core.strategy.KillCriteria.lossRatio(ctx.stores.ledger.all(id, mode), ctx.clock.now()))
     private fun rt(m: Mode) = runtimes.getOrPut(m) { Runtime() }
     private fun bookMode(ctx: StrategyContext) = if (ctx.live) Mode.LIVE else Mode.PAPER
     private fun k(ctx: StrategyContext, s: String) = "$id.${bookMode(ctx).name.lowercase()}.$s"
@@ -163,7 +171,7 @@ abstract class DeepItmStrategy(
         if (t - rt.lastFill >= 10_000) { rt.lastFill = t; updateFills(ctx, venue, now) }
         if (t - rt.lastGrade >= 60_000) { rt.lastGrade = t; grade(ctx, venue, now) }
         ctx.stores.state.put(k(ctx, "heartbeat"), now.toString())
-        return RunReport(guard, buildMap {
+        return RunReport(guard, funnel = if (guard == "quote") rt.funnel + FunnelStep("Bidding now", ctx.stores.ledger.open(id, mode).count { it.resting }) else emptyList(), values = buildMap {
             ctx.btcIndex.sourcedPrice()?.let { put("btc_index", it) }
             sigma?.let { put("sigma_1s", Sourced.derived(it, "max(10 s index vol, 1-min candle vol) over 15 min", "volatility is computed, no venue publishes it")) }
         })
@@ -202,6 +210,8 @@ abstract class DeepItmStrategy(
         val standing = open.filter { it.resting }.associateBy { it.ticker }
         val cands = DeepItmRule.candidates(markets, spot, sigma, now, r)
         val chosen = DeepItmRule.select(cands, held + standing.keys, r.maxOpen).associateBy { it.ticker }
+        rt(mode).funnel = listOf(FunnelStep("Strikes on the ladder near the money's tails", markets.size),
+            FunnelStep("Deep enough, priced inside the rule", cands.size), FunnelStep("Chosen (one side per strike, up to ${r.maxOpen})", chosen.size))
         val deadMan = java.time.Duration.ofSeconds(ctx.config.int("dead_man_s").toLong())
         for ((ticker, q) in standing) {
             val c = chosen[ticker]

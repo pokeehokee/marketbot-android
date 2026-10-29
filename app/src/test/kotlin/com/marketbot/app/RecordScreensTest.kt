@@ -68,8 +68,9 @@ class RecordScreensTest {
             rule.onNodeWithText("Weather longshot").performClick()
             rule.onAllNodesWithText("Paper")[1].performScrollTo().performClick()   // the record's filter chip, not the mode control
             shot(sc, "7_strategy_record")
-            rule.onNodeWithText("Orders").performClick()
-            waitFor("the orders list") { rule.onAllNodesWithText("DALLAS HIGH", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNode(androidx.compose.ui.test.hasText("Orders") and androidx.compose.ui.test.SemanticsMatcher.expectValue(
+                androidx.compose.ui.semantics.SemanticsProperties.Role, androidx.compose.ui.semantics.Role.Tab)).performClick()
+            waitFor("the orders list") { rule.onAllNodesWithText("Dallas high", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty() }
             shot(sc, "8_orders")
         }
     }
