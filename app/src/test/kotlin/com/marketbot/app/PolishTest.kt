@@ -93,3 +93,32 @@ class NotifyPrefsTest {
         kotlin.test.assertEquals(MarketbotApp.CH_QUIET, nm.allNotifications.single().channelId)
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+class BenchmarkTest {
+    @org.junit.Test fun `the background test counts minutes alive and reports silences`() {
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val t0 = 1_700_000_000_000L
+        Benchmark.start(ctx, 1, t0)
+        kotlin.test.assertTrue(Benchmark.running(ctx, t0 + 1_000))
+        // Alive for the first 10 minutes (several beats per minute count once), then silent 20, then alive to 40.
+        for (m in 0 until 10) { Benchmark.beat(ctx, t0 + m * 60_000L); Benchmark.beat(ctx, t0 + m * 60_000L + 5_000) }
+        for (m in 30 until 40) Benchmark.beat(ctx, t0 + m * 60_000L)
+        val r = Benchmark.result(ctx, t0 + 40 * 60_000L)!!
+        kotlin.test.assertEquals(40, r.minutes); kotlin.test.assertEquals(20, r.alive)
+        kotlin.test.assertEquals(20, r.longestGapMin); kotlin.test.assertEquals(listOf(t0 + 10 * 60_000L to 20), r.gaps)
+        kotlin.test.assertEquals(0.5, r.share, 1e-9)
+        Benchmark.stop(ctx, t0 + 40 * 60_000L)
+        kotlin.test.assertFalse(Benchmark.running(ctx, t0 + 41 * 60_000L))
+        Benchmark.beat(ctx, t0 + 45 * 60_000L)
+        kotlin.test.assertEquals(20, Benchmark.result(ctx, t0 + 50 * 60_000L)!!.alive, "beats after the end are not counted")
+    }
+}
+
+class DrawdownTest {
+    @org.junit.Test fun `the biggest drop is measured from the highest point before it`() {
+        val pts = listOf(0L to 0.0, 1L to 5.0, 2L to 2.0, 3L to 8.0, 4L to 1.0, 5L to 9.0)
+        kotlin.test.assertEquals(Triple(7.0, 3L, 4L), com.marketbot.app.ui.maxDrawdown(pts))
+        kotlin.test.assertNull(com.marketbot.app.ui.maxDrawdown(listOf(0L to 0.0, 1L to 1.0)), "never fell")
+    }
+}

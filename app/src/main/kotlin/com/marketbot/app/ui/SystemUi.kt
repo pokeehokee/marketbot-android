@@ -266,6 +266,8 @@ fun SystemSettings(vm: MainViewModel) {
         androidx.compose.material3.LinearProgressIndicator(progress = { (mem.usedMb.toFloat() / mem.maxMb).coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = if (warn) LocalDesk.current.warn else MaterialTheme.colorScheme.primary)
         mem.caches.forEach { (n, v) -> Text("$n: $v", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        ApiRecording(vm)
+        BackgroundBenchmark()
         Text("Build ${com.marketbot.app.BuildConfig.VERSION_NAME} · ${com.marketbot.app.BuildConfig.GIT_SHA}", style = Mono,
             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }

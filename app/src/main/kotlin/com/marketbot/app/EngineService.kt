@@ -98,6 +98,7 @@ class EngineService : LifecycleService() {
             }
             if (app.engine.busy.value == 0) AlarmReceiver.releasePassLock()
             Health.beat(this)
+            Benchmark.beat(this)
             app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.post(this, "daily", t, b) }
             runCatching { app.engine.trackMarkoutsIfDue() }
             runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
@@ -200,6 +201,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "marketbot:pass").apply { setReferenceCounted(false); acquire(10 * 60_000L) }
             heldSince = System.currentTimeMillis()
         }
+        Benchmark.beat(context)
         val app = context.applicationContext as MarketbotApp
         if (!app.engine.running.value && EngineService.wasRunning(context)) EngineService.start(context)
         app.engine.poke()

@@ -16,7 +16,23 @@ object StrategyRegistry {
         KalshiBtcDeepItm(),
         PolymarketBtcDeepItm(),
         RewardFarm(),
-    )
+    ) + VARIANTS.flatMap { v -> listOf(
+        WeatherLongshot(variantId(WeatherLongshot.ID, v), WeatherLongshot.ID),
+        KalshiBtcDeepItm(variantId(KalshiBtcDeepItm.ID, v), KalshiBtcDeepItm.ID),
+        PolymarketBtcDeepItm(variantId(PolymarketBtcDeepItm.ID, v), PolymarketBtcDeepItm.ID),
+        RewardFarm(variantId(RewardFarm.ID, v), RewardFarm.ID),
+    ) }
 
     fun byId(id: String): Strategy? = all.firstOrNull { it.id == id }
+
+    /** The paper variants of [baseId], in order. */
+    fun variantsOf(baseId: String): List<Strategy> = all.filter { it.baseId == baseId }
 }
+
+/** Paper variants per strategy (octagon runs settings side by side in paper the same way). Two is enough to compare. */
+val VARIANTS = listOf("b", "c")
+
+fun variantId(baseId: String, v: String) = "$baseId@$v"
+
+fun variantName(name: String, id: String, baseId: String?) =
+    if (baseId == null) name else "$name · variant ${id.substringAfterLast('@').uppercase()}"

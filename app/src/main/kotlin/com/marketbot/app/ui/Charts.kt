@@ -93,6 +93,17 @@ fun thin(pts: Series, max: Int): Series {
     return out
 }
 
+/** The largest fall of a series from an earlier high, and when that high was: (drop, peak time, trough time), or null. */
+fun maxDrawdown(pts: Series): Triple<Double, Long, Long>? {
+    var peak = Double.NEGATIVE_INFINITY; var peakAt = 0L; var best: Triple<Double, Long, Long>? = null
+    for ((t, v) in pts.sortedBy { it.first }) {
+        if (v > peak) { peak = v; peakAt = t }
+        val dd = peak - v
+        if (dd > 0 && (best == null || dd > best.first)) best = Triple(dd, peakAt, t)
+    }
+    return best
+}
+
 /** Running sum of settled P&L: the shape of a strategy's record. */
 fun cumulative(points: Series): Series {
     var sum = 0.0

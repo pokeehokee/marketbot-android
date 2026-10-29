@@ -115,6 +115,12 @@ data class FarmRules(
     val minOrderUsd: Double = 0.50, val saturationShare: Double = 0.90, val cashReserveFrac: Double = 0.25,
     val maxInventoryFrac: Double = 0.60, val maxDrawdownFrac: Double = 0.25, val hardFloorUsd: Double = 6.0,
     val startEquity: Double = 0.0, val maxOpenOrders: Int = 50, val orderTtlMin: Double = 30.0,
+    /** Hummingbot-style order refresh: keep an entry quote within this many ticks of its target (0 = exact, as pmfarm). */
+    val requoteToleranceTicks: Int = 0,
+    /** Replace a quote older than this many minutes even if unchanged (0 = never). */
+    val maxOrderAgeMin: Double = 0.0,
+    /** After a fill in a market, wait this long before a new entry quote there (0 = no wait). */
+    val fillDelaySec: Int = 0,
 )
 
 /** Port of pmfarm `scanner.py`. */
@@ -245,4 +251,19 @@ object FarmRisk {
 
     fun inventoryCost(positions: Map<String, Pair<Double, Double>>): Double =
         positions.values.sumOf { (qty, avg) -> if (qty > 0) qty * avg else -qty * (1 - avg) }
+}
+
+/** When a resting farm quote is left alone and when it is replaced (Hummingbot's refresh tolerance and maximum order age). */
+object QuoteRefresh {
+    /** An entry within [toleranceTicks] of its target keeps its place in the queue; an exit tracks its price to the tick. */
+    fun near(resting: Double, target: Double, tick: Double, entry: Boolean, toleranceTicks: Int): Boolean =
+        kotlin.math.abs(target - resting) < tick / 2 + (if (entry) toleranceTicks * tick else 0.0)
+
+    /** Older than [maxAgeMin] minutes since first seen resting (0 = never too old). */
+    fun tooOld(seenAt: java.time.Instant?, now: java.time.Instant, maxAgeMin: Double): Boolean =
+        maxAgeMin > 0 && seenAt != null && java.time.Duration.between(seenAt, now).toMinutes() >= maxAgeMin
+
+    /** Inside the pause after a fill in that market. */
+    fun pausedAfterFill(lastFill: java.time.Instant?, now: java.time.Instant, delaySec: Int): Boolean =
+        delaySec > 0 && lastFill != null && java.time.Duration.between(lastFill, now).seconds < delaySec
 }

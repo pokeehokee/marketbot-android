@@ -72,7 +72,7 @@ fun ActivityScreen(vm: MainViewModel, initialQuery: String = "", initialLevel: S
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FilterChip(strat == null, { strat = null }, { Text(stringResource(R.string.every_strategy)) })
-                vm.strategies.forEach { s -> FilterChip(strat == s.id, { strat = if (strat == s.id) null else s.id }, { Text(s.name) }) }
+                vm.listed().forEach { s -> FilterChip(strat == s.id, { strat = if (strat == s.id) null else s.id }, { Text(s.name) }) }
             }
         }
         if (shown.isEmpty()) item { Text(stringResource(R.string.nothing_logged_yet), color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -186,6 +186,7 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
         SystemSettings(vm)
         ReconciliationSection(vm)
         SafetySection(vm)
+        CashFlowsSection(vm)
         LocksSection(vm)
         ProtectionsSection(vm)
         NotificationsSection()

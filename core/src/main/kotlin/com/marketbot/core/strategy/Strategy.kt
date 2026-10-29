@@ -135,9 +135,10 @@ data class RunReport(val summary: String, val values: Map<String, Sourced<*>> = 
 /**
  * One step of a pass's selection, for "why didn't it trade?": how many markets
  * were still in the running after it. The first step is what was looked at.
+ * [dropped] names (up to 30 of) the markets this step removed, and why where known.
  */
 @kotlinx.serialization.Serializable
-data class FunnelStep(val label: String, val count: Int)
+data class FunnelStep(val label: String, val count: Int, val dropped: List<String> = emptyList())
 
 /** A one-line stat for the strategy screen, with its source. */
 data class Stat(val label: String, val value: Sourced<String>)
@@ -201,8 +202,14 @@ interface Strategy {
     val onLeaveLive: String get() = "Its resting orders are cancelled at the exchange now."
     val params: List<Param>
 
-    /** Modes this strategy may be set to. A method with no live order path omits LIVE. */
-    val supportedModes: Set<Mode> get() = setOf(Mode.OFF, Mode.PAPER, Mode.LIVE)
+    /**
+     * Set on a paper variant: a second copy of [baseId]'s method with its own id, settings
+     * and ledger, run side by side in paper to compare settings on the same markets.
+     */
+    val baseId: String? get() = null
+
+    /** Modes this strategy may be set to. A method with no live order path omits LIVE; a variant is paper only. */
+    val supportedModes: Set<Mode> get() = if (baseId != null) setOf(Mode.OFF, Mode.PAPER) else setOf(Mode.OFF, Mode.PAPER, Mode.LIVE)
 
     /** Shared state that must be running while the strategy is on (e.g. the BTC index). */
     val needsBtcIndex: Boolean get() = false

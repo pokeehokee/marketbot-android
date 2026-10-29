@@ -61,6 +61,7 @@ abstract class DeepItmStrategy(
     private val defaultSkipHours: String,
     private val loopSeconds: Long,
     private val defaultDeadMan: Int = 120,
+    final override val baseId: String? = null,
 ) : Strategy {
     abstract fun ladderVenue(ctx: StrategyContext): LadderVenue
 
@@ -375,9 +376,9 @@ abstract class DeepItmStrategy(
     }
 }
 
-class KalshiBtcDeepItm : DeepItmStrategy(
-    id = "kalshi_btc_deep_itm",
-    name = "BTC deep-ITM ladder",
+class KalshiBtcDeepItm(id: String = ID, baseId: String? = null) : DeepItmStrategy(
+    id = id,
+    name = com.marketbot.core.strategy.variantName("BTC deep-ITM ladder", id, baseId),
     venue = Venue.KALSHI,
     summary = "Joins the best bid on near-certain strikes of Kalshi's hourly Bitcoin ladder (KXBTCD) in the last 50 minutes, holds to settlement.",
     evidence = Evidence(EvidenceLevel.REPORTED,
@@ -390,15 +391,17 @@ class KalshiBtcDeepItm : DeepItmStrategy(
         com.marketbot.core.strategy.Expectation(0.02, null, null, "reported by the original runner, not reproducible; no interval exists")),
     defaultSkipHours = "3,10,21,23",
     loopSeconds = 2,
+    baseId = baseId,
 ) {
+    companion object { const val ID = "kalshi_btc_deep_itm" }
     override fun ladderVenue(ctx: StrategyContext): LadderVenue = venues.getOrPut(ctx.kalshi) { KalshiBtcLadder(ctx.kalshi) }
     override fun ownsMarket(venue: String, ticker: String) = venue == "kalshi" && ticker.startsWith("KXBTCD-")
     private val venues = mutableMapOf<Any, LadderVenue>()
 }
 
-class PolymarketBtcDeepItm : DeepItmStrategy(
-    id = "polymarket_btc_deep_itm",
-    name = "BTC deep-ITM (Polymarket)",
+class PolymarketBtcDeepItm(id: String = ID, baseId: String? = null) : DeepItmStrategy(
+    id = id,
+    name = com.marketbot.core.strategy.variantName("BTC deep-ITM (Polymarket)", id, baseId),
     venue = Venue.POLYMARKET,
     summary = "The same rule on Polymarket US's daily 'BTC above \$X at 5 PM ET' ladder: joins near-certain bids in the last 50 minutes before 5 PM ET.",
     evidence = Evidence(EvidenceLevel.UNPROVEN,
@@ -410,7 +413,9 @@ class PolymarketBtcDeepItm : DeepItmStrategy(
     defaultSkipHours = "",
     loopSeconds = 5,
     defaultDeadMan = 300,
+    baseId = baseId,
 ) {
+    companion object { const val ID = "polymarket_btc_deep_itm" }
     override val params: List<Param> = super.params + Param.Bool("allow_no_live", "Allow live NO bids",
         "Polymarket's price convention for short (NO) orders is not documented; leave off until preflight confirms it.", false)
 

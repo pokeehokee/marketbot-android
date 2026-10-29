@@ -80,8 +80,10 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             IconButton({ if (running) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
         }
 
+        QuickActions(vm)
         PortfolioHeader(vm)
         EquitySection(vm)
+        ExposureSection(vm)
         PeriodsSection(vm)
         val resumed = rememberResumeCount()
         val batteryOk = remember(resumed) { ignoringBattery(ctx) }
@@ -134,7 +136,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         }
 
         Section(stringResource(R.string.strategies)) {
-            vm.strategies.forEach { s ->
+            vm.listed().forEach { s ->
                 val st = status[s.id]
                 val mode = st?.mode ?: vm.modeOf(s.id)
                 Row(Modifier.fillMaxWidth().clickable { onOpen(s.id) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {

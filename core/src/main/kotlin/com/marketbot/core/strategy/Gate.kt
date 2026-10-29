@@ -105,9 +105,20 @@ class OrderDenied(val reason: Reason) : java.io.IOException("Order denied: ${rea
  * it sooner.
  */
 @Serializable
-data class Lock(val id: String, val strategyId: String, val mode: Mode, val series: String?, val until: String, val reason: String) {
+data class Lock(val id: String, val strategyId: String, val mode: Mode, val series: String?, val until: String, val reason: String,
+                /** A lock on every strategy ([strategyId] "*") in both modes: the "pause new orders" quick action. */
+                val allModes: Boolean = false) {
     val untilInstant: Instant get() = Instant.parse(until)
-    fun covers(sid: String, m: Mode, ticker: String) = sid == strategyId && m == mode && (series == null || seriesOf(ticker) == series)
+    fun covers(sid: String, m: Mode, ticker: String) = (strategyId == ALL || sid == strategyId) && (allModes || m == mode) &&
+        (series == null || seriesOf(ticker) == series)
+
+    companion object {
+        const val ALL = "*"
+        const val PAUSE_ID = "pause:*"
+        /** Pause every strategy's new orders for [hours] (null = until resumed). */
+        fun pauseAll(now: Instant, hours: Long?) = Lock(PAUSE_ID, ALL, Mode.LIVE, null,
+            (if (hours == null) now.plus(Duration.ofDays(3650)) else now.plus(Duration.ofHours(hours))).toString(), "paused by you", allModes = true)
+    }
 }
 
 /** The market family a ticker belongs to: a Kalshi series, or the market itself on Polymarket. */
@@ -139,7 +150,8 @@ class LockStore(private val state: StateStore) {
         active(now).firstOrNull { it.covers(sid, mode, ticker) }?.let { Reason(ReasonCode.LOCKED, "${it.reason}, until ${it.until.take(16).replace('T', ' ')} UTC") }
 
     /** A whole-strategy lock (series null), which puts the strategy in REDUCING. */
-    suspend fun strategyLock(sid: String, mode: Mode, now: Instant): Lock? = active(now).firstOrNull { it.strategyId == sid && it.mode == mode && it.series == null }
+    suspend fun strategyLock(sid: String, mode: Mode, now: Instant): Lock? =
+        active(now).firstOrNull { (it.strategyId == sid || it.strategyId == Lock.ALL) && (it.allModes || it.mode == mode) && it.series == null }
 
     companion object { const val KEY = "engine.locks" }
 }

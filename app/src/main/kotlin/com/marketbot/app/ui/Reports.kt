@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.marketbot.app.ui
 
 import androidx.compose.foundation.background
@@ -238,5 +240,94 @@ fun NotificationsSection() {
                     color = LocalDesk.current.loss)
             }
         }
+    }
+}
+
+/** Live money tied up at each venue: what resting orders would lock and what held positions can lose. */
+@Composable
+fun ExposureSection(vm: MainViewModel) {
+    val settled by vm.settled.collectAsState()
+    val status by vm.status.collectAsState()
+    val rows = loaded(settled.size, status.values.mapNotNull { it.lastRunAt }.maxOrNull()) { vm.exposure() } ?: return
+    if (rows.isEmpty()) return
+    Section(stringResource(R.string.exposure_title)) {
+        rows.forEach { e ->
+            Text(e.venue.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = Space.xs))
+            ValueRow("Resting orders", "${e.resting} · ${money(e.restingLocked)} would lock", com.marketbot.core.provenance.Source.DERIVED,
+                "sum over unfilled live orders of contracts x money locked per contract (1 - price to sell YES, price to buy)")
+            ValueRow("Held positions", "${e.held} · ${money(e.heldAtRisk)} at risk", com.marketbot.core.provenance.Source.DERIVED,
+                "filled, unsettled live contracts x money locked per contract: the most they can lose")
+            ValueRow("Realised today", money(e.realisedToday), if (e.venue == "kalshi") com.marketbot.core.provenance.Source.KALSHI_API else com.marketbot.core.provenance.Source.POLYMARKET_API,
+                "settled live positions today", valueColor = moneyColor(e.realisedToday))
+        }
+        Text(stringResource(R.string.exposure_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** One-tap operations, freqtrade-keyboard style: pause or resume new orders, run every pass, check orders. */
+@Composable
+fun QuickActions(vm: MainViewModel) {
+    val busy by vm.inFlight.collectAsState()
+    val changed by vm.locksChanged.collectAsState()
+    val paused = loaded(changed) { vm.paused() }
+    var menu by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.s), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+        if (paused != null) androidx.compose.material3.FilledTonalButton({ vm.resumeAll() }, enabled = "pause" !in busy) {
+            Text(stringResource(R.string.resume_new_orders)) }
+        else androidx.compose.foundation.layout.Box {
+            androidx.compose.material3.OutlinedButton({ menu = true }, enabled = "pause" !in busy) { Text(stringResource(R.string.pause_new_orders)) }
+            androidx.compose.material3.DropdownMenu(menu, { menu = false }) {
+                listOf(1L to "For 1 hour", 4L to "For 4 hours", null to "Until I resume").forEach { (h, l) ->
+                    androidx.compose.material3.DropdownMenuItem({ Text(l) }, { menu = false; vm.pauseAll(h) }) }
+            }
+        }
+        androidx.compose.material3.OutlinedButton({ vm.runAll() }, enabled = "run_all" !in busy) { Text(stringResource(if ("run_all" in busy) R.string.running else R.string.run_all_now)) }
+        androidx.compose.material3.OutlinedButton({ vm.reconcileOrdersNow() }, enabled = "order_recon" !in busy && (vm.hasKalshi() || vm.hasPolymarket())) {
+            Text(stringResource(R.string.check_orders)) }
+    }
+    paused?.let { Text(stringResource(R.string.paused_until, if (it.untilInstant.isAfter(java.time.Instant.now().plusSeconds(86_400L * 365))) "you resume" else it.untilInstant.short()),
+        style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.warn) }
+}
+
+/**
+ * Paper variants: copies of this method with their own settings, run in paper on the
+ * same markets, so a change can be judged against the current settings side by side
+ * before it is made live.
+ */
+@Composable
+fun VariantsSection(vm: MainViewModel, s: com.marketbot.core.strategy.Strategy, onOpen: (String) -> Unit) {
+    val variants = remember(s.id) { vm.variantsOf(s.id) }
+    if (variants.isEmpty()) return
+    val settled by vm.settled.collectAsState()
+    vm.modes.collectAsState().value
+    val confirm = com.marketbot.app.rememberConfirm()
+    Section(stringResource(R.string.variants_title)) {
+        Text(stringResource(R.string.variants_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val rows = remember(settled, s.id) { (listOf(s) + variants).map { it to vm.paperComparison(it.id) } }
+        Row(Modifier.fillMaxWidth().padding(top = Space.s)) {
+            listOf("" to 1.6f, "Settled" to 1f, "P&L" to 1f, "Per contract" to 1.2f).forEach { (h, w) ->
+                Text(h, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(w)) }
+        }
+        rows.forEach { (v, c) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (v.baseId == null) "Current" else "Variant ${v.id.substringAfterLast('@').uppercase()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.6f))
+                Text("${c.n}", style = Figures, modifier = Modifier.weight(1f))
+                Text(if (c.n == 0) "-" else money(c.pnl), style = Figures, color = moneyColor(c.pnl) ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(c.perContract?.let { "%+.2fc".format(it * 100) } ?: "-", style = Figures, modifier = Modifier.weight(1.2f))
+            }
+        }
+        variants.forEach { v ->
+            val mode = vm.modeOf(v.id)
+            Row(Modifier.fillMaxWidth().padding(top = Space.s), verticalAlignment = Alignment.CenterVertically) {
+                Text("Variant ${v.id.substringAfterLast('@').uppercase()}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Switch(mode == Mode.PAPER, { on -> vm.setMode(v, if (on) Mode.PAPER else Mode.OFF) })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                TextButton({ onOpen(v.id) }) { Text(stringResource(R.string.variant_settings)) }
+                TextButton({ confirm("Replace variant ${v.id.substringAfterLast('@').uppercase()}'s settings with the current ones") { vm.copyConfig(s, v) } }) {
+                    Text(stringResource(R.string.variant_copy)) }
+            }
+        }
+        Text(stringResource(R.string.variants_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

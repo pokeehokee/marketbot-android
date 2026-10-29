@@ -1,5 +1,6 @@
 package com.marketbot.core.strategies.longshot
 
+import com.marketbot.core.strategy.variantName
 import com.marketbot.core.strategy.FunnelStep
 import com.marketbot.core.strategy.Check
 import com.marketbot.core.strategy.AdverseSelection
@@ -50,8 +51,7 @@ import kotlin.math.roundToInt
  * favorite-longshot bias: cheap weather YES settles YES less often than its
  * price says. Port of weatherbot `longshot_runner` + `longshot_resolver`.
  */
-class WeatherLongshot : Strategy {
-    override val id = "kalshi_weather_longshot"
+class WeatherLongshot(override val id: String = ID, override val baseId: String? = null) : Strategy {
     override val help = Help(
         makes = "People overpay for long shots. On Kalshi's daily temperature markets, a bucket priced at 5c settles YES less than 5% of the time. " +
             "This strategy offers to sell those cheap YES contracts and waits; when someone buys, it collects the price and usually keeps it when the bucket settles NO. " +
@@ -67,7 +67,7 @@ class WeatherLongshot : Strategy {
     )
 
     override val onLeaveLive = "Offers already resting stay at Kalshi until they fill or expire on their own (within about 8.5 hours), because their place in the queue is the edge. Use the kill switch to cancel them."
-    override val name = "Weather longshot"
+    override val name = variantName("Weather longshot", id, baseId)
     override val venue = Venue.KALSHI
     override val summary = "Rests offers to sell cheap YES on Kalshi's daily high/low temperature buckets and holds them to settlement."
     override val evidence = Evidence(
@@ -225,36 +225,39 @@ class WeatherLongshot : Strategy {
         val already = openNow.map { it.ticker }.toSet()
         var openMarkets = openNow.filterNot { it.cancelledAt != null && (it.filledContracts ?: 0.0) == 0.0 }.map { it.ticker }.toSet().size
         val now = ctx.clock.now()
-        var shortLead = 0; var paused = 0; var deadBand = 0; var quotedAlready = 0; var noBook = 0; var rejected = 0
+        // Each list holds the markets dropped at that step, so the screen can say which and why.
+        val shortLead = mutableListOf<String>(); val paused = mutableListOf<String>(); val deadBand = mutableListOf<String>()
+        val quotedAlready = mutableListOf<String>(); val noBook = mutableListOf<String>(); val rejected = mutableListOf<String>()
         val byTicker = markets.associateBy { it.ticker }
         val accepted = mutableListOf<Candidate>()
         for (m in markets) {
-            if (m.ticker.isEmpty() || m.ticker in already) { quotedAlready++; continue }
+            if (m.ticker.isEmpty() || m.ticker in already) { quotedAlready += m.ticker; continue }
             val book = m.book
-            if (book == null) { noBook++; continue }
+            if (book == null) { noBook += m.ticker; continue }
             val close = m.closeTime
-            if (close != null && Duration.between(now, close).seconds / 3600.0 < r.minLeadHours) { shortLead++; continue }
-            if (LongshotModel.evaluate(m.ticker, book.yesBid.value, book.yesAsk.value, r = r) == null) { rejected++; continue }
-            if (WeatherSeries.kind(m.ticker) in r.pausedKinds) { paused++; continue }
-            if (LongshotModel.inExcludedBand(book.yesAsk.value, r.excludedAskBands)) { deadBand++; continue }
+            if (close != null && Duration.between(now, close).seconds / 3600.0 < r.minLeadHours) { shortLead += "${m.ticker} (closes in ${Duration.between(now, close).toHours()} h)"; continue }
+            if (LongshotModel.evaluate(m.ticker, book.yesBid.value, book.yesAsk.value, r = r) == null) { rejected += "${m.ticker} (bid ${"%.2f".format(book.yesBid.value)}, ask ${"%.2f".format(book.yesAsk.value)})"; continue }
+            if (WeatherSeries.kind(m.ticker) in r.pausedKinds) { paused += m.ticker; continue }
+            if (LongshotModel.inExcludedBand(book.yesAsk.value, r.excludedAskBands)) { deadBand += "${m.ticker} (ask ${"%.2f".format(book.yesAsk.value)})"; continue }
             accepted += Candidate(m.ticker, book.yesBid.value, book.yesAsk.value)
         }
         val ordered = LongshotModel.orderCandidates(accepted)
         val lot = minOf(r.maxContractsPerMarket, r.lotCap, LongshotModel.lotForBudget(budget0, ordered.map { it.yesAsk }, r.minContractsPerMarket, r.maxContractsPerMarket))
         ctx.info("candidates", "Found ${ordered.size} market(s) worth selling out of ${markets.size} open; offering $lot contracts each." +
             listOfNotNull(
-                "$shortLead closing within ${r.minLeadHours.roundToInt()} h".takeIf { shortLead > 0 },
-                "$paused of a paused kind".takeIf { paused > 0 },
-                "$deadBand in a skipped price band".takeIf { deadBand > 0 },
+                "${shortLead.size} closing within ${r.minLeadHours.roundToInt()} h".takeIf { shortLead.isNotEmpty() },
+                "${paused.size} of a paused kind".takeIf { paused.isNotEmpty() },
+                "${deadBand.size} in a skipped price band".takeIf { deadBand.isNotEmpty() },
             ).takeIf { it.isNotEmpty() }?.joinToString(", ", " Not offered: ", ".").orEmpty())
 
         // ---- quote
         var budget = budget0
         var placed = 0; var locked = 0.0; var expected = 0.0
         val feeTypes = mutableMapOf<String, Sourced<String>?>()
-        var gated = 0
+        val gated = mutableListOf<String>()
         for (c in ordered) {
-            if (ctx.gate(c.ticker) != null) { gated++; continue }
+            val g = ctx.gate(c.ticker)
+            if (g != null) { gated += "${c.ticker} (${g.text})"; continue }
             val affordable = LongshotModel.sizeForBudget(c.yesAsk, budget, lot)
             if (affordable <= 0) continue
             val q = LongshotModel.evaluate(c.ticker, c.yesBid, c.yesAsk, openMarkets, affordable, r) ?: continue
@@ -300,7 +303,7 @@ class WeatherLongshot : Strategy {
         val summary = "Quoted $placed market(s), ${money(locked)} collateral, expected ${money(expected)} if all fill; $resolved resolved."
         ctx.info("pass", summary)
         var left = markets.size
-        fun step(label: String, out: Int) = FunnelStep(label, (left - out).also { left = it })
+        fun step(label: String, out: List<String>) = FunnelStep(label, (left - out.size).also { left = it }, out.take(30))
         return RunReport(summary, funnel = listOf(
             FunnelStep("Open markets in ${WeatherSeries.ALL.size} series", markets.size),
             step("Not already quoted", quotedAlready), step("Have a two-sided book", noBook),
@@ -613,6 +616,7 @@ class WeatherLongshot : Strategy {
     }
 
     companion object {
+        const val ID = "kalshi_weather_longshot"
         val SETTLED = setOf("settled", "finalized", "closed", "determined")
 
         fun parseBands(text: String): List<Pair<Double, Double>> = text.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.map {

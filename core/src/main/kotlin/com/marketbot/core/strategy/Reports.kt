@@ -101,3 +101,69 @@ object Calibration {
         }.filter { it.n > 0 }
     }
 }
+
+/**
+ * Deposits and withdrawals, so performance is not confused with money added
+ * (Ghostfolio separates the two). The exchanges' trading APIs give no transfer
+ * history this app can read, so flows are entered by the user (tagged as such);
+ * the app suggests them where equity jumped by more than settled P&L explains.
+ */
+@kotlinx.serialization.Serializable
+data class CashFlow(val venue: String, val at: String, val amount: Double, val note: String = "") {
+    val instant: Instant get() = Instant.parse(at)
+}
+
+object CashFlows {
+    const val KEY = "engine.cash_flows"
+    const val DISMISSED = "engine.cash_flow_dismissed"
+    private val ser = kotlinx.serialization.builtins.ListSerializer(CashFlow.serializer())
+
+    suspend fun load(state: com.marketbot.core.store.StateStore): List<CashFlow> =
+        state.get(KEY)?.let { runCatching { com.marketbot.core.util.JSON.decodeFromString(ser, it) }.getOrNull() } ?: emptyList()
+    suspend fun save(state: com.marketbot.core.store.StateStore, l: List<CashFlow>) =
+        state.put(KEY, com.marketbot.core.util.JSON.encodeToString(ser, l.sortedBy { it.at }))
+
+    /** [series] (time ms, equity) with every flow up to each point taken out: what trading alone did. */
+    fun performance(series: List<Pair<Long, Double>>, flows: List<CashFlow>): List<Pair<Long, Double>> {
+        if (series.isEmpty()) return series
+        val start = series.first().first
+        val sorted = flows.filter { it.instant.toEpochMilli() > start }.sortedBy { it.at }
+        return series.map { (t, v) -> t to v - sorted.filter { it.instant.toEpochMilli() <= t }.sumOf { it.amount } }
+    }
+
+    /**
+     * Jumps in a venue's live equity between two snapshots that settled P&L in between
+     * does not explain, at least [minUsd] and [minShare] of the equity before: likely a
+     * deposit or withdrawal. Suggestions only; nothing is recorded until confirmed.
+     */
+    fun candidates(snapshots: List<com.marketbot.core.store.EquitySnapshot>, settled: List<QuoteRow>, known: List<CashFlow>, dismissed: Set<String>,
+                   minUsd: Double = 5.0, minShare: Double = 0.03): List<CashFlow> {
+        val out = mutableListOf<CashFlow>()
+        for (venue in snapshots.map { it.venue }.distinct()) {
+            val s = snapshots.filter { it.venue == venue }.sortedBy { it.at }
+            for ((a, b) in s.zipWithNext()) {
+                val va = a.total?.value ?: a.cash.value; val vb = b.total?.value ?: b.cash.value
+                val realised = settled.filter { it.venue == venue && it.resolvedAt != null && it.hypothetical == false && it.pnl != null &&
+                    it.resolvedAt.isAfter(a.at) && !it.resolvedAt.isAfter(b.at) }.sumOf { it.pnl!! }
+                val residual = (vb - va) - realised
+                if (kotlin.math.abs(residual) < maxOf(minUsd, minShare * kotlin.math.abs(va))) continue
+                val c = CashFlow(venue, b.at.toString(), Math.round(residual * 100) / 100.0, "suggested: equity moved ${money(vb - va)}, settled P&L ${money(realised)}")
+                val already = known.any { it.venue == venue && kotlin.math.abs(java.time.Duration.between(it.instant, b.at).toHours()) < 24 &&
+                    kotlin.math.abs(it.amount - c.amount) <= maxOf(1.0, 0.1 * kotlin.math.abs(c.amount)) }
+                if (!already && c.at !in dismissed) out += c
+            }
+        }
+        return out
+    }
+}
+
+/** One row of the paper-variant comparison: settled real (non-hypothetical) paper positions. */
+data class VariantRecord(val n: Int, val pnl: Double, val perContract: Double?) {
+    companion object {
+        fun of(rows: List<QuoteRow>): VariantRecord {
+            val r = rows.filter { it.mode == Mode.PAPER && it.resolvedAt != null && it.hypothetical == false && it.pnl != null }
+            val contracts = r.sumOf { it.filledContracts ?: it.contracts }
+            return VariantRecord(r.size, r.sumOf { it.pnl!! }, if (contracts > 0) r.sumOf { it.pnl!! } / contracts else null)
+        }
+    }
+}

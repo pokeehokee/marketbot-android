@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.marketbot.app.R
+import kotlinx.coroutines.launch
 
 /**
  * Guards that work at the exchange or outside the phone: Kalshi's fill limit, the
@@ -89,5 +90,60 @@ fun SafetySection(vm: MainViewModel) {
         }
         com.marketbot.app.Heartbeat.lastResult?.let { Text(stringResource(R.string.last_ping, it), style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/** Record the next stretch of API traffic (no keys or signatures: headers are never kept) and share it. */
+@Composable
+fun ApiRecording(vm: MainViewModel) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var tick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(tick) { kotlinx.coroutines.delay(5_000); tick++ }
+    val j = com.marketbot.core.net.ApiJournal
+    Column(Modifier.padding(top = Space.s)) {
+        Text(if (j.recording) stringResource(R.string.recording_api, j.size(), j.until!!.short()) else stringResource(R.string.record_api_help),
+            style = MaterialTheme.typography.bodySmall, color = if (j.recording) LocalDesk.current.warn else MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+            if (j.recording) OutlinedButton({ j.stop(); tick++ }) { Text(stringResource(R.string.stop_recording)) }
+            else {
+                OutlinedButton({ j.start(15); tick++ }) { Text(stringResource(R.string.record_15)) }
+                OutlinedButton({ j.start(60); tick++ }) { Text(stringResource(R.string.record_60)) }
+            }
+            if (j.size() > 0) TextButton({
+                scope.launch {
+                    val uri = vm.apiRecordingUri()
+                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND)
+                        .setType("application/json").putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share API recording"))
+                }
+            }) { Text(stringResource(R.string.share)) }
+        }
+    }
+}
+
+/** The background benchmark: how much of each minute the phone let the engine run. */
+@Composable
+fun BackgroundBenchmark() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(tick) { kotlinx.coroutines.delay(30_000); tick++ }
+    val r = remember(tick) { com.marketbot.app.Benchmark.result(ctx) }
+    Column(Modifier.padding(top = Space.s)) {
+        Text(stringResource(R.string.benchmark_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (r != null && r.minutes > 0) {
+            Text(stringResource(R.string.benchmark_result, "%.0f%%".format(r.share * 100), r.alive, r.minutes, r.longestGapMin) +
+                if (r.running) " " + stringResource(R.string.benchmark_running, java.time.Instant.ofEpochMilli(r.endsAt).short()) else "",
+                style = MaterialTheme.typography.bodyMedium, color = if (r.longestGapMin > 15) LocalDesk.current.warn else MaterialTheme.colorScheme.onSurface)
+            r.gaps.takeLast(5).forEach { (at, len) -> Text("${java.time.Instant.ofEpochMilli(at).short()}: silent $len min", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+            if (r?.running == true) OutlinedButton({ com.marketbot.app.Benchmark.stop(ctx); tick++ }) { Text(stringResource(R.string.stop_recording)) }
+            else {
+                OutlinedButton({ com.marketbot.app.Benchmark.start(ctx, 1); tick++ }) { Text(stringResource(R.string.benchmark_1h)) }
+                OutlinedButton({ com.marketbot.app.Benchmark.start(ctx, 8); tick++ }) { Text(stringResource(R.string.benchmark_8h)) }
+            }
+        }
     }
 }
