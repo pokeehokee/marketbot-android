@@ -97,6 +97,9 @@ class Vault(private val prefs: SharedPreferences, private val crypter: Crypter, 
     /** Optional read-only GitHub token, only for checking a private repository for updates. */
     fun githubToken(): String? = get("gh_token")
     fun saveGithubToken(t: String?) = put("gh_token", t)
+    /** The external heartbeat URL: anyone holding it can mark the check healthy, so it is kept encrypted. */
+    fun heartbeatUrl(): String? = get("heartbeat_url")
+    fun saveHeartbeatUrl(u: String?) = put("heartbeat_url", u)
 
     /** For display: the last four characters of the key id, never the secret. */
     fun kalshiHint(): String? = get("kalshi_key_id")?.takeLast(4)

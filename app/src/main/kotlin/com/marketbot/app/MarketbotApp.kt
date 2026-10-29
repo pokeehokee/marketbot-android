@@ -31,8 +31,8 @@ class MarketbotApp : Application() {
         Health.installCrashLog(this)
         db = MarketbotDb.open(this)
         vault = Vault(this)
-        engine = Engine(roomStores(db), notifier = { title, body -> alert(this, title, body) }, online = { Connectivity.online(this) },
-            tradeNotifier = { title, body -> trade(this, title, body) })
+        engine = Engine(roomStores(db), notifier = { title, body -> post(this, "safety", title, body) }, online = { Connectivity.online(this) },
+            tradeNotifier = { title, body -> post(this, "fills", title, body) }, kindedNotifier = { kind, title, body -> post(this, kind, title, body) })
         createChannels(this)
         appScope.launch {
             engine.setCredentials(vault.credentials())
@@ -63,6 +63,27 @@ class MarketbotApp : Application() {
         const val CH_ENGINE = "engine"
         const val CH_ALERTS = "alerts"
         const val CH_TRADES = "trades"
+        const val CH_QUIET = "quiet"
+
+        /**
+         * Every notification goes through here, by kind, so each kind follows its own
+         * on / silent / off setting (freqtrade's notification settings). Safety alerts
+         * on "on" use the high-importance channel; silent ones arrive without sound.
+         */
+        fun post(ctx: Context, kind: String, title: String, body: String) {
+            when (NotifyPrefs.get(ctx, kind)) {
+                NotifyPrefs.Level.OFF -> {}
+                NotifyPrefs.Level.SILENT -> quiet(ctx, title, body)
+                NotifyPrefs.Level.ON -> if (kind == "fills" || kind == "daily") trade(ctx, title, body) else alert(ctx, title, body)
+            }
+        }
+
+        @Suppress("MissingPermission")
+        private fun quiet(ctx: Context, title: String, body: String) {
+            val n = NotificationCompat.Builder(ctx, CH_QUIET).setSmallIcon(R.drawable.ic_stat_engine).setContentTitle(title).setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body)).setSilent(true).setAutoCancel(true).build()
+            runCatching { NotificationManagerCompat.from(ctx).notify((title + body).hashCode(), n) }
+        }
 
         fun createChannels(ctx: Context) {
             val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -74,6 +95,9 @@ class MarketbotApp : Application() {
             })
             nm.createNotificationChannel(NotificationChannel(CH_TRADES, "Trades", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Live orders and settlements."
+            })
+            nm.createNotificationChannel(NotificationChannel(CH_QUIET, "Quiet notices", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Notices you set to silent: in the shade, no sound or vibration."
             })
         }
 
@@ -97,4 +121,19 @@ class MarketbotApp : Application() {
             runCatching { NotificationManagerCompat.from(ctx).notify((title + body).hashCode(), n) }
         }
     }
+}
+
+/** Per-kind notification settings: on, silent or off. */
+object NotifyPrefs {
+    enum class Level { ON, SILENT, OFF }
+    /** Kind, label, what it covers, default. */
+    val KINDS = listOf(
+        Triple("safety", "Safety", "Kill switch, brakes, locks, kill criteria, Kalshi fill limit, halts"),
+        Triple("reconcile", "Reconciliation", "Orders or P&L that differ from the exchange"),
+        Triple("fills", "Fills and settlements", "Live fills and settled positions"),
+        Triple("daily", "Daily summary", "Yesterday's realised P&L, once each morning"),
+    )
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("notify", Context.MODE_PRIVATE)
+    fun get(ctx: Context, kind: String): Level = runCatching { Level.valueOf(prefs(ctx).getString(kind, null) ?: "ON") }.getOrDefault(Level.ON)
+    fun set(ctx: Context, kind: String, l: Level) = prefs(ctx).edit().putString(kind, l.name).apply()
 }

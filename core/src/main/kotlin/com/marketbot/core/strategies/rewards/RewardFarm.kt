@@ -7,6 +7,7 @@ import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
 import com.marketbot.core.provenance.ValueUnavailable
 import com.marketbot.core.store.EquitySnapshot
+import com.marketbot.core.strategy.variantName
 import com.marketbot.core.strategy.Help
 import com.marketbot.core.strategy.Evidence
 import com.marketbot.core.strategy.EvidenceLevel
@@ -42,9 +43,8 @@ import kotlin.math.floor
  * size already resting, collect the per-second pool, exit fills at
  * break-even or better, never sell at a loss before settlement.
  */
-class RewardFarm : Strategy {
-    override val id = "polymarket_reward_farm"
-    override val name = "Liquidity-reward farming"
+class RewardFarm(override val id: String = ID, override val baseId: String? = null) : Strategy {
+    override val name = variantName("Liquidity-reward farming", id, baseId)
     override val venue = Venue.POLYMARKET
     override val summary = "Rests maker-only bids where Polymarket's liquidity reward pool is large against the competing size, and collects the reward."
     override val evidence = Evidence(EvidenceLevel.UNPROVEN,
@@ -85,6 +85,9 @@ class RewardFarm : Strategy {
         Param.Int_("tick_seconds", "Re-quote every", "Seconds between quoting passes.", 15, 5, 300, "s"),
         Param.Bool("short_quotes", "Quote the NO side too", "Rest asks as well as bids. Live needs Preflight to confirm Polymarket's NO-side price convention first; until then live quotes bids only, as pmfarm did.", false),
         Param.Int_("rescan_minutes", "Rescan markets every", "Full universe scan interval.", 20, 5, 240, "min"),
+        Param.Int_("requote_tolerance_ticks", "Keep a quote within", "Leave a resting entry quote alone while its target is within this many ticks, keeping its place in the queue (Hummingbot's refresh tolerance). 0 re-quotes on any move, as pmfarm did. Unmeasured: try in paper.", 0, 0, 10, "ticks"),
+        Param.Int_("max_order_age_min", "Replace quotes older than", "Cancel and re-place a quote after this many minutes even if unchanged. 0 = never. Unmeasured.", 0, 0, 600, "min"),
+        Param.Int_("fill_delay_s", "Pause after a fill", "Seconds to wait after a fill in a market before quoting a new entry there. 0 = no pause. Unmeasured.", 0, 0, 3600, "s"),
     )
 
     fun rules(c: StrategyConfig) = FarmRules(
@@ -95,6 +98,7 @@ class RewardFarm : Strategy {
         hardFloorUsd = c.num("hard_floor_usd"), startEquity = c.num("start_equity"),
         maxBookSpread = c.num("max_book_spread"), eventCutoffMin = c.num("event_cutoff_min"),
         excludeSlugPrefixes = c.text("exclude_slug_prefixes").split(',').map { it.trim() }.filter { it.isNotEmpty() },
+        requoteToleranceTicks = c.int("requote_tolerance_ticks"), maxOrderAgeMin = c.int("max_order_age_min").toDouble(), fillDelaySec = c.int("fill_delay_s"),
     )
 
     override fun effects(config: StrategyConfig): List<String> {
@@ -115,6 +119,10 @@ class RewardFarm : Strategy {
         var lastScan = Instant.EPOCH; var lastTick: Instant? = null; var paper: PaperFarmBroker? = null; var scannedOnce = false
         var lastSettleCheck = Instant.EPOCH; val metas = mutableMapOf<String, PmMarketMeta>()
         var live: LiveFarmBroker? = null
+        /** When each resting order was first seen (for the maximum age); pruned to orders still resting. */
+        val orderSeen = mutableMapOf<String, Instant>()
+        /** The last fill seen per market (for the pause after a fill), and the position it left. */
+        val lastFillAt = mutableMapOf<String, Instant>(); val lastPosQty = mutableMapOf<String, Double>()
         var funnel: List<com.marketbot.core.strategy.FunnelStep> = emptyList()
         /** Paper: public trade prints, when a Polymarket key is set (pmfarm's TradeStream). */
         var prints: com.marketbot.core.polymarket.PmTradeStream? = null
@@ -175,8 +183,10 @@ class RewardFarm : Strategy {
                 val fromPrints = rt.prints?.drain(s).orEmpty().flatMap { br.onTrade(it) }
                 val b = runCatching { ctx.polymarket.book(s) }.getOrNull()
                 if (b != null) books[s] = b
-                for (f in fromPrints + (b?.let { br.onBook(it) } ?: emptyList()))
+                for (f in fromPrints + (b?.let { br.onBook(it) } ?: emptyList())) {
+                    rt.lastFillAt[f.slug] = now
                     ctx.trade("paper_fill", "Paper fill ${f.slug} ${f.side} ${"%.3f".format(f.price)} x ${"%.2f".format(f.qty)} (${f.why})")
+                }
             }
         }
         settlements(ctx, rt, br, now)
@@ -186,7 +196,14 @@ class RewardFarm : Strategy {
             runCatching { br.cancelAll() }; savePaper(ctx, rt); return RunReport("paused")
         }
         val positions = br.positions(); val orders = br.openOrders()
-        ctx.stores.equity.record(EquitySnapshot(now, "polymarket", mode(ctx), bal.equity, null, bal.exchangeEquity))
+        if (br.live) for (slug in positions.keys + rt.lastPosQty.keys) {
+            val q = positions[slug]?.qty ?: 0.0
+            if (abs(q - (rt.lastPosQty[slug] ?: q)) > 1e-9) rt.lastFillAt[slug] = now
+            if (q == 0.0) rt.lastPosQty.remove(slug) else rt.lastPosQty[slug] = q
+        }
+        val liveIds = orders.map { it.id }.toSet()
+        rt.orderSeen.keys.retainAll(liveIds); for (id in liveIds) rt.orderSeen.putIfAbsent(id, now)
+        if (baseId == null) ctx.stores.equity.record(EquitySnapshot(now, "polymarket", mode(ctx), bal.equity, null, bal.exchangeEquity))
         val risk = FarmRisk.update(riskState(ctx), bal.equity.value, r)
         saveRisk(ctx, risk)
         if (risk.halted) {
@@ -292,7 +309,8 @@ class RewardFarm : Strategy {
         if (!cutoff) {
             val posCost = pos?.let { abs(it.qty) * if (it.qty > 0) it.avgPx else 1 - it.avgPx } ?: 0.0
             val quotable = cand?.periods?.any { it.end == null || now.isBefore(it.end.minusSeconds((r.periodEndBufferMin * 60).toLong())) } == true
-            if (cand != null && mayOpen && quotable && posCost < budget) {
+            val pausedAfterFill = QuoteRefresh.pausedAfterFill(rt.lastFillAt[slug], now, r.fillDelaySec)
+            if (cand != null && mayOpen && quotable && posCost < budget && !pausedAfterFill) {
                 val plan = FarmScanner.planQuote(cand, m.tick, m.minQty, m.closed, m.active, bids, asks, r, budget - posCost)
                 if (plan != null && plan.usdPerDay >= maxOf(r.minPayoutUsd, r.minExpectedDaily * 0.5))
                     desired += Desired(plan.side, plan.price, plan.qty, pmIntentFor(plan.side, posQty, false), "entry")
@@ -312,7 +330,9 @@ class RewardFarm : Strategy {
         val keep = mutableListOf<Desired>(); val resting = mutableListOf<Triple<String, Double, Double>>()
         val stuck = mutableSetOf<String>()
         for (o in own) {
-            val match = want.firstOrNull { d -> d.side == o.side && d.intent == o.intent && abs(d.price - o.price) < m.tick / 2 &&
+            val tooOld = QuoteRefresh.tooOld(rt.orderSeen[o.id], now, r.maxOrderAgeMin)
+            val match = if (tooOld) null else want.firstOrNull { d -> d.side == o.side && d.intent == o.intent &&
+                QuoteRefresh.near(o.price, d.price, m.tick, d.kind == "entry", r.requoteToleranceTicks) &&
                 abs(d.qty - o.qtyLeft) <= maxOf(m.minQty, 0.2 * d.qty) }
             if (match != null && match !in keep) { keep += match; resting += Triple(o.side, o.price, o.qtyLeft) }
             else if (!br.cancel(slug, o.id)) stuck += o.side   // still live: it shows in open orders next tick, so not a "recent cancel"
@@ -324,6 +344,7 @@ class RewardFarm : Strategy {
         for (d in want) {
             if (d in keep || d.side in stuck || (stuck.isNotEmpty() && d.kind == "entry")) continue
             if (d.kind == "entry" && slots <= 0) continue
+            if (d.kind == "entry" && ctx.gate(slug) != null) continue   // locked: exits still go out
             var expires = now.plusSeconds((r.orderTtlMin * 60).toLong())
             if (start != null && start.isAfter(now)) expires = minOf(expires, start.minusSeconds((r.eventCutoffMin * 60).toLong()))
             if (!expires.isAfter(now.plusSeconds(60))) continue
@@ -380,6 +401,10 @@ class RewardFarm : Strategy {
     }
 
     suspend fun resetKill(ctx: StrategyContext) { ctx.stores.state.put(k(ctx, "risk"), null) }
+
+    /** The live broker's own record of the orders it placed (the farm keeps no ledger rows for quotes). */
+    override suspend fun extraOrderIds(ctx: StrategyContext): Set<String> =
+        ctx.stores.state.get("$id.live.owned_orders")?.split(',')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
 
     override suspend fun liveRequirements(ctx: StrategyContext): List<Requirement> {
         val creds = ctx.polymarket.hasCredentials
@@ -497,6 +522,7 @@ class RewardFarm : Strategy {
     private data class RiskJson(val highWater: Double, val halted: Boolean, val reason: String)
 
     companion object {
+        const val ID = "polymarket_reward_farm"
         /**
          * Total of the `reward` field (the field pmfarm's calibrate reads) and a
          * per-status breakdown, or null if any row lacks a numeric reward: a
@@ -517,6 +543,16 @@ class RewardFarm : Strategy {
         }
 
         private val EST = MapSerializer(String.serializer(), Double.serializer())
+
+        /** The farm's paper record. It keeps its own book (not the shared ledger), so its variants are compared on this. */
+        data class PaperRecord(val realized: Double, val rebates: Double, val estimatedRewards: Double?)
+
+        suspend fun paperRecord(state: com.marketbot.core.store.StateStore, id: String): PaperRecord? {
+            val s = state.get("$id.paper.paper_state")?.let { PaperFarmBroker.fromJson(it, 0.0).s }
+            val est = state.get("$id.paper.estimates")?.let { runCatching { JSON.decodeFromString(EST, it) }.getOrNull() }?.values?.sum()
+            if (s == null && est == null) return null
+            return PaperRecord(s?.realized ?: 0.0, s?.rebates ?: 0.0, est)
+        }
     }
 
 }

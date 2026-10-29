@@ -200,7 +200,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun askKill() { _killAsked.value = true }
     fun killAskHandled() { _killAsked.value = false }
 
-    fun kill(on: Boolean) = once("kill") { engine.setGlobalKill(on); say(if (on) "Kill switch on: orders cancelled." else "Kill switch off.") }
+    fun kill(on: Boolean) = once("kill") {
+        engine.setGlobalKill(on)
+        say(if (on) "Kill switch on. ${engine.lastSweep?.summary ?: ""}".trim() else "Kill switch off.")
+    }
 
     suspend fun config(s: Strategy): StrategyConfig = withContext(Dispatchers.IO) { engine.config(s) }
     fun saveConfig(s: Strategy, values: Map<String, String>, done: (List<String>) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
@@ -312,6 +315,153 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (live.isNotEmpty()) Mode.LIVE to live else Mode.PAPER to engine.stores.ledger.all(s.id, Mode.PAPER)
     }
 
+    // ---------------------------------------------------------------- exposure by venue
+    data class Exposure(val venue: String, val resting: Int, val restingLocked: Double, val held: Int, val heldAtRisk: Double, val realisedToday: Double)
+
+    /** Live money tied up per venue, from the ledger (the reward farm's own book is not in it). */
+    suspend fun exposure(): List<Exposure> = withContext(Dispatchers.IO) {
+        val today = com.marketbot.core.strategy.startOfLocalDay(java.time.Instant.now())
+        val rows = strategies.flatMap { engine.stores.ledger.all(it.id, Mode.LIVE) }.filter { com.marketbot.core.strategy.Outcomes.binary(it) }
+        rows.groupBy { it.venue }.map { (venue, l) ->
+            val open = l.filter { it.resolvedAt == null }
+            val resting = open.filter { it.cancelledAt == null && (it.filledContracts ?: 0.0) < it.contracts }
+            val held = open.filter { (it.filledContracts ?: 0.0) > 0 }
+            Exposure(venue, resting.size, resting.sumOf { (it.contracts - (it.filledContracts ?: 0.0)) * com.marketbot.core.strategy.Outcomes.lockPerContract(it) },
+                held.size, held.sumOf { it.filledContracts!! * com.marketbot.core.strategy.Outcomes.lockPerContract(it) },
+                com.marketbot.core.strategy.realisedSince(l, today))
+        }.sortedBy { it.venue }
+    }
+
+    // ---------------------------------------------------------------- reports, locks, protections
+    suspend fun periods(mode: Mode, unit: com.marketbot.core.strategy.Periods.Unit, n: Int) = withContext(Dispatchers.Default) {
+        val rows = strategies.flatMap { engine.stores.ledger.all(it.id, mode) }
+        com.marketbot.core.strategy.Periods.table(rows, unit, n, java.time.ZoneId.systemDefault(), java.time.Instant.now())
+    }
+    private val _locksChanged = MutableStateFlow(0)
+    val locksChanged = _locksChanged.asStateFlow()
+    suspend fun activeLocks() = withContext(Dispatchers.IO) { engine.locks.active(java.time.Instant.now()) }
+
+    /** Quick action (freqtrade's /stopentry): no new orders anywhere; fills, exits and settlements carry on. */
+    fun pauseAll(hours: Long?) = once("pause") {
+        engine.locks.add(com.marketbot.core.strategy.Lock.pauseAll(java.time.Instant.now(), hours), java.time.Instant.now())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "pause", "New orders paused for every strategy" + (hours?.let { " for $it h" } ?: " until resumed") + ".")
+        _locksChanged.update { it + 1 }; say("New orders paused" + (hours?.let { " for $it h" } ?: "") + ". Resting orders stay.")
+    }
+    fun resumeAll() = once("pause") {
+        engine.locks.remove(com.marketbot.core.strategy.Lock.PAUSE_ID, java.time.Instant.now())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "pause", "New orders resumed."); _locksChanged.update { it + 1 }; say("New orders resumed.")
+    }
+    suspend fun paused(): com.marketbot.core.strategy.Lock? = withContext(Dispatchers.IO) {
+        engine.locks.active(java.time.Instant.now()).firstOrNull { it.id == com.marketbot.core.strategy.Lock.PAUSE_ID } }
+    /** Quick action: run every switched-on strategy's pass now. */
+    fun runAll() = once("run_all") {
+        val on = strategies.filter { modeOf(it.id) != Mode.OFF }
+        say("Running ${on.size} strateg${if (on.size == 1) "y" else "ies"}...")
+        for (s in on) runCatching { engine.runNow(s) }
+        say("Passes finished.")
+    }
+    fun unlock(l: com.marketbot.core.strategy.Lock) = once("unlock:${l.id}") {
+        engine.locks.remove(l.id, java.time.Instant.now())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "lock", "Lock lifted by hand: ${l.reason} (${l.strategyId}${l.series?.let { ", $it" } ?: ""}).")
+        _locksChanged.update { it + 1 }; say("Lock lifted.")
+    }
+    suspend fun protections() = withContext(Dispatchers.IO) { com.marketbot.core.strategy.Protection.load(engine.stores.state) }
+    fun saveProtection(p: com.marketbot.core.strategy.Protection) = once("protection") {
+        val all = com.marketbot.core.strategy.Protection.load(engine.stores.state).map { if (it.type == p.type) p else it }
+        com.marketbot.core.strategy.Protection.save(engine.stores.state, all)
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "protection", "${p.type.label} ${if (p.enabled) "on" else "off"}: look-back ${p.lookbackHours} h, " +
+            "limit ${p.tradeLimit}, lock ${p.stopHours} h" + (if (p.type == com.marketbot.core.strategy.Protection.Type.MAX_DRAWDOWN) ", drawdown ${money(p.maxDrawdownUsd)}" else "") + ".")
+        _locksChanged.update { it + 1 }
+    }
+
+    // ---------------------------------------------------------------- paper variants
+    /** Strategies for lists: every base strategy, plus any variant that is switched on. */
+    fun listed(): List<Strategy> = strategies.filter { it.baseId == null || modeOf(it.id) != Mode.OFF }
+    fun variantsOf(baseId: String) = strategies.filter { it.baseId == baseId }
+    suspend fun farmPaperRecord(id: String) = withContext(Dispatchers.IO) {
+        com.marketbot.core.strategies.rewards.RewardFarm.paperRecord(engine.stores.state, id) }
+    fun paperComparison(id: String) = com.marketbot.core.strategy.VariantRecord.of(settled.value.filter { it.strategyId == id })
+    fun copyConfig(from: Strategy, to: Strategy) = once("copy_config:${to.id}") {
+        val c = engine.config(from).asMap
+        engine.saveConfig(to, c); drafts.remove(to.id); _saved.update { it + (to.id to c) }
+        say("Settings copied to ${to.name}.")
+    }
+
+    // ---------------------------------------------------------------- deposits and withdrawals
+    private val _flowsChanged = MutableStateFlow(0)
+    val flowsChanged = _flowsChanged.asStateFlow()
+    suspend fun cashFlows() = withContext(Dispatchers.IO) { com.marketbot.core.strategy.CashFlows.load(engine.stores.state) }
+
+    /** Equity jumps over 30 days that settled P&L does not explain, per live venue. */
+    suspend fun cashFlowCandidates(): List<com.marketbot.core.strategy.CashFlow> = withContext(Dispatchers.IO) {
+        val since = java.time.Instant.now().minus(java.time.Duration.ofDays(30))
+        val snaps = listOf("kalshi", "polymarket").flatMap { engine.stores.equity.history(it, Mode.LIVE, since) }
+        val rows = strategies.flatMap { engine.stores.ledger.all(it.id, Mode.LIVE) }
+        val dismissed = engine.stores.state.get(com.marketbot.core.strategy.CashFlows.DISMISSED)?.split('\n')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+        com.marketbot.core.strategy.CashFlows.candidates(snaps, rows, com.marketbot.core.strategy.CashFlows.load(engine.stores.state), dismissed)
+    }
+
+    fun addCashFlow(f: com.marketbot.core.strategy.CashFlow) = once("cash_flow") {
+        val st = engine.stores.state
+        com.marketbot.core.strategy.CashFlows.save(st, com.marketbot.core.strategy.CashFlows.load(st) + f.copy(note = f.note.removePrefix("suggested: ").let { if (f.note.startsWith("suggested")) "confirmed: $it" else it }))
+        a.note(com.marketbot.core.store.LogEvent.Level.INFO, "cash_flow", "${if (f.amount >= 0) "Deposit" else "Withdrawal"} of ${money(kotlin.math.abs(f.amount))} recorded on ${f.venue}.")
+        _flowsChanged.update { it + 1 }; say("Recorded.")
+    }
+    fun removeCashFlow(f: com.marketbot.core.strategy.CashFlow) = once("cash_flow") {
+        val st = engine.stores.state
+        com.marketbot.core.strategy.CashFlows.save(st, com.marketbot.core.strategy.CashFlows.load(st) - f)
+        _flowsChanged.update { it + 1 }
+    }
+    fun dismissCashFlow(f: com.marketbot.core.strategy.CashFlow) = once("cash_flow") {
+        val st = engine.stores.state
+        val d = st.get(com.marketbot.core.strategy.CashFlows.DISMISSED)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
+        st.put(com.marketbot.core.strategy.CashFlows.DISMISSED, (d + f.at).takeLast(200).joinToString("\n"))
+        _flowsChanged.update { it + 1 }
+    }
+
+    // ---------------------------------------------------------------- daily API wording check
+    private val _contractRuns = MutableStateFlow(0)
+    val contractRuns = _contractRuns.asStateFlow()
+    suspend fun contractReport() = withContext(Dispatchers.IO) { engine.contractReport() }
+    fun runContractCheck() = once("contract") {
+        val r = withContext(Dispatchers.IO) { engine.contractCheck() }
+        _contractRuns.update { it + 1 }; say(r.summary)
+    }
+
+    // ---------------------------------------------------------------- safety at the exchanges
+    suspend fun fillLimit(): Int = withContext(Dispatchers.IO) {
+        engine.stores.state.get(com.marketbot.core.engine.Engine.FILL_LIMIT_KEY)?.toIntOrNull() ?: com.marketbot.core.engine.Engine.DEFAULT_FILL_LIMIT }
+    fun setFillLimit(n: Int) = once("fill_limit") {
+        engine.stores.state.put(com.marketbot.core.engine.Engine.FILL_LIMIT_KEY, n.coerceIn(0, 1000).toString())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "fill_limit", if (n <= 0) "Kalshi fill limit turned off." else "Kalshi fill limit set to $n contracts per 15 s per shard.")
+        say(if (n <= 0) "Fill limit off." else "Fill limit: $n contracts per 15 s.")
+    }
+    suspend fun fillLimitState(): Pair<Map<Int, java.time.Instant>, String?> = withContext(Dispatchers.IO) {
+        val fl = engine.kalshiFillLimit; (fl?.trippedShards() ?: emptyMap()) to fl?.lastError }
+    fun resetFillLimit(shard: Int) = once("fill_reset:$shard") {
+        val fl = engine.kalshiFillLimit ?: return@once
+        runCatching { fl.reset(engine.kalshiClient, shard) }
+            .onSuccess { a.note(com.marketbot.core.store.LogEvent.Level.WARN, "fill_limit", "Kalshi fill limit on shard $shard reset by hand."); say("Fill limit reset: orders allowed again.") }
+            .onFailure { say("Reset failed. " + plainError(it.message)) }
+    }
+    suspend fun lastOrderRecon(): com.marketbot.core.engine.OrderReconciliation? = withContext(Dispatchers.IO) {
+        engine.lastOrderRecon ?: engine.stores.state.get("engine.order_recon_last")?.let {
+            runCatching { com.marketbot.core.util.JSON.decodeFromString(com.marketbot.core.engine.OrderReconciliation.serializer(), it) }.getOrNull() } }
+    private val _orderRecon = MutableStateFlow(0)
+    /** Bumps after a manual check so the card re-reads. */
+    val orderReconRuns = _orderRecon.asStateFlow()
+    fun reconcileOrdersNow() = once("order_recon") { val r = engine.reconcileOrders(); _orderRecon.update { it + 1 }; say(r.summary) }
+    fun heartbeatUrl() = a.vault.heartbeatUrl()
+    fun saveHeartbeatUrl(u: String) {
+        val v = u.trim().ifEmpty { null }
+        if (v != null && !com.marketbot.app.Heartbeat.valid(v)) { say("Use the full https:// address of the check."); return }
+        a.vault.saveHeartbeatUrl(v); say(if (v == null) "Outside heartbeat off." else "Outside heartbeat saved.")
+    }
+    fun testHeartbeat() = once("heartbeat") {
+        val u = a.vault.heartbeatUrl() ?: run { say("Save a check address first."); return@once }
+        say(if (com.marketbot.app.Heartbeat.ping(u)) "Ping delivered: ${com.marketbot.app.Heartbeat.lastResult}" else "Ping failed: ${com.marketbot.app.Heartbeat.lastResult}")
+    }
+
     // ---------------------------------------------------------------- health and system
     /** Server minus phone time, worst across hosts. Signing corrects for it, but past a few seconds the phone's clock is wrong. */
     fun clockSkewMs(): Long? = com.marketbot.core.net.NetStats.worstSkewMs()
@@ -371,6 +521,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pruneLogs(days: Int) = viewModelScope.launch(Dispatchers.IO) {
         a.db.events().prune(System.currentTimeMillis() - days * 86_400_000L); say("Activity older than $days days deleted.")
+    }
+
+    /** The API recording as a file for the share sheet. */
+    suspend fun apiRecordingUri(): android.net.Uri = withContext(Dispatchers.IO) {
+        val dir = java.io.File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+        val f = java.io.File(dir, "marketbot-api-${java.time.LocalDateTime.now().withNano(0).toString().replace(':', '-')}.jsonl")
+        f.writeText(com.marketbot.core.net.ApiJournal.export())
+        androidx.core.content.FileProvider.getUriForFile(getApplication(), "${getApplication<Application>().packageName}.files", f)
     }
 
     /** The CSV written to app cache and shared as a file (a long ledger does not fit in an Intent extra). */

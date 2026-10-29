@@ -33,7 +33,7 @@ data class Level(val price: Double, val qty: Double)
 data class PmBook(val slug: String, val bids: List<Level>, val asks: List<Level>, val state: String, val at: Instant) {
     val bestBid: Double? get() = bids.firstOrNull()?.price
     val bestAsk: Double? get() = asks.firstOrNull()?.price
-    val open: Boolean get() = state.isEmpty() || state == "MARKET_STATE_OPEN"
+    val open: Boolean get() = state.isEmpty() || state == com.marketbot.core.contract.Vocabulary.PM_BOOK_OPEN
 
     companion object {
         fun parse(slug: String, md: JsonObject, at: Instant): PmBook {
@@ -55,6 +55,8 @@ data class PmMarketMeta(val raw: JsonObject) {
     val active: Boolean get() = raw.bool("active") ?: true
     val title: String get() = raw.str("question") ?: raw.str("title") ?: ""
     val gameStart: Instant? get() = parseInstant(raw.str("gameStartTime"))
+    /** When the market resolves (settlement can be read after this). */
+    val endDate: Instant? get() = parseInstant(raw.str("endDate"))
 
     /** Per-market taker fee coefficient from the API; the documented constant only when absent. */
     val takerTheta: Sourced<Double>
@@ -140,7 +142,20 @@ class PolymarketClient(
         return PmMarketMeta(m.obj("market") ?: m)
     }
 
-    suspend fun marketsBySlug(slugs: List<String>): List<PmMarketMeta> {
+/** Open markets of one category (e.g. "climate"), every page. A page that fails ends the listing (nothing is guessed). */
+    suspend fun openMarkets(category: String, maxPages: Int = 20): List<PmMarketMeta> {
+        val out = mutableListOf<PmMarketMeta>()
+        var offset = 0
+        repeat(maxPages) {
+            val page = gw.get("/v1/markets", listOf("closed" to "false", "categories" to category, "limit" to "500", "offset" to "$offset")).objects("markets")
+            out += page.map { PmMarketMeta(it) }
+            if (page.size < 500) return out
+            offset += page.size
+        }
+        return out
+    }
+
+        suspend fun marketsBySlug(slugs: List<String>): List<PmMarketMeta> {
         if (slugs.isEmpty()) return emptyList()
         val q = slugs.map { "slug" to it } + ("limit" to slugs.size.toString())
         return gw.get("/v1/markets", q).objects("markets").map { PmMarketMeta(it) }
@@ -217,7 +232,11 @@ class PolymarketClient(
      * docs, which is why NO/short orders are blocked until the preflight check
      * confirms it with `/v1/order/preview`.
      */
+    /** The last check before any order leaves the phone: a non-null reason refuses it (the kill switch). */
+    @Volatile var orderGate: (() -> com.marketbot.core.strategy.Reason?)? = null
+
     suspend fun placeOrder(slug: String, intent: String, wirePrice: Double, qty: Double, goodTill: Instant? = null): String? {
+        orderGate?.invoke()?.let { throw com.marketbot.core.strategy.OrderDenied(it) }
         val body = buildJsonObject {
             put("marketSlug", slug)
             put("intent", intent)

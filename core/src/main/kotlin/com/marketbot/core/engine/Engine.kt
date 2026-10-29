@@ -22,6 +22,8 @@ import com.marketbot.core.strategy.StrategyContext
 import com.marketbot.core.strategy.StrategyRegistry
 import com.marketbot.core.util.Clock
 import com.marketbot.core.util.JSON
+import com.marketbot.core.util.str
+import com.marketbot.core.util.num
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -68,6 +70,9 @@ data class StrategyStatus(
     val lastError: String?,
     /** How the last pass narrowed the markets it looked at down to the orders it placed. */
     val funnel: List<com.marketbot.core.strategy.FunnelStep> = emptyList(),
+    /** ACTIVE, REDUCING or HALTED, and why; null while off. */
+    val state: com.marketbot.core.strategy.TradingState? = null,
+    val reason: com.marketbot.core.strategy.Reason? = null,
 )
 
 @Serializable
@@ -89,6 +94,8 @@ class Engine(
     private val online: () -> Boolean = { true },
     /** Fill notices (the "Trades" channel), separate from alerts. */
     private val tradeNotifier: suspend (String, String) -> Unit = notifier,
+    /** Notifications with their kind; when set, used instead of [notifier] for the engine's own alerts. */
+    private val kindedNotifier: (suspend (kind: String, title: String, body: String) -> Unit)? = null,
     /** Opens Kalshi's private fill channel; null disables it (tests). */
     private val fillStreamFactory: ((KalshiClient, (com.marketbot.core.kalshi.KalshiFill) -> Unit) -> com.marketbot.core.kalshi.KalshiFillStream?)? = ::defaultFillStream,
 ) {
@@ -145,13 +152,32 @@ class Engine(
     init {
         val (k, p) = clientFactory(Credentials())
         kalshi = k; polymarket = p
+        wire()
     }
+
+    /** What every client gets from the engine: the fill limit and the kill-switch order gate. */
+    private fun wire() {
+        kalshi.fillLimit = fillLimit()
+        val gate = { if (_globalKill.value) com.marketbot.core.strategy.Reason(com.marketbot.core.strategy.ReasonCode.KILL_SWITCH) else null }
+        kalshi.orderGate = gate; polymarket.orderGate = gate
+    }
+
+    /** The app-wide Kalshi fill limit (order groups), from the setting; 0 turns it off. */
+    private fun fillLimit() = com.marketbot.core.kalshi.FillLimit(stores.state,
+        { stores.state.get(FILL_LIMIT_KEY)?.toIntOrNull() ?: DEFAULT_FILL_LIMIT },
+        onTrip = { shard ->
+            log(null, LogEvent.Level.ERROR, "fill_limit", "Kalshi's fill limit tripped on shard $shard: more contracts filled within 15 s than allowed. " +
+                "Kalshi cancelled the remaining orders there and refuses new ones until you reset it under Settings.")
+            notify("safety", "Kalshi fill limit tripped", "A burst of fills on shard $shard. Kalshi cancelled the rest; review, then reset it in Settings.")
+        })
+
+    val kalshiFillLimit get() = kalshi.fillLimit
 
     val kalshiClient get() = kalshi
     val polymarketClient get() = polymarket
 
     suspend fun setCredentials(c: Credentials) {
-        lock.withLock { val (k, p) = clientFactory(c); kalshi = k; polymarket = p }
+        lock.withLock { val (k, p) = clientFactory(c); kalshi = k; polymarket = p; wire() }
         if (_running.value) restartFillStream()
     }
 
@@ -192,9 +218,22 @@ class Engine(
 
     suspend fun isKilled(): Boolean = stores.state.get("global.kill") == "true"
 
+    val locks = com.marketbot.core.strategy.LockStore(stores.state)
+
     fun context(s: Strategy, mode: Mode, cfg: StrategyConfig, armed: Boolean, killed: Boolean) = StrategyContext(
         s.id, mode, cfg, stores, clock, kalshi, polymarket, btcIndex,
-        liveArmed = mode == Mode.LIVE && armed && !killed, notify = notifier, tradeNotify = tradeNotifier)
+        liveArmed = mode == Mode.LIVE && armed && !killed, notify = { t, b -> notify("safety", t, b) }, tradeNotify = tradeNotifier,
+        gateFn = { ticker ->
+            val book = if (mode == Mode.LIVE && armed && !killed) Mode.LIVE else Mode.PAPER
+            if (killed && mode == Mode.LIVE) com.marketbot.core.strategy.Reason(com.marketbot.core.strategy.ReasonCode.KILL_SWITCH)
+            else locks.denies(s.id, book, ticker, clock.now())
+        })
+
+    /**
+     * Notifications by kind ("safety", "reconcile", "fills", "daily"), so the app can
+     * route each to its own on / silent / off setting. Falls back to [notifier].
+     */
+    private suspend fun notify(kind: String, title: String, body: String) = (kindedNotifier ?: { _, t, b -> notifier(t, b) })(kind, title, body)
 
     private suspend fun ctx(s: Strategy, mode: Mode? = null): StrategyContext {
         val m = mode ?: mode(s.id)
@@ -291,7 +330,15 @@ class Engine(
                 if (m == Mode.LIVE) { stores.state.put("strategy.${s.id}.mode", Mode.PAPER.name); wasLive += s.id }
             }
             stores.state.put("global.kill.was_live", wasLive.joinToString(","))
-            notifier("Kill switch on", "All resting orders were cancelled and live trading is off.")
+            val sweep = sweepExchanges()
+            lastSweep = sweep
+            log(null, if (sweep.errors.isEmpty() && sweep.unknown.isEmpty()) LogEvent.Level.WARN else LogEvent.Level.ERROR, "kill", sweep.summary)
+            runCatching { reconcileOrders() }
+            notify("safety", "Kill switch on", "Live trading is off. ${sweep.summary}")
+        } else {
+            // The kill switch tripped Kalshi's order groups itself; turning it off re-opens them.
+            // A trip caused by a burst of fills stays until reset by hand.
+            kalshi.fillLimit?.let { fl -> for ((shard, _) in fl.trippedShards()) if (fl.reason(shard) == "kill") runCatching { fl.reset(kalshi, shard) } }
         }
         for (s in strategies) if (mode(s.id) != Mode.OFF) launchStrategy(s)
     }
@@ -353,6 +400,234 @@ class Engine(
             "live ${com.marketbot.core.strategy.money(live)}".takeIf { lines.any { "(live)" in it } },
             "paper ${com.marketbot.core.strategy.money(paper)}".takeIf { lines.any { "(paper)" in it } }).joinToString(", ")
         return title to lines.joinToString("\n")
+    }
+
+    @Volatile var lastSweep: SweepReport? = null; private set
+
+    /**
+     * After each strategy has cancelled what its ledger knows, ask the exchanges what
+     * is actually resting and cancel everything in the app's markets: an order whose
+     * create response was lost is in no ledger, but it is at the exchange. Orders in
+     * markets no strategy trades (placed by hand) are left alone and counted. Kalshi's
+     * order groups are triggered too, so Kalshi itself refuses new orders.
+     */
+    suspend fun sweepExchanges(): SweepReport {
+        val known = knownOrderIds()
+        fun owned(venue: String, t: String) = strategies.any { it.ownsMarket(venue, t) }
+        var cancelled = 0; var outside = 0
+        val unknown = mutableListOf<String>(); val errors = mutableListOf<String>()
+        if (kalshi.hasCredentials) {
+            kalshi.fillLimit?.triggerAll(kalshi)?.forEach { errors += "Kalshi fill-limit trigger, $it" }
+            val resting = runCatching { kalshi.orders("resting") }.getOrElse { errors += "Kalshi: could not list resting orders (${it.message})"; emptyList() }
+            val mine = resting.mapNotNull { o -> val id = o.str("order_id"); val t = o.str("ticker"); if (id != null && t != null) Triple(id, t, owned("kalshi", t) || id in known) else null }
+            outside += mine.count { !it.third }
+            val res = kalshi.batchCancel(mine.filter { it.third }.map { it.first to it.second })
+            for ((id, t, _) in mine.filter { it.third }) {
+                val r = res[id]
+                if (r?.isSuccess == true) { cancelled++; if (id !in known) unknown += "Kalshi $t" }
+                else errors += "Kalshi $t: ${r?.exceptionOrNull()?.message ?: "not cancelled"}"
+            }
+        }
+        if (polymarket.hasCredentials) {
+            val open = runCatching { polymarket.openOrders() }.getOrElse { errors += "Polymarket: could not list open orders (${it.message})"; emptyList() }
+            for (o in open) {
+                if (!(owned("polymarket", o.slug) || o.id in known)) { outside++; continue }
+                runCatching { polymarket.cancel(o.id, o.slug) }
+                    .onSuccess { cancelled++; if (o.id !in known) unknown += "Polymarket ${o.slug}" }
+                    .onFailure { errors += "Polymarket ${o.slug}: ${it.message}" }
+            }
+        }
+        return SweepReport(cancelled, unknown, outside, errors)
+    }
+
+    private suspend fun knownOrderIds(): Set<String> = buildSet {
+        for (s in strategies) {
+            stores.ledger.all(s.id, Mode.LIVE).forEach { q -> q.orderId?.let { add(it) } }
+            addAll(runCatching { s.extraOrderIds(ctx(s, Mode.LIVE)) }.getOrDefault(emptySet()))
+        }
+    }
+
+    @Volatile var lastOrderRecon: OrderReconciliation? = null; private set
+    private var lastOrderReconAt: Instant = Instant.EPOCH
+
+    /**
+     * Every few minutes while anything is live: the ledger's resting orders against
+     * the exchange's, both ways. An order the ledger thinks is resting but the
+     * exchange has finished is read (fills first) and closed in the ledger; an order
+     * resting at the exchange in the app's markets that no ledger knows is reported
+     * (once per order) and left alone, since another device may own it.
+     */
+    // ---------------------------------------------------------------- daily API wording check
+    @Volatile var lastContract: com.marketbot.core.contract.ApiContract.Report? = null; private set
+    private val contractMutex = kotlinx.coroutines.sync.Mutex()
+    /** What the daily check runs; replaced in tests, which must not reach the venues. */
+    var contractRunner: suspend (KalshiClient, PolymarketClient, Instant) -> com.marketbot.core.contract.ApiContract.Report =
+        { k, p, t -> com.marketbot.core.contract.ApiContract.run(k, p, t) }
+
+    /** The last report, from memory or the state store. */
+    suspend fun contractReport(): com.marketbot.core.contract.ApiContract.Report? = lastContract
+        ?: stores.state.get(CONTRACT_KEY)?.let { runCatching { JSON.decodeFromString(com.marketbot.core.contract.ApiContract.Report.serializer(), it) }.getOrNull() }
+            ?.also { lastContract = it }
+
+    /**
+     * Once a day: are the venues still answering in the words the app relies on
+     * (com.marketbot.core.contract.ApiContract)? Read-only. A finding that is new since the
+     * last run is notified once as a safety notice; a run that only skipped (offline) is
+     * not recorded, so it does not hide yesterday's result.
+     */
+    suspend fun contractCheckIfDue(every: java.time.Duration = java.time.Duration.ofHours(24)): com.marketbot.core.contract.ApiContract.Report? {
+        val prev = contractReport()
+        if (prev != null && java.time.Duration.between(Instant.parse(prev.at), clock.now()) < every) return null
+        return contractCheck()
+    }
+
+    suspend fun contractCheck(): com.marketbot.core.contract.ApiContract.Report = contractMutex.withLock {
+        val prev = contractReport()
+        val r = contractRunner(kalshi, polymarket, clock.now())
+        if (r.findings.all { it.verdict == com.marketbot.core.contract.ApiContract.Verdict.SKIP }) return@withLock r
+        lastContract = r
+        stores.state.put(CONTRACT_KEY, JSON.encodeToString(com.marketbot.core.contract.ApiContract.Report.serializer(), r))
+        val bad = setOf(com.marketbot.core.contract.ApiContract.Verdict.FAIL, com.marketbot.core.contract.ApiContract.Verdict.WARN)
+        fun key(f: com.marketbot.core.contract.ApiContract.Finding) = "${f.area}/${f.check}/${f.verdict}"
+        val seen = prev?.findings?.filter { it.verdict in bad }?.map(::key)?.toSet() ?: emptySet()
+        val fresh = r.findings.filter { it.verdict in bad && key(it) !in seen }
+        if (fresh.isNotEmpty()) {
+            val fail = fresh.any { it.verdict == com.marketbot.core.contract.ApiContract.Verdict.FAIL }
+            stores.events.log(com.marketbot.core.store.LogEvent(clock.now(), null, if (fail) com.marketbot.core.store.LogEvent.Level.ERROR else com.marketbot.core.store.LogEvent.Level.WARN,
+                "api_contract", fresh.joinToString("\n") { it.line }))
+            notify("safety", if (fail) "A venue changed something the app relies on" else "A venue answered with something new",
+                fresh.joinToString("\n") { "${it.area}: ${it.check}. ${it.detail}" }.take(900))
+        }
+        r
+    }
+
+    suspend fun reconcileOrdersIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(5)): OrderReconciliation? {
+        val now = clock.now()
+        if (java.time.Duration.between(lastOrderReconAt, now) < every) return null
+        val anyLive = strategies.any { s -> mode(s.id) == Mode.LIVE || stores.ledger.open(s.id, Mode.LIVE).any { it.resting } }
+        if (!anyLive || !(kalshi.hasCredentials || polymarket.hasCredentials)) return null
+        lastOrderReconAt = now
+        return reconcileOrders()
+    }
+
+    suspend fun reconcileOrders(): OrderReconciliation {
+        val now = clock.now()
+        val errors = mutableListOf<String>(); val corrected = mutableListOf<String>(); val unknown = mutableListOf<String>()
+        val kRest = if (kalshi.hasCredentials) runCatching { kalshi.orders("resting") }.getOrElse { errors += "Kalshi: ${it.message}"; null } else null
+        val pOpen = if (polymarket.hasCredentials) runCatching { polymarket.openOrders() }.getOrElse { errors += "Polymarket: ${it.message}"; null } else null
+        val kIds = kRest?.mapNotNull { it.str("order_id") }?.toSet()
+        val pIds = pOpen?.map { it.id }?.toSet()
+        var checked = 0
+        for (s in strategies) {
+            val waiting = stores.ledger.open(s.id, Mode.LIVE).filter { it.resting && it.orderId != null && (it.filledContracts ?: 0.0) < it.contracts }
+            if (waiting.isEmpty()) continue
+            // Under the strategy's pass lock, so a pass re-quoting the same order cannot race the correction.
+            withTimeoutOrNull(5_000) {
+                passLock(s.id).withLock {
+                    for (q0 in waiting) {
+                        val q = stores.ledger.byId(q0.id) ?: continue
+                        if (!q.resting) continue
+                        val atExchange = when (q.venue) { "kalshi" -> kIds; else -> pIds } ?: continue
+                        checked++
+                        if (q.orderId in atExchange) continue
+                        val fix = runCatching { finishedState(q, now) }.getOrElse { errors += "${q.ticker}: ${it.message}"; null } ?: continue
+                        stores.ledger.update(fix)
+                        corrected += "${com.marketbot.core.util.Tickers.describe(q.ticker)}: ${if (fix.cancelledAt != null) "closed at the exchange" else "fully filled"}"
+                    }
+                }
+            } ?: run { errors += "${s.name}: busy, checked next time" }
+        }
+        val known = knownOrderIds()
+        fun owned(venue: String, t: String) = strategies.any { it.ownsMarket(venue, t) }
+        kRest?.forEach { o -> val id = o.str("order_id") ?: return@forEach; val t = o.str("ticker") ?: return@forEach
+            if (owned("kalshi", t) && id !in known) unknown += "Kalshi $t ($id)" }
+        pOpen?.forEach { o -> if (owned("polymarket", o.slug) && o.id !in known) unknown += "Polymarket ${o.slug} (${o.id})" }
+        val r = OrderReconciliation(now.toString(), checked, corrected, unknown, errors)
+        lastOrderRecon = r
+        stores.state.put("engine.order_recon_last", JSON.encodeToString(OrderReconciliation.serializer(), r))
+        if (corrected.isNotEmpty()) log(null, LogEvent.Level.WARN, "reconcile", "Ledger corrected from the exchange: ${corrected.joinToString("; ")}.")
+        val seen = stores.state.get("engine.order_recon_unknown_seen")?.split('\n')?.toSet() ?: emptySet()
+        val fresh = unknown.filter { it !in seen }
+        if (fresh.isNotEmpty()) {
+            log(null, LogEvent.Level.ERROR, "reconcile", "Resting at the exchange in this app's markets but in no ledger: ${fresh.joinToString("; ")}. Another device or a lost order response; check before trading live.")
+            notify("reconcile", "Unknown orders at the exchange", "${fresh.size} order(s) in this app's markets that the app did not place or lost track of.")
+            stores.state.put("engine.order_recon_unknown_seen", (seen + fresh).toList().takeLast(200).joinToString("\n"))
+        }
+        return r
+    }
+
+    /** What the exchange says became of an order the ledger still shows resting. Null when it cannot be read. */
+    private suspend fun finishedState(q: com.marketbot.core.store.QuoteRow, now: Instant): com.marketbot.core.store.QuoteRow? = when (q.venue) {
+        "kalshi" -> {
+            val o = kalshi.order(q.orderId!!)
+            if (o == null) q.copy(cancelledAt = now, filledContracts = q.filledContracts ?: 0.0, fillSource = "reconcile: Kalshi no longer has the order", fillCheckedAt = now)
+            else {
+                val fs = com.marketbot.core.kalshi.FillState.of(o)
+                val n = fs.contracts ?: if (fs.filled == true) q.contracts else null
+                when {
+                    n == null -> null
+                    n >= q.contracts -> q.copy(filledContracts = q.contracts, fillSource = "Kalshi API ${fs.origin} (reconcile)", fillCheckedAt = now)
+                    else -> q.copy(cancelledAt = now, filledContracts = n, fillSource = "Kalshi API ${fs.origin} (reconcile: ${o.str("status") ?: "closed"})", fillCheckedAt = now)
+                }
+            }
+        }
+        else -> {
+            val o = polymarket.order(q.orderId!!)
+            val n = o?.num("cumQuantity")
+            when {
+                o == null -> q.copy(cancelledAt = now, filledContracts = q.filledContracts ?: 0.0, fillSource = "reconcile: Polymarket no longer has the order", fillCheckedAt = now)
+                n == null -> null
+                n >= q.contracts -> q.copy(filledContracts = q.contracts, fillSource = "Polymarket API order#cumQuantity (reconcile)", fillCheckedAt = now)
+                else -> q.copy(cancelledAt = now, filledContracts = n, fillSource = "Polymarket API order#cumQuantity (reconcile: ${o.str("state") ?: "closed"})", fillCheckedAt = now)
+            }
+        }
+    }
+
+    private var lastMarkoutAt: Instant = Instant.EPOCH
+
+    /**
+     * Once a minute: for orders that filled in the last three hours, note when the
+     * fill was first seen, then mark the position at the mid 5, 30 and 60 minutes
+     * later. Written under the strategy's pass lock, re-reading the row first, so a
+     * pass updating the same row is never overwritten. Returns markouts recorded.
+     */
+    suspend fun trackMarkoutsIfDue(maxRows: Int = 40): Int {
+        val now = clock.now()
+        if (java.time.Duration.between(lastMarkoutAt, now).seconds < 60) return 0
+        lastMarkoutAt = now
+        val mids = HashMap<String, Double?>()
+        suspend fun mid(q: com.marketbot.core.store.QuoteRow): Double? = mids.getOrPut(q.venue + ":" + q.ticker) {
+            runCatching {
+                if (q.venue == "kalshi") kalshi.market(q.ticker).book?.let { b -> (b.yesBid.value + b.yesAsk.value) / 2 }
+                else polymarket.book(q.ticker).let { b -> val bid = b.bestBid; val ask = b.bestAsk; if (bid != null && ask != null) (bid + ask) / 2 else null }
+            }.getOrNull()
+        }
+        var recorded = 0; var touched = 0
+        for (s in strategies) for (m in listOf(Mode.LIVE, Mode.PAPER)) {
+            val rows = stores.ledger.all(s.id, m, now.minus(java.time.Duration.ofHours(3)))
+                .filter { com.marketbot.core.strategy.Outcomes.binary(it) && (it.filledContracts ?: 0.0) > 0 && it.resolvedAt == null }
+                .filter { com.marketbot.core.strategy.Markout.seenAt(it) == null || com.marketbot.core.strategy.Markout.due(it, now).isNotEmpty() }
+            if (rows.isEmpty()) continue
+            withTimeoutOrNull(5_000) {
+                passLock(s.id).withLock {
+                    for (r in rows) {
+                        if (touched >= maxRows) break
+                        val q = stores.ledger.byId(r.id) ?: continue
+                        var extra = q.extra
+                        if (com.marketbot.core.strategy.Markout.seenAt(q) == null)
+                            extra = com.marketbot.core.strategy.Markout.with(extra, com.marketbot.core.strategy.Markout.SEEN to kotlinx.serialization.json.JsonPrimitive(now.toString()))
+                        for (h in com.marketbot.core.strategy.Markout.due(q.copy(extra = extra), now)) {
+                            val v = mid(q) ?: continue
+                            extra = com.marketbot.core.strategy.Markout.with(extra, com.marketbot.core.strategy.Markout.key(h) to
+                                kotlinx.serialization.json.JsonPrimitive(Math.round(com.marketbot.core.strategy.Markout.cents(q, v) * 100) / 100.0))
+                            recorded++
+                        }
+                        if (extra != q.extra) { stores.ledger.update(q.copy(extra = extra)); touched++ }
+                    }
+                }
+            }
+        }
+        return recorded
     }
 
     /** Strategies that were live when the kill switch went on (they stay in paper until re-armed). */
@@ -476,18 +751,44 @@ class Engine(
         _busy.update { it + 1 }
         try {
             val r = withTimeoutOrNull(10 * 60_000L) { s.runOnce(c) }
+            val book = if (c.live) Mode.LIVE else Mode.PAPER
+            runCatching { applyProtections(s, book) }
+            val reason = stateReason(s, c, book, r?.summary ?: "timed out")
             publish(s.id) { it.copy(lastRunAt = started, lastSummary = r?.summary ?: "timed out", lastError = if (r == null) "pass timed out after 10 min" else null,
-                mode = c.mode, armed = c.liveArmed, funnel = r?.funnel?.takeIf { f -> f.isNotEmpty() } ?: it.funnel) }
+                mode = c.mode, armed = c.liveArmed, funnel = r?.funnel?.takeIf { f -> f.isNotEmpty() } ?: it.funnel,
+                state = reason?.state ?: com.marketbot.core.strategy.TradingState.ACTIVE, reason = reason) }
             if (c.liveArmed) disarmIfKilled(s, c)
             r != null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            log(s.id, LogEvent.Level.ERROR, "error", "Pass failed: ${e.javaClass.simpleName}: ${e.message}")
-            publish(s.id) { it.copy(lastRunAt = started, lastError = e.message ?: e.javaClass.simpleName) }
+            val reason = com.marketbot.core.strategy.Reasons.ofError(e)
+            log(s.id, LogEvent.Level.ERROR, "error", "Pass failed [${reason.code}]: ${e.javaClass.simpleName}: ${e.message}")
+            publish(s.id) { it.copy(lastRunAt = started, lastError = e.message ?: e.javaClass.simpleName, state = reason.state, reason = reason) }
             false
         } finally {
             _busy.update { it - 1 }
+        }
+    }
+
+    /** The state a pass leaves the strategy in: the kill switch, then a lock on the whole strategy, then what the pass said. */
+    private suspend fun stateReason(s: Strategy, c: StrategyContext, book: Mode, summary: String): com.marketbot.core.strategy.Reason? {
+        if (c.mode == Mode.LIVE && isKilled()) return com.marketbot.core.strategy.Reason(com.marketbot.core.strategy.ReasonCode.KILL_SWITCH)
+        locks.strategyLock(s.id, book, clock.now())?.let { l ->
+            return com.marketbot.core.strategy.Reason(com.marketbot.core.strategy.ReasonCode.LOCKED, "${l.reason}, until ${l.until.take(16).replace('T', ' ')} UTC") }
+        return com.marketbot.core.strategy.Reasons.ofSummary(summary)
+    }
+
+    /** Runs the enabled protections on the strategy's settled book; new locks are logged and notified. */
+    private suspend fun applyProtections(s: Strategy, book: Mode) {
+        val ps = com.marketbot.core.strategy.Protection.load(stores.state).filter { it.enabled }
+        if (ps.isEmpty()) return
+        val rows = stores.ledger.all(s.id, book)
+        val now = clock.now()
+        for (p in ps) for (l in p.evaluate(s.id, book, rows, now)) if (locks.add(l, now)) {
+            val scope = l.series?.let { "$it markets" } ?: "all new orders"
+            log(s.id, LogEvent.Level.WARN, "lock", "${p.type.label} locked $scope (${book.name.lowercase()}) until ${l.until.take(16).replace('T', ' ')} UTC: ${l.reason}.")
+            notify("safety", "${s.name}: ${p.type.label}", "Locked $scope until ${l.until.take(16).replace('T', ' ')} UTC: ${l.reason}.")
         }
     }
 
@@ -506,7 +807,7 @@ class Engine(
         lastHealth[s.id] = now
         val kill = runCatching { s.healthChecks(c, Mode.LIVE) }.getOrNull()?.firstOrNull { it.verdict == com.marketbot.core.strategy.Check.Verdict.KILL } ?: return
         log(s.id, LogEvent.Level.ERROR, "kill", "Kill criterion fired on the live record: ${kill.name} (${kill.detail}). Live trading disarmed; the strategy continues in paper.")
-        notifier("${s.name} disarmed", "Kill criterion: ${kill.name}. ${kill.detail}")
+        notify("safety", "${s.name} disarmed", "Kill criterion: ${kill.name}. ${kill.detail}")
         // As a manual switch to paper does: stop while still live (so live orders are handled as on any stop), then paper.
         // Launched, because this runs inside the pass that the stop waits for.
         scope?.launch {
@@ -529,7 +830,7 @@ class Engine(
         stores.state.put("engine.recon_last", JSON.encodeToString(com.marketbot.core.strategy.PnlReconciliation.serializer(), r))
         val lvl = if (r.error != null || !r.clean) LogEvent.Level.WARN else LogEvent.Level.INFO
         if (r.compared > 0 || r.error != null || r.notAtExchange.isNotEmpty()) log(null, lvl, "reconcile", r.summary)
-        if (!r.clean && r.error == null) notifier("P&L differs from Kalshi", r.summary)
+        if (!r.clean && r.error == null) notify("reconcile", "P&L differs from Kalshi", r.summary)
         return r
     }
 
@@ -570,6 +871,11 @@ class Engine(
 
     companion object {
         private val CFG = MapSerializer(String.serializer(), String.serializer())
+        const val FILL_LIMIT_KEY = "engine.fill_limit"
+        const val CONTRACT_KEY = "engine.api_contract_last"
+        /** Contracts per rolling 15 s per Kalshi shard: four 5-lots. Above that, fills are a burst, and bursts are how losers arrive. */
+        const val DEFAULT_FILL_LIMIT = 20
+
         /** Strategies that re-run sooner than this keep the CPU awake; slower ones are woken by an alarm. */
         val CONTINUOUS_BELOW: java.time.Duration = java.time.Duration.ofMinutes(5)
 
@@ -595,5 +901,29 @@ class Engine(
             val ps = if (!c.polymarketKeyId.isNullOrBlank() && !c.polymarketSecret.isNullOrBlank()) PolymarketSigner(c.polymarketKeyId, c.polymarketSecret, pNow) else null
             return KalshiClient(ks, base, subaccount = c.kalshiSubaccount) to PolymarketClient(ps)
         }
+    }
+}
+
+/** What the kill switch found and cancelled at the exchanges. */
+@Serializable
+data class SweepReport(val cancelled: Int, val unknown: List<String>, val outside: Int, val errors: List<String>) {
+    val summary: String get() = buildString {
+        append("Exchanges: $cancelled order(s) cancelled")
+        if (unknown.isNotEmpty()) append(", ${unknown.size} of them unknown to the app (${unknown.take(4).joinToString()})")
+        if (outside > 0) append("; $outside order(s) in markets the app does not trade were left alone")
+        if (errors.isNotEmpty()) append(". NOT cancelled: ${errors.take(4).joinToString("; ")}. Check the venue apps")
+        append(".")
+    }
+}
+
+/** The last comparison of resting orders between the ledger and the exchanges. */
+@Serializable
+data class OrderReconciliation(val at: String, val checked: Int, val corrected: List<String>, val unknown: List<String>, val errors: List<String>) {
+    val clean: Boolean get() = unknown.isEmpty() && errors.isEmpty()
+    val summary: String get() = when {
+        errors.isNotEmpty() && checked == 0 -> "Could not compare orders: ${errors.first()}"
+        else -> "$checked resting order(s) checked" + (if (corrected.isNotEmpty()) ", ${corrected.size} corrected from the exchange" else "") +
+            (if (unknown.isNotEmpty()) "; ${unknown.size} at the exchange the app does not know" else "") +
+            (if (errors.isNotEmpty()) "; ${errors.size} could not be read" else "") + "."
     }
 }

@@ -86,6 +86,9 @@ class EngineService : LifecycleService() {
     }
 
     /** Re-evaluates every few seconds whether to hold the CPU or hand over to an alarm. */
+    private var lastContractTry = 0L
+    private var contractJob: kotlinx.coroutines.Job? = null
+
     private suspend fun managePower(app: MarketbotApp) {
         while (lifecycleScope.isActive) {
             val continuous = app.engine.needsContinuousWake()
@@ -98,8 +101,18 @@ class EngineService : LifecycleService() {
             }
             if (app.engine.busy.value == 0) AlarmReceiver.releasePassLock()
             Health.beat(this)
-            app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.trade(this, t, b) }
+            Benchmark.beat(this)
+            app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.post(this, "daily", t, b) }
+            runCatching { app.engine.trackMarkoutsIfDue() }
             runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
+            runCatching { app.engine.reconcileOrdersIfDue() }
+            // The daily API wording check runs beside the loop (about 50 reads), at most one at a time.
+            if (System.currentTimeMillis() - lastContractTry > 30 * 60_000L && contractJob?.isActive != true && Connectivity.online(this)) {
+                lastContractTry = System.currentTimeMillis()
+                contractJob = lifecycleScope.launch(Dispatchers.IO) { runCatching { app.engine.contractCheckIfDue() } }
+            }
+            // Off the main thread: the ping is a network call.
+            kotlinx.coroutines.withContext(Dispatchers.IO) { Heartbeat.beatIfDue(app.vault.heartbeatUrl(), online = Connectivity.online(this@EngineService)) }
             if (System.currentTimeMillis() - lastPrune > 86_400_000L) { lastPrune = System.currentTimeMillis(); app.pruneRoutine() }
             delay(5_000)
         }
@@ -196,6 +209,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "marketbot:pass").apply { setReferenceCounted(false); acquire(10 * 60_000L) }
             heldSince = System.currentTimeMillis()
         }
+        Benchmark.beat(context)
         val app = context.applicationContext as MarketbotApp
         if (!app.engine.running.value && EngineService.wasRunning(context)) EngineService.start(context)
         app.engine.poke()

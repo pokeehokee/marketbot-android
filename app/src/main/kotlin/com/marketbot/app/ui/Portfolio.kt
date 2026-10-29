@@ -102,12 +102,65 @@ fun EquitySection(vm: MainViewModel) {
     var pick by rememberSaveable { mutableStateOf<String?>(null) }
     val keys = curves.keys.sortedWith(compareBy({ it.second != "LIVE" }, { it.first }))
     val k = keys.firstOrNull { "${it.first}/${it.second}" == pick } ?: keys.first()
+    var perf by rememberSaveable { mutableStateOf(false) }
+    val changed by vm.flowsChanged.collectAsState()
+    val flows = loaded(changed) { vm.cashFlows() }.orEmpty().filter { it.venue == k.first }
     Section(stringResource(R.string.equity_30_days)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             keys.forEach { key -> FilterChip(key == k, { pick = "${key.first}/${key.second}" },
                 { Text("${key.first.replaceFirstChar { it.uppercase() }} ${key.second.lowercase()}") }) }
         }
-        LineChart(curves.getValue(k), label = "${k.first} ${k.second.lowercase()} equity", color = MaterialTheme.colorScheme.primary)
+        if (k.second == "LIVE") Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(!perf, { perf = false }, { Text(stringResource(R.string.equity_label)) })
+            FilterChip(perf, { perf = true }, { Text(stringResource(R.string.performance_label)) })
+        }
+        val series = curves.getValue(k)
+        val shown = if (perf && k.second == "LIVE") com.marketbot.core.strategy.CashFlows.performance(series, flows) else series
+        LineChart(shown, label = "${k.first} ${k.second.lowercase()} ${if (perf) "performance" else "equity"}", color = MaterialTheme.colorScheme.primary)
+        if (perf && k.second == "LIVE") Text(
+            if (flows.isEmpty()) stringResource(R.string.performance_no_flows) else stringResource(R.string.performance_with_flows, flows.size),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Deposits and withdrawals: entered by hand (no exchange API lists them), with suggestions from unexplained equity jumps. */
+@Composable
+fun CashFlowsSection(vm: MainViewModel) {
+    val changed by vm.flowsChanged.collectAsState()
+    val flows = loaded(changed) { vm.cashFlows() } ?: return
+    val suggested = loaded(changed) { vm.cashFlowCandidates() }.orEmpty()
+    var venue by rememberSaveable { mutableStateOf("kalshi") }
+    var amount by rememberSaveable { mutableStateOf("") }
+    Section(stringResource(R.string.cash_flows_title)) {
+        Text(stringResource(R.string.cash_flows_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        suggested.forEach { c ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("${c.venue.replaceFirstChar { it.uppercase() }} ${money(c.amount)}?", style = MaterialTheme.typography.bodyMedium)
+                    Text("${java.time.Instant.parse(c.at).short()}: ${c.note.removePrefix("suggested: ")}", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton({ vm.addCashFlow(c) }) { Text(stringResource(R.string.record)) }
+                TextButton({ vm.dismissCashFlow(c) }) { Text(stringResource(R.string.dismiss)) }
+            }
+        }
+        flows.sortedByDescending { it.at }.forEach { f ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("${java.time.Instant.parse(f.at).short()} · ${f.venue} · ${money(f.amount)}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                TextButton({ vm.removeCashFlow(f) }) { Text(stringResource(R.string.remove)) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf("kalshi", "polymarket").forEach { v -> FilterChip(venue == v, { venue = v }, { Text(v.replaceFirstChar { it.uppercase() }) }) }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '.' || c == '-' } },
+                label = { Text(stringResource(R.string.cash_flow_amount)) }, singleLine = true, modifier = Modifier.weight(1f),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            val v = amount.toDoubleOrNull()
+            TextButton({ if (v != null && v != 0.0) { vm.addCashFlow(com.marketbot.core.strategy.CashFlow(venue, java.time.Instant.now().toString(), v, "entered by hand")); amount = "" } },
+                enabled = v != null && v != 0.0) { Text(stringResource(R.string.record)) }
+        }
     }
 }
 
@@ -145,6 +198,12 @@ fun RecordSection(vm: MainViewModel, s: Strategy) {
         }
         Spacer(Modifier.height(8.dp))
         LineChart(curve, label = "${s.name} cumulative P&L")
+        // Starting from zero, so a strategy that lost from its first trade shows that as its biggest drop.
+        maxDrawdown(listOf((curve.firstOrNull()?.first ?: 0L) to 0.0) + curve)?.let { (dd, from, to) ->
+            ValueRow("Biggest drop", "-${money(dd)}  (${java.time.Instant.ofEpochMilli(from).atZone(java.time.ZoneId.systemDefault()).toLocalDate()} to " +
+                "${java.time.Instant.ofEpochMilli(to).atZone(java.time.ZoneId.systemDefault()).toLocalDate()})", Source.DERIVED,
+                "largest fall of cumulative realised P&L from an earlier high", valueColor = LocalDesk.current.loss)
+        }
     }
 }
 

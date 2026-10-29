@@ -66,6 +66,13 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab: Int = 0, showBack: Boolean = true, onHelp: ((String) -> Unit)? = null) {
+    // A paper variant opens over its base's screen; back returns to the base.
+    var viewing by androidx.compose.runtime.saveable.rememberSaveable(id) { mutableStateOf(id) }
+    if (viewing != id) {
+        androidx.activity.compose.BackHandler { viewing = id }
+        StrategyScreen(vm, viewing, onBack = { viewing = id }, initialTab = 1, showBack = true, onHelp = onHelp)
+        return
+    }
     val s = vm.strategies.first { it.id == id }
     var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(initialTab) }
     val running by vm.engineRunning.collectAsState()
@@ -93,7 +100,7 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
             listOf("Overview", "Parameters", "Go live", "Orders").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t, maxLines = 1) }) }
         }
         when (tab) {
-            0 -> Overview(vm, s) { tab = 2 }
+            0 -> Overview(vm, s, onOpenVariant = { viewing = it }) { tab = 2 }
             1 -> ParametersForm(vm, s, onLeave = onBack)
             2 -> GoLive(vm, s)
             else -> OrdersList(vm, s)
@@ -102,7 +109,7 @@ fun StrategyScreen(vm: MainViewModel, id: String, onBack: () -> Unit, initialTab
 }
 
 @Composable
-private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
+private fun Overview(vm: MainViewModel, s: Strategy, onOpenVariant: (String) -> Unit = {}, onGoLive: () -> Unit) {
     val status by vm.status.collectAsState()
     val ui by vm.strategyUi.collectAsState()
     val running by vm.engineRunning.collectAsState()
@@ -122,6 +129,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             if (mode != Mode.OFF && !running) Text(stringResource(R.string.the_engine_is_off_so_nothing_runs_start), style = MaterialTheme.typography.bodySmall,
                 color = LocalDesk.current.warn, modifier = Modifier.padding(top = 6.dp))
             if (s.needsBtcIndex && mode != Mode.OFF && running) WarmUp(vm)
+            TradingStateLine(st)
             Spacer(Modifier.size(8.dp))
             ValueRow("Last pass", st?.lastRunAt?.short() ?: "never", null)
             ValueRow("Result", st?.lastSummary ?: "-", null)
@@ -144,8 +152,11 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             }
         }
         RecordSection(vm, s)
+        if (s.baseId == null) VariantsSection(vm, s, onOpenVariant)
         HealthSection(vm, s)
         OutcomesSection(vm, s)
+        MarkoutSection(vm, s)
+        CalibrationSection(vm, s)
         CollateralSection(vm, s)
         Section(stringResource(R.string.evidence)) {
             EvidenceBadge(s.evidence.level)

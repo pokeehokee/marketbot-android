@@ -37,7 +37,7 @@ fun StrategiesScreen(vm: MainViewModel, onGoLive: (String) -> Unit = {}, onOpen:
             Text(stringResource(R.string.each_starts_in_paper_live_needs_its_chec), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        items(vm.strategies, key = { it.id }) { s ->
+        items(vm.strategies.filter { it.baseId == null }, key = { it.id }) { s ->
             val st = status[s.id]
             val mode = st?.mode ?: vm.modeOf(s.id)
             Surface(Modifier.fillMaxWidth().clickable { onOpen(s.id) }, shape = Radius.card,

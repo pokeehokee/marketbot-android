@@ -20,6 +20,10 @@ and `pokeehokee/polymarket` on the phone.
 - **Strategy ports are golden-tested** against the original Python (`core/src/test/resources/golden`, regenerate with
   `golden.py`). If you change a port, the golden test must still pass or the divergence must be documented.
 - Defaults are measured values from the source repos' CLAUDE.md; change them only with a new measurement.
+- **Exact venue words live in `core/contract/Vocabulary.kt`.** Any enum value, field name, slug or ticker shape the code
+  branches on is defined there (or pointed at from there), and the daily API wording check (`./gradlew :core:contractTest`,
+  `.github/workflows/api-contract.yml`, and once a day in the app) compares live answers and Kalshi's OpenAPI spec against it.
+  A refusal the app recognises only by its words must fail safe when the words change.
 
 ## Commands
 

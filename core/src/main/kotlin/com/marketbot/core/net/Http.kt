@@ -87,6 +87,14 @@ class JsonHttp(
     suspend fun delete(path: String, query: List<Pair<String, String>> = emptyList(), signer: RequestSigner?): JsonObject =
         request("DELETE", url(path, query), null, signer)
 
+    /** A DELETE that carries a body (batch cancels). Retried like any DELETE: cancelling twice is harmless. */
+    suspend fun deleteWithBody(path: String, body: JsonElement, signer: RequestSigner?): JsonObject =
+        request("DELETE", url(path), JSON.encodeToString(JsonElement.serializer(), body), signer)
+
+    /** PUT is not retried: it is only used for state changes the caller checks afterwards. */
+    suspend fun put(path: String, body: JsonElement, query: List<Pair<String, String>> = emptyList(), signer: RequestSigner?): JsonObject =
+        request("PUT", url(path, query), JSON.encodeToString(JsonElement.serializer(), body), signer)
+
     suspend fun request(method: String, url: HttpUrl, body: String?, signer: RequestSigner?): JsonObject {
         val idempotent = method == "GET" || method == "DELETE"
         var attempt = 0
@@ -98,11 +106,19 @@ class JsonHttp(
             rb.method(method, body?.toRequestBody("application/json".toMediaType()))
             try {
                 val sentAt = System.currentTimeMillis()
-                val (code, ok, text) = client.newCall(rb.build()).await().use { resp ->
-                    val t = resp.body?.string().orEmpty()
-                    NetStats.record(url.host, t.length.toLong() + (body?.length ?: 0) + 400, resp.header("Date"), sentAt, System.currentTimeMillis())
-                    Triple(resp.code, resp.isSuccessful, t)
+                val (code, ok, text) = try {
+                    client.newCall(rb.build()).await().use { resp ->
+                        val t = resp.body?.string().orEmpty()
+                        NetStats.record(url.host, t.length.toLong() + (body?.length ?: 0) + 400, resp.header("Date"), sentAt, System.currentTimeMillis())
+                        Triple(resp.code, resp.isSuccessful, t)
+                    }
+                } catch (e: IOException) {
+                    if (ApiJournal.recording) ApiJournal.record(ApiJournal.Entry(java.time.Instant.now(), method, url.toString(), null,
+                        System.currentTimeMillis() - sentAt, body, null, e.message ?: e.javaClass.simpleName))
+                    throw e
                 }
+                if (ApiJournal.recording) ApiJournal.record(ApiJournal.Entry(java.time.Instant.now(), method, url.toString(), code,
+                    System.currentTimeMillis() - sentAt, body, text, null))
                 if (ok) {
                     if (text.isBlank()) return JsonObject(emptyMap())
                     val el = JSON.parseToJsonElement(text)

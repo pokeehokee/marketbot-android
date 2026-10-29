@@ -1,6 +1,7 @@
 package com.marketbot.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,13 +63,24 @@ fun FunnelView(steps: List<FunnelStep>) {
         Text(stringResource(R.string.why_this_pass_traded_what_it_did), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         steps.forEachIndexed { i, s ->
             val drop = if (i > 0) steps[i - 1].count - s.count else 0
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.semantics(mergeDescendants = true) {
-                contentDescription = "${s.label}: ${s.count}" + if (drop > 0) ", $drop dropped" else "" }) {
-                Text(s.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            // Tap a step that dropped markets to see which, and why.
+            var open by remember(s.label, s.count) { mutableStateOf(false) }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier
+                .then(if (s.dropped.isNotEmpty()) Modifier.clickable(onClickLabel = "Show the markets dropped here") { open = !open } else Modifier)
+                .semantics(mergeDescendants = true) { contentDescription = "${s.label}: ${s.count}" + if (drop > 0) ", $drop dropped" else "" }) {
+                Text(s.label + if (s.dropped.isNotEmpty()) (if (open) "  ▾" else "  ▸") else "", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                 Box(Modifier.width(96.dp).height(8.dp).clip(Radius.chip).background(MaterialTheme.colorScheme.outlineVariant)) {
                     Box(Modifier.fillMaxWidth(s.count.toFloat() / top).height(8.dp).background(if (i == steps.lastIndex) LocalDesk.current.gain else MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)))
                 }
                 Text("${s.count}", style = Figures, textAlign = TextAlign.End, modifier = Modifier.width(48.dp))
+            }
+            if (open) Column(Modifier.padding(start = Space.m, bottom = Space.xs)) {
+                s.dropped.forEach { d ->
+                    val t = d.substringBefore(' ')
+                    Text(com.marketbot.core.util.Tickers.describe(t) + d.removePrefix(t), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (drop > s.dropped.size) Text("… and ${drop - s.dropped.size} more", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -183,7 +195,7 @@ fun ReconciliationSection(vm: MainViewModel) {
 
 /** The result of [load], re-run whenever a key changes; null until the first result. */
 @Composable
-private fun <T> loaded(vararg keys: Any?, load: suspend () -> T): T? {
+fun <T> loaded(vararg keys: Any?, load: suspend () -> T): T? {
     var v by remember { mutableStateOf<T?>(null) }
     LaunchedEffect(*keys) { v = load() }
     return v

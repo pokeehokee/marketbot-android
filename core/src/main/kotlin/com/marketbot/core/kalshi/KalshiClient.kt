@@ -52,6 +52,16 @@ class KalshiClient(
 
     val hasCredentials: Boolean get() = signer != null
 
+    /**
+     * Kalshi's own fill circuit breaker (order groups). When set, every order joins
+     * the group for its shard, and Kalshi cancels the group's resting orders and
+     * refuses new ones once more than the limit fills within 15 seconds.
+     */
+    @Volatile var fillLimit: FillLimit? = null
+
+    /** The last check before any order leaves the phone: a non-null reason refuses it (the kill switch). */
+    @Volatile var orderGate: (() -> com.marketbot.core.strategy.Reason?)? = null
+
     private fun requireSigner(): RequestSigner =
         signer ?: throw IllegalStateException("Kalshi API key not configured")
 
@@ -84,6 +94,13 @@ class KalshiClient(
     suspend fun eventMarkets(eventTicker: String) =
         markets(listOf("event_ticker" to eventTicker, "limit" to "200"))
 
+    /** The first page only, for sampling (the daily API check); never where a complete listing matters. */
+    suspend fun marketsSample(query: List<Pair<String, String>>): List<KalshiMarket> =
+        http.get("/markets", query).objects("markets").map { KalshiMarket(it) }
+
+    /** The first page of a series' events, for sampling. */
+    suspend fun eventsSample(query: List<Pair<String, String>>): List<JsonObject> = http.get("/events", query).objects("events")
+
     suspend fun trades(ticker: String, minTs: Long, maxPages: Int = 20): List<JsonObject> =
         paginate("/markets/trades", "trades",
             listOf("ticker" to ticker, "min_ts" to minTs.toString(), "limit" to "1000"), maxPages, signed = false)
@@ -104,6 +121,10 @@ class KalshiClient(
 
     suspend fun orders(status: String, maxPages: Int = 20): List<JsonObject> =
         paginate("/portfolio/orders", "orders", sub(listOf("status" to status, "limit" to "200")), maxPages, signed = true)
+
+    /** The first page of an account listing (`orders`, `settlements`, `fills`), for sampling only. */
+    suspend fun accountSample(path: String, key: String, query: List<Pair<String, String>> = emptyList()): List<JsonObject> =
+        http.get(path, sub(query + ("limit" to "100")), requireSigner()).objects(key)
 
     suspend fun positions(): List<JsonObject> =
         paginate("/portfolio/positions", "market_positions", sub(listOf("limit" to "200", "count_filter" to "position")), 20, signed = true)
@@ -159,6 +180,14 @@ class KalshiClient(
     ): PlacedOrder {
         require(side == "bid" || side == "ask") { "side must be bid or ask" }
         require(count >= 1) { "refusing an order of $count contracts" }
+        orderGate?.invoke()?.let { throw com.marketbot.core.strategy.OrderDenied(it) }
+        val shard = exchangeIndex ?: 0
+        val group = fillLimit?.let { fl ->
+            fl.trippedAt(shard)?.let { throw FillLimitTripped(shard, it) }
+            // Fails open: the limit is an extra guard, and an order group that cannot be created
+            // must not stop trading. The failure is kept for the settings screen.
+            runCatching { fl.groupFor(this, shard) }.onFailure { fl.lastError = it.message ?: it.javaClass.simpleName }.getOrNull()
+        }
         val px = roundToTick(price, tick, if (side == "bid") Round.DOWN else Round.UP)
         val coid = UUID.randomUUID().toString()
         val body = buildJsonObject {
@@ -175,6 +204,7 @@ class KalshiClient(
             if (exchangeIndex != null) put("exchange_index", exchangeIndex)
             if (expirationEpochS != null && expirationEpochS > clock.now().epochSecond) put("expiration_time", expirationEpochS)
             if (subaccount > 0) put("subaccount", subaccount)
+            if (group != null) put("order_group_id", group)
         }
         return try {
             val r = http.post("/portfolio/events/orders", body, requireSigner())
@@ -182,7 +212,22 @@ class KalshiClient(
             PlacedOrder(id ?: findByClientOrderId(coid)?.str("order_id"), coid, raw = r)
         } catch (e: ApiException) {
             val text = (e.message ?: "").lowercase() + " " + (e.code ?: "")
-            if ("cross" in text || "post_only" in text || "post only" in text)
+            // Kalshi refuses orders in a group that has tripped: remember it, never route around it.
+            // Kalshi gives no structured "triggered" field, so the message is all there is. When it
+            // mentions the group but not in the words below, the group is looked up: gone (404) means
+            // a new one is created; still there means the refusal is treated as a trip, because
+            // creating a fresh group would route around Kalshi's own limit.
+            if (group != null && "group" in text) {
+                if (KalshiWording.groupTripped(text)) { fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now()) }
+                val gone = try { orderGroup(group, shard); false } catch (g: ApiException) { g.status == 404 } catch (g: IOException) { false }
+                if (gone) fillLimit?.forget(shard)
+                else {
+                    fillLimit?.lastError = "Kalshi refused an order in the fill-limit group with a message the app does not recognise " +
+                        "(\"${e.message}\"); treated as tripped. Check it, then Reset."
+                    fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now())
+                }
+            }
+            if (KalshiWording.postOnlyCross(text))
                 return PlacedOrder(null, coid, filtered = true, reason = e.code ?: "post_only_cross")
             if (e.status == 400 || e.status == 409 || e.status >= 500) {
                 findByClientOrderId(coid)?.let { return PlacedOrder(it.str("order_id"), coid, raw = it) }
@@ -217,6 +262,71 @@ class KalshiClient(
     suspend fun cancelOrder(orderId: String, marketTicker: String): Sourced<Double>? {
         val r = http.delete("/portfolio/events/orders/$orderId", sub(listOf("market_ticker" to marketTicker)), requireSigner())
         return r.num("reduced_by")?.let { Sourced.kalshi(it, "DELETE /portfolio/events/orders/$orderId#reduced_by", clock.now()) }
+    }
+
+    // ---------------------------------------------------------------- order groups (exchange-side fill limit)
+    /** Create a group allowing at most [contracts] fills per rolling 15 s on [exchangeIndex]; returns its id. */
+    suspend fun createOrderGroup(contracts: Int, exchangeIndex: Int): String {
+        val body = buildJsonObject {
+            put("contracts_limit", contracts); put("exchange_index", exchangeIndex)
+            if (subaccount > 0) put("subaccount", subaccount)
+        }
+        return http.post("/portfolio/order_groups/create", body, requireSigner()).str("order_group_id")
+            ?: throw IOException("order group created without an order_group_id")
+    }
+
+    /** One group: `is_auto_cancel_enabled`, `contracts_limit_fp`, `orders`. 404 once it is deleted. */
+    suspend fun orderGroup(id: String, exchangeIndex: Int): JsonObject =
+        http.get("/portfolio/order_groups/$id", groupQuery(exchangeIndex), requireSigner())
+
+    /** Delete a group; Kalshi cancels the orders in it. */
+    suspend fun deleteOrderGroup(id: String, exchangeIndex: Int) {
+        http.delete("/portfolio/order_groups/$id", groupQuery(exchangeIndex), requireSigner())
+    }
+
+    /** This account's groups: id, limit, shard. */
+    suspend fun orderGroups(): List<JsonObject> =
+        http.get("/portfolio/order_groups", listOf("subaccount" to subaccount.toString()), requireSigner()).objects("order_groups")
+
+    private fun groupQuery(exchangeIndex: Int) = listOf("subaccount" to subaccount.toString(), "exchange_index" to exchangeIndex.toString())
+
+    /** Cancel every resting order in the group at the exchange and refuse new ones until [resetOrderGroup]. */
+    suspend fun triggerOrderGroup(id: String, exchangeIndex: Int) {
+        http.put("/portfolio/order_groups/$id/trigger", buildJsonObject { }, groupQuery(exchangeIndex), requireSigner())
+    }
+
+    suspend fun resetOrderGroup(id: String, exchangeIndex: Int) {
+        http.put("/portfolio/order_groups/$id/reset", buildJsonObject { }, groupQuery(exchangeIndex), requireSigner())
+    }
+
+    suspend fun updateOrderGroupLimit(id: String, contracts: Int, exchangeIndex: Int) {
+        http.put("/portfolio/order_groups/$id/limit", buildJsonObject { put("contracts_limit", contracts) }, groupQuery(exchangeIndex), requireSigner())
+    }
+
+    /**
+     * Cancel many orders in one call, each routed by its market ticker. Returns,
+     * per order id, the contracts cancelled, or the error the exchange gave.
+     */
+    suspend fun batchCancel(orders: List<Pair<String, String>>, chunk: Int = 20): Map<String, Result<Double>> {
+        val out = LinkedHashMap<String, Result<Double>>()
+        for (part in orders.chunked(chunk)) {
+            val body = buildJsonObject {
+                put("orders", kotlinx.serialization.json.buildJsonArray {
+                    for ((id, ticker) in part) add(buildJsonObject {
+                        put("order_id", id); put("market_ticker", ticker)
+                        if (subaccount > 0) put("subaccount", subaccount)
+                    })
+                })
+            }
+            val r = runCatching { http.deleteWithBody("/portfolio/events/orders/batched", body, requireSigner()) }
+            val rows = r.getOrNull()?.objects("orders").orEmpty().associateBy { it.str("order_id") }
+            for ((id, _) in part) out[id] = when {
+                r.isFailure -> Result.failure(r.exceptionOrNull()!!)
+                rows[id]?.obj("error") != null -> Result.failure(IOException(rows[id]!!.obj("error")!!.str("message") ?: "cancel refused"))
+                else -> Result.success(rows[id]?.num("reduced_by") ?: 0.0)
+            }
+        }
+        return out
     }
 
     /**
@@ -256,3 +366,83 @@ class KalshiClient(
 
 /** A listing that hit the page guard. Raised rather than returned, so a cap can never pass for complete data. */
 class TruncatedListing(message: String) : IOException(message)
+
+
+/** An order was refused because the shard's fill limit at Kalshi has tripped and has not been reset. */
+class FillLimitTripped(val shard: Int, val at: java.time.Instant) :
+    IOException("Kalshi's fill limit on shard $shard tripped at $at: Kalshi cancelled the group's orders and refuses new ones until it is reset")
+
+/**
+ * The app-wide Kalshi fill limit: one order group per shard, its id and trip time
+ * kept in the state store so they survive restarts. [limit] is read each time, so
+ * a settings change applies at the next order; 0 turns the limit off.
+ */
+class FillLimit(private val state: com.marketbot.core.store.StateStore, private val limit: suspend () -> Int,
+                private val onTrip: suspend (Int) -> Unit = {}) {
+    private val cache = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    /** The last time a group could not be created or updated, for the settings screen. */
+    @Volatile var lastError: String? = null
+
+    suspend fun forget(shard: Int) { cache.remove(shard); state.put(key(shard, "id"), null); state.put(key(shard, "limit"), null) }
+    private val tripped = java.util.concurrent.ConcurrentHashMap<Int, java.time.Instant>()
+    private fun key(shard: Int, what: String) = "kalshi.fill_limit.$shard.$what"
+
+    suspend fun trippedAt(shard: Int): java.time.Instant? = tripped[shard]
+        ?: state.get(key(shard, "tripped"))?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }?.also { tripped[shard] = it }
+
+    /** [reason] is "fills" when Kalshi tripped it, "kill" when the kill switch did (only those reset with the kill switch). */
+    suspend fun markTripped(shard: Int, at: java.time.Instant, reason: String = "fills") {
+        if (tripped.putIfAbsent(shard, at) == null) {
+            state.put(key(shard, "tripped"), at.toString()); state.put(key(shard, "reason"), reason)
+            if (reason == "fills") onTrip(shard)
+        }
+    }
+
+    suspend fun reason(shard: Int): String? = state.get(key(shard, "reason"))
+
+    /** The group for [shard], created (or its limit updated) when needed; null when the limit is off. */
+    suspend fun groupFor(client: KalshiClient, shard: Int): String? {
+        val n = limit()
+        if (n <= 0) return null
+        val id = cache[shard] ?: state.get(key(shard, "id"))
+        val have = state.get(key(shard, "limit"))?.toIntOrNull()
+        if (id != null && have == n) return id.also { cache[shard] = it }
+        if (id != null && runCatching { client.updateOrderGroupLimit(id, n, shard) }.isSuccess) {
+            state.put(key(shard, "limit"), n.toString()); cache[shard] = id; return id
+        }
+        val created = client.createOrderGroup(n, shard)
+        state.put(key(shard, "id"), created); state.put(key(shard, "limit"), n.toString()); cache[shard] = created
+        lastError = null
+        return created
+    }
+
+    /** Groups this app created, by shard. */
+    suspend fun groups(): Map<Int, String> = (0..3).mapNotNull { s -> (cache[s] ?: state.get(key(s, "id")))?.let { s to it } }.toMap()
+
+    /** Kill switch: Kalshi itself cancels everything in every group. */
+    suspend fun triggerAll(client: KalshiClient): List<String> = groups().mapNotNull { (shard, id) ->
+        runCatching { client.triggerOrderGroup(id, shard); markTripped(shard, java.time.Instant.now(), "kill") }.exceptionOrNull()?.let { "shard $shard: ${it.message}" }
+    }
+
+    /** After review: reset at Kalshi, then allow orders again. A group Kalshi no longer has is forgotten (the next order makes a new one). */
+    suspend fun reset(client: KalshiClient, shard: Int) {
+        groups()[shard]?.let { id ->
+            try { client.resetOrderGroup(id, shard) } catch (e: ApiException) { if (e.status == 404) forget(shard) else throw e }
+        }
+        tripped.remove(shard); state.put(key(shard, "tripped"), null); state.put(key(shard, "reason"), null)
+    }
+
+    suspend fun trippedShards(): Map<Int, java.time.Instant> = (0..3).mapNotNull { s -> trippedAt(s)?.let { s to it } }.toMap()
+}
+
+/**
+ * The exact words the app relies on in Kalshi's error messages, in one place so the
+ * daily API check and the tests exercise the same rules the order path uses.
+ */
+object KalshiWording {
+    /** Words Kalshi has used when an order group has hit its limit or been triggered. */
+    val GROUP_TRIP_WORDS = listOf("trigger", "limit", "exceed")
+    val POST_ONLY_WORDS = listOf("cross", "post_only", "post only")
+    fun groupTripped(text: String) = "group" in text && GROUP_TRIP_WORDS.any { it in text }
+    fun postOnlyCross(text: String) = POST_ONLY_WORDS.any { it in text }
+}
