@@ -141,6 +141,20 @@ object ApiContract {
             }
         }
 
+        out += probe("Kalshi", "commodity range series", "Commodity range longshot (paper)") {
+            val missing = mutableListOf<String>(); val notQuad = mutableListOf<String>()
+            for (t in com.marketbot.core.strategies.longshot.KalshiCommodityLongshot.SERIES) {
+                kotlinx.coroutines.delay(seriesPaceMs)
+                val s = try { k.series(t) } catch (e: ApiException) { if (e.status == 404) { missing += t; continue } else throw e }
+                if (s.isEmpty()) missing += t else if (s.str("fee_type") != Vocabulary.KALSHI_FEE_OK) notQuad += "$t=${s.str("fee_type")}"
+            }
+            when {
+                missing.isNotEmpty() -> fail("series not found: ${missing.joinToString()}")
+                notQuad.isNotEmpty() -> warn("fee type not quadratic (a resting fill may pay a fee): ${notQuad.joinToString()}")
+                else -> pass("all ${com.marketbot.core.strategies.longshot.KalshiCommodityLongshot.SERIES.size} series found, fee_type quadratic")
+            }
+        }
+
         val sample = listOf(WeatherSeries.BY_CITY.getValue("NYC").getValue("HIGH"), WeatherSeries.BY_CITY.getValue("CHI").getValue("LOW"),
             WeatherSeries.BY_CITY.getValue("MIA").getValue("HIGH"))
         var tradeTicker: String? = null
@@ -327,6 +341,17 @@ object ApiContract {
                 ms.all { it.strike == null } -> fail("no assetPriceTerms.strike: the ladder drops every market")
                 ms.any { it.windowEnd == null } -> warn("assetPriceTerms.windowEnd missing on some markets: the event close is used")
                 else -> pass("${ms.size} markets under $event with strikes")
+            }
+        }
+        out += probe("Polymarket", "daily temperature buckets", "Polymarket temperature longshot (paper)") {
+            val ms = pm.openMarkets(Vocabulary.PM_TEMP_CATEGORY)
+            val dated = ms.filter { Vocabulary.pmTemperature(it.slug) != null }
+            when {
+                ms.isEmpty() -> warn("no open markets in category ${Vocabulary.PM_TEMP_CATEGORY}")
+                dated.isEmpty() -> fail("no slug in the tc-temp-<city><high|low>-<date>- form among ${ms.size} climate markets (e.g. ${ms.first().slug})")
+                dated.any { it.gameStart == null } -> fail("gameStartTime missing: the strategy times its window from it")
+                dated.any { it.endDate == null } -> warn("endDate missing on some buckets: grading waits for the settlement endpoint only")
+                else -> pass("${dated.size} dated buckets in ${dated.map { Vocabulary.pmTemperature(it.slug) }.toSet().size} city/kind series")
             }
         }
         out += probe("Polymarket", "settlement endpoint", "$PDEEP and $FARM (grading)") {

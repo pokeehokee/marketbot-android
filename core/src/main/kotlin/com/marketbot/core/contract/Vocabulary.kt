@@ -86,6 +86,12 @@ object Vocabulary {
     const val PM_PROGRAM_TYPE = "liquidityProgram"
     const val PM_PROGRAM_ACTIVE = "active"
     /** The daily BTC ladder's event slug, and the prefix the strategy claims markets by. */
+    /** Polymarket US daily temperature buckets: tc-temp-<city><high|low>-<yyyy-mm-dd>-<bucket>, category "climate". */
+    const val PM_TEMP_PREFIX = "tc-temp-"
+    const val PM_TEMP_CATEGORY = "climate"
+    private val PM_TEMP_DATED = Regex("^tc-temp-([a-z]+?)(high|low)-(\\d{4}-\\d{2}-\\d{2})-")
+    /** (city, HIGH|LOW) for a dated temperature bucket, else null (the undated monthly ones are not traded). */
+    fun pmTemperature(slug: String): Pair<String, String>? = PM_TEMP_DATED.find(slug)?.let { it.groupValues[1] to it.groupValues[2].uppercase() }
     const val PM_BTC_EVENT_PREFIX = "btc-above-day-"
     /**
      * The ladder's market slugs. Seen 2026-10-29 as `cpc-btc-above-day-<date>-<strike>`: Polymarket
