@@ -99,6 +99,7 @@ class EngineService : LifecycleService() {
             if (app.engine.busy.value == 0) AlarmReceiver.releasePassLock()
             Health.beat(this)
             app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.trade(this, t, b) }
+            runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
             if (System.currentTimeMillis() - lastPrune > 86_400_000L) { lastPrune = System.currentTimeMillis(); app.pruneRoutine() }
             delay(5_000)
         }

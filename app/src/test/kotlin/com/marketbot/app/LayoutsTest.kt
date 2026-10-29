@@ -59,3 +59,19 @@ class LargeFontTest {
         shot(rule, "11_large_font_strategy")
     }
 }
+
+/** A Galaxy Z Flip's cover screen: the glance layout, nothing more. */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w360dp-h370dp-night-xhdpi", fontScale = 1.0f)
+class CoverScreenTest {
+    init { skipSetup() }
+    @get:Rule val rule = createAndroidComposeRule<MainActivity>()
+
+    @Test fun `the cover screen shows the engine, today and the kill switch only`() {
+        rule.onNodeWithText("Live today").assertExists()
+        rule.onNodeWithContentDescription("Kill switch: cancel every order and stop live trading").assertExists()
+        check(rule.onAllNodesWithText("Strategies").fetchSemanticsNodes().isEmpty()) { "no navigation on the cover screen" }
+        shot(rule, "12_cover_screen")
+    }
+}

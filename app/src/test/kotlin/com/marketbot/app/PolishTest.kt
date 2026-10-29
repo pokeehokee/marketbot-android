@@ -56,3 +56,13 @@ class PolishTest {
         assertFalse("test cache" in Health.crashReport("main", IllegalStateException("x")), "ordinary crashes stay short")
     }
 }
+
+class WidgetBeatTest {
+    private val now = 1_000_000_000L
+    @org.junit.Test fun `the widget dot tells a fresh engine from a late, a killed-by-the-phone and a stopped one`() {
+        kotlin.test.assertEquals("Engine running", WidgetBeat.of(true, true, now - 5_000, now).text)
+        kotlin.test.assertTrue(WidgetBeat.of(true, true, now - 600_000, now).text.startsWith("Engine slow: last beat 10 min"))
+        kotlin.test.assertEquals("Engine stopped by the phone", WidgetBeat.of(false, true, now - 5_000, now).text)
+        kotlin.test.assertEquals("Engine stopped", WidgetBeat.of(false, false, null, now).text)
+    }
+}

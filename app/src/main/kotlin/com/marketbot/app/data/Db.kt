@@ -52,6 +52,21 @@ data class EquityEntity(
 @Entity(tableName = "audit")
 data class AuditEntity(@PrimaryKey val key: String, val value: String, val source: String, val origin: String, val note: String?, val at: Long)
 
+/** A record of a check the app ran: a P&L reconciliation against the exchange, kept as history. */
+@Serializable
+@Entity(tableName = "checks", indices = [Index("kind", "at")])
+data class CheckEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val at: Long, val kind: String, val ok: Boolean, val summary: String, val detail: String,
+)
+
+@Dao
+interface CheckDao {
+    @Insert suspend fun insert(c: CheckEntity)
+    @Query("SELECT * FROM checks WHERE kind = :kind ORDER BY at DESC LIMIT :limit") fun watch(kind: String, limit: Int): Flow<List<CheckEntity>>
+    @Query("DELETE FROM checks WHERE at < :before") suspend fun prune(before: Long)
+}
+
 @Dao
 interface QuoteDao {
     @Insert suspend fun insert(q: QuoteEntity): Long
@@ -125,7 +140,10 @@ interface BackupDao {
     @Query("DELETE FROM audit") suspend fun clearAudit()
 }
 
-@Database(entities = [QuoteEntity::class, EventEntity::class, StateEntity::class, EquityEntity::class, AuditEntity::class], version = MarketbotDb.VERSION, exportSchema = true)
+@Database(entities = [QuoteEntity::class, EventEntity::class, StateEntity::class, EquityEntity::class, AuditEntity::class, CheckEntity::class],
+    version = MarketbotDb.VERSION, exportSchema = true,
+    // Every version step is migrated, never rebuilt: a destructive fallback would silently erase the ledger.
+    autoMigrations = [androidx.room.AutoMigration(from = 1, to = 2)])
 abstract class MarketbotDb : RoomDatabase() {
     abstract fun quotes(): QuoteDao
     abstract fun events(): EventDao
@@ -133,10 +151,11 @@ abstract class MarketbotDb : RoomDatabase() {
     abstract fun equity(): EquityDao
     abstract fun audit(): AuditDao
     abstract fun backup(): BackupDao
+    abstract fun checks(): CheckDao
 
     companion object {
         /** Bump with a new exported schema in app/schemas and a migration; the schema test enforces both. */
-        const val VERSION = 1
+        const val VERSION = 2
 
         fun open(ctx: Context): MarketbotDb = Room.databaseBuilder(ctx, MarketbotDb::class.java, "marketbot.db").build()
         fun inMemory(ctx: Context): MarketbotDb = Room.inMemoryDatabaseBuilder(ctx, MarketbotDb::class.java).allowMainThreadQueries().build()

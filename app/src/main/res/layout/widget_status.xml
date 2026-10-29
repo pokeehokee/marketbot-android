@@ -12,8 +12,12 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:orientation="vertical">
-        <TextView android:id="@+id/w_state" android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="@string/app_name" android:textColor="#E3EAED" android:textSize="15sp" android:textStyle="bold" />
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <ImageView android:id="@+id/w_beat" android:layout_width="10dp" android:layout_height="10dp" android:layout_marginEnd="8dp"
+                android:src="@drawable/widget_dot" android:contentDescription="@string/widget_heartbeat" />
+            <TextView android:id="@+id/w_state" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="@string/app_name" android:textColor="#E3EAED" android:textSize="15sp" android:textStyle="bold" />
+        </LinearLayout>
         <TextView android:id="@+id/w_live" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:textColor="#A9B7BD" android:textSize="13sp" />
         <TextView android:id="@+id/w_paper" android:layout_width="wrap_content" android:layout_height="wrap_content"

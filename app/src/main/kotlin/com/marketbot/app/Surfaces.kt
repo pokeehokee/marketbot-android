@@ -81,8 +81,10 @@ object Surfaces {
                 suspend fun today(mode: com.marketbot.core.strategy.Mode) = app.engine.strategies.sumOf { s ->
                     com.marketbot.core.strategy.realisedSince(app.engine.stores.ledger.all(s.id, mode), since) }
                 val killed = app.engine.globalKill.value
+                val beat = WidgetBeat.of(app.engine.running.value, EngineService.wasRunning(ctx), Health.lastBeat(ctx), System.currentTimeMillis())
                 val v = RemoteViews(ctx.packageName, R.layout.widget_status).apply {
-                    setTextViewText(R.id.w_state, when { killed -> "Kill switch ON"; app.engine.running.value -> "Engine running"; else -> "Engine stopped" })
+                    setTextViewText(R.id.w_state, if (killed) "Kill switch ON" else beat.text)
+                    setInt(R.id.w_beat, "setColorFilter", beat.color)
                     setTextViewText(R.id.w_live, "Live today " + com.marketbot.core.strategy.money(today(com.marketbot.core.strategy.Mode.LIVE)))
                     setTextViewText(R.id.w_paper, "Paper today " + com.marketbot.core.strategy.money(today(com.marketbot.core.strategy.Mode.PAPER)))
                     setOnClickPendingIntent(R.id.w_root, PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
@@ -92,6 +94,28 @@ object Surfaces {
                 m.updateAppWidget(ids, v)
             }
             runCatching { TileService.requestListeningState(ctx, ComponentName(ctx, KillTileService::class.java)) }
+        }
+    }
+}
+
+/**
+ * The widget's heartbeat dot: green while the engine's 5-second heartbeat is fresh,
+ * amber when it is late, red when the engine should be running and is not (the
+ * phone stopped it), grey when it was stopped on purpose.
+ */
+data class WidgetBeat(val color: Int, val text: String) {
+    companion object {
+        private const val GREEN = 0xFF3CC08A.toInt(); private const val AMBER = 0xFFE2A93B.toInt()
+        private const val RED = 0xFFF0645A.toInt(); private const val GREY = 0xFF8A9BA3.toInt()
+
+        fun of(running: Boolean, shouldRun: Boolean, lastBeatMs: Long?, nowMs: Long): WidgetBeat {
+            val age = lastBeatMs?.let { (nowMs - it) / 1000 }
+            return when {
+                running && age != null && age < 30 -> WidgetBeat(GREEN, "Engine running")
+                running -> WidgetBeat(AMBER, "Engine slow: last beat ${age?.let { "${it / 60} min ago" } ?: "unknown"}")
+                shouldRun -> WidgetBeat(RED, "Engine stopped by the phone")
+                else -> WidgetBeat(GREY, "Engine stopped")
+            }
         }
     }
 }

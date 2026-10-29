@@ -1,5 +1,8 @@
 package com.marketbot.core.strategies.longshot
 
+import com.marketbot.core.strategy.FunnelStep
+import com.marketbot.core.strategy.Check
+import com.marketbot.core.strategy.AdverseSelection
 import com.marketbot.core.kalshi.FillState
 import com.marketbot.core.kalshi.KalshiMarket
 import com.marketbot.core.kalshi.makerFeeEstimate
@@ -222,15 +225,16 @@ class WeatherLongshot : Strategy {
         val already = openNow.map { it.ticker }.toSet()
         var openMarkets = openNow.filterNot { it.cancelledAt != null && (it.filledContracts ?: 0.0) == 0.0 }.map { it.ticker }.toSet().size
         val now = ctx.clock.now()
-        var shortLead = 0; var paused = 0; var deadBand = 0
+        var shortLead = 0; var paused = 0; var deadBand = 0; var quotedAlready = 0; var noBook = 0; var rejected = 0
         val byTicker = markets.associateBy { it.ticker }
         val accepted = mutableListOf<Candidate>()
         for (m in markets) {
-            if (m.ticker.isEmpty() || m.ticker in already) continue
-            val book = m.book ?: continue
+            if (m.ticker.isEmpty() || m.ticker in already) { quotedAlready++; continue }
+            val book = m.book
+            if (book == null) { noBook++; continue }
             val close = m.closeTime
             if (close != null && Duration.between(now, close).seconds / 3600.0 < r.minLeadHours) { shortLead++; continue }
-            if (LongshotModel.evaluate(m.ticker, book.yesBid.value, book.yesAsk.value, r = r) == null) continue
+            if (LongshotModel.evaluate(m.ticker, book.yesBid.value, book.yesAsk.value, r = r) == null) { rejected++; continue }
             if (WeatherSeries.kind(m.ticker) in r.pausedKinds) { paused++; continue }
             if (LongshotModel.inExcludedBand(book.yesAsk.value, r.excludedAskBands)) { deadBand++; continue }
             accepted += Candidate(m.ticker, book.yesBid.value, book.yesAsk.value)
@@ -293,7 +297,14 @@ class WeatherLongshot : Strategy {
         if (live) checkFeeTypes(ctx)
         val summary = "Quoted $placed market(s), ${money(locked)} collateral, expected ${money(expected)} if all fill; $resolved resolved."
         ctx.info("pass", summary)
-        return RunReport(summary)
+        var left = markets.size
+        fun step(label: String, out: Int) = FunnelStep(label, (left - out).also { left = it })
+        return RunReport(summary, funnel = listOf(
+            FunnelStep("Open markets in ${WeatherSeries.ALL.size} series", markets.size),
+            step("Not already quoted", quotedAlready), step("Have a two-sided book", noBook),
+            step("Close at least ${r.minLeadHours.roundToInt()} h away", shortLead), step("Price and spread pass the selector", rejected),
+            step("Kind not paused", paused), step("Ask outside skipped bands", deadBand),
+            FunnelStep("Offered within the budget", placed)))
     }
 
     private fun committedCollateral(open: List<QuoteRow>) = open.sumOf {
@@ -581,6 +592,22 @@ class WeatherLongshot : Strategy {
     }
 
     private fun quotedMid(q: QuoteRow) = StageGates.quotedMid(q)
+
+    override val outcomeBands get() = AdverseSelection.LONGSHOT_BANDS
+
+    /** The source repo's kill criteria and stage gates, plus the maker-fee check, on the [mode] record. */
+    override suspend fun healthChecks(ctx: StrategyContext, mode: Mode): List<Check> {
+        val rows = ctx.stores.ledger.all(id, mode)
+        val now = ctx.clock.now()
+        fun conv(l: StageGates.Line) = Check(l.name, Check.Verdict.valueOf(l.verdict.name), l.detail)
+        val since = if (mode == Mode.LIVE) stageSince(ctx) else rows.minOfOrNull { it.placedAt } ?: now
+        val fee = when (ctx.stores.state.get("$id.${mode.name.lowercase()}.fee_types_ok")) {
+            "false" -> Check("Traded series charge no maker fee", Check.Verdict.KILL, "a series moved off fee_type=quadratic: resting fills may now pay a fee")
+            "true" -> Check("Traded series charge no maker fee", Check.Verdict.CLEAR, "every traded series is fee_type=quadratic")
+            else -> null
+        }
+        return StageGates.kills(rows, now).map(::conv) + listOfNotNull(fee) + StageGates.gates(rows, since, brakeTrips(ctx, mode), now).map(::conv)
+    }
 
     companion object {
         val SETTLED = setOf("settled", "finalized", "closed", "determined")

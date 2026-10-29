@@ -184,6 +184,7 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SystemSettings(vm)
+        ReconciliationSection(vm)
         BackupSection(vm)
         Section(stringResource(R.string.data)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

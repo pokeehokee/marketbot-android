@@ -301,6 +301,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         kotlinx.coroutines.delay(3_000); refreshAccounts()
     }
 
+    // ---------------------------------------------------------------- the record: health, outcomes, collateral, reconciliation
+    val reconciliations = a.db.checks().watch("pnl_recon", 10).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun reconcileNow() = once("recon") { val r = engine.reconcilePnl(); a.recordCheck(r); say(r.summary) }
+    suspend fun health(s: Strategy, mode: Mode) = withContext(Dispatchers.IO) { engine.healthChecks(s, mode) }
+
+    /** The rows a record read-out uses: live when there are live rows, else paper. */
+    suspend fun recordRows(s: Strategy): Pair<Mode, List<com.marketbot.core.store.QuoteRow>> = withContext(Dispatchers.IO) {
+        val live = engine.stores.ledger.all(s.id, Mode.LIVE)
+        if (live.isNotEmpty()) Mode.LIVE to live else Mode.PAPER to engine.stores.ledger.all(s.id, Mode.PAPER)
+    }
+
     // ---------------------------------------------------------------- health and system
     /** Server minus phone time, worst across hosts. Signing corrects for it, but past a few seconds the phone's clock is wrong. */
     fun clockSkewMs(): Long? = com.marketbot.core.net.NetStats.worstSkewMs()

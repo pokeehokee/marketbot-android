@@ -115,6 +115,7 @@ class RewardFarm : Strategy {
         var lastScan = Instant.EPOCH; var lastTick: Instant? = null; var paper: PaperFarmBroker? = null; var scannedOnce = false
         var lastSettleCheck = Instant.EPOCH; val metas = mutableMapOf<String, PmMarketMeta>()
         var live: LiveFarmBroker? = null
+        var funnel: List<com.marketbot.core.strategy.FunnelStep> = emptyList()
         /** Paper: public trade prints, when a Polymarket key is set (pmfarm's TradeStream). */
         var prints: com.marketbot.core.polymarket.PmTradeStream? = null
         /** Live: cancels the exchange may not have applied yet; their size still shows in the public book for up to 45 s. */
@@ -221,7 +222,8 @@ class RewardFarm : Strategy {
                 bal.exchangeEquity?.let { put("exchange_equity", it) }
                 put("est_rewards_per_day", Sourced.derived(estRate, "program scoring formula x calibration", "an estimate; only earnings are paid"))
             })
-        return RunReport("tick")
+        return RunReport("tick", funnel = if (rt.funnel.isEmpty()) emptyList() else
+            rt.funnel + com.marketbot.core.strategy.FunnelStep("Quoting now", orders.map { it.slug }.toSet().size))
     }
 
     private fun printStream(ctx: StrategyContext, rt: Rt): com.marketbot.core.polymarket.PmTradeStream? {
@@ -254,6 +256,10 @@ class RewardFarm : Strategy {
         rt.known.putAll(cands.associateBy { it.slug })
         rt.targets = selected.associate { it.slug to rt.known.getValue(it.slug) }
         rt.scannedOnce = true
+        rt.funnel = listOf(com.marketbot.core.strategy.FunnelStep("Markets in active reward programs", all.size),
+            com.marketbot.core.strategy.FunnelStep("Pass the top-of-book screen", cands.size),
+            com.marketbot.core.strategy.FunnelStep("A quote fits the rules and budget", plans.size),
+            com.marketbot.core.strategy.FunnelStep("Selected to work", selected.size))
         ctx.info("scan", "${all.size} in programs, ${cands.size} passed the top-of-book screen, ${plans.size} plannable, ${selected.size} selected (est ${money(selected.sumOf { it.usdPerDay })}/day after calibration).")
     }
 

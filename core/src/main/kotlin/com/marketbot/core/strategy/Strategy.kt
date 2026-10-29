@@ -130,7 +130,14 @@ data class Requirement(val id: String, val label: String, val met: Boolean, val 
 
 data class PreflightResult(val ok: Boolean, val steps: List<Pair<String, Boolean>>, val message: String)
 
-data class RunReport(val summary: String, val values: Map<String, Sourced<*>> = emptyMap())
+data class RunReport(val summary: String, val values: Map<String, Sourced<*>> = emptyMap(), val funnel: List<FunnelStep> = emptyList())
+
+/**
+ * One step of a pass's selection, for "why didn't it trade?": how many markets
+ * were still in the running after it. The first step is what was looked at.
+ */
+@kotlinx.serialization.Serializable
+data class FunnelStep(val label: String, val count: Int)
 
 /** A one-line stat for the strategy screen, with its source. */
 data class Stat(val label: String, val value: Sourced<String>)
@@ -224,6 +231,15 @@ interface Strategy {
 
     /** Headline numbers for the strategy screen. */
     suspend fun stats(ctx: StrategyContext): List<Stat>
+
+    /**
+     * Kill criteria and gates judged on this strategy's own [mode] record. A KILL on
+     * the live record disarms live trading (the engine does it, once per finding).
+     */
+    suspend fun healthChecks(ctx: StrategyContext, mode: Mode): List<Check> = emptyList()
+
+    /** Price bands for the fills-by-outcome table, or null when the strategy has no binary orders. */
+    val outcomeBands: List<Pair<Double, Double>>? get() = null
 }
 
 /** Every problem with [config]: each setting's own range or format, then the strategy's cross-checks. */

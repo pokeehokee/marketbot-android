@@ -126,6 +126,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             ValueRow("Last pass", st?.lastRunAt?.short() ?: "never", null)
             ValueRow("Result", st?.lastSummary ?: "-", null)
             st?.nextRunAt?.let { ValueRow("Next pass", it.short(), null) }
+            st?.funnel?.let { FunnelView(it) }
             st?.lastError?.let { ErrorCard(it) { vm.runNow(s) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ vm.runNow(s) }, enabled = "run:${s.id}" !in busy) {
@@ -143,6 +144,9 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             }
         }
         RecordSection(vm, s)
+        HealthSection(vm, s)
+        OutcomesSection(vm, s)
+        CollateralSection(vm, s)
         Section(stringResource(R.string.evidence)) {
             EvidenceBadge(s.evidence.level)
             Spacer(Modifier.size(6.dp))

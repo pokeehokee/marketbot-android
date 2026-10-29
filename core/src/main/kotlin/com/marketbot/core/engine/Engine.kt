@@ -66,6 +66,8 @@ data class StrategyStatus(
     val lastSummary: String?,
     val nextRunAt: Instant?,
     val lastError: String?,
+    /** How the last pass narrowed the markets it looked at down to the orders it placed. */
+    val funnel: List<com.marketbot.core.strategy.FunnelStep> = emptyList(),
 )
 
 @Serializable
@@ -475,7 +477,8 @@ class Engine(
         try {
             val r = withTimeoutOrNull(10 * 60_000L) { s.runOnce(c) }
             publish(s.id) { it.copy(lastRunAt = started, lastSummary = r?.summary ?: "timed out", lastError = if (r == null) "pass timed out after 10 min" else null,
-                mode = c.mode, armed = c.liveArmed) }
+                mode = c.mode, armed = c.liveArmed, funnel = r?.funnel?.takeIf { f -> f.isNotEmpty() } ?: it.funnel) }
+            if (c.liveArmed) disarmIfKilled(s, c)
             r != null
         } catch (e: CancellationException) {
             throw e
@@ -487,6 +490,62 @@ class Engine(
             _busy.update { it - 1 }
         }
     }
+
+    private val lastHealth = java.util.concurrent.ConcurrentHashMap<String, Instant>()
+
+    /**
+     * At most hourly while a strategy trades live: if one of its kill criteria fires
+     * on the live record, live trading is disarmed (it drops to paper) and the user
+     * is told which criterion and why. Re-arming goes through the checklist, which
+     * shows the same criterion, so it cannot be waved through by accident.
+     */
+    private suspend fun disarmIfKilled(s: Strategy, c: StrategyContext) {
+        val now = clock.now()
+        val last = lastHealth[s.id]
+        if (last != null && java.time.Duration.between(last, now) < java.time.Duration.ofHours(1)) return
+        lastHealth[s.id] = now
+        val kill = runCatching { s.healthChecks(c, Mode.LIVE) }.getOrNull()?.firstOrNull { it.verdict == com.marketbot.core.strategy.Check.Verdict.KILL } ?: return
+        log(s.id, LogEvent.Level.ERROR, "kill", "Kill criterion fired on the live record: ${kill.name} (${kill.detail}). Live trading disarmed; the strategy continues in paper.")
+        notifier("${s.name} disarmed", "Kill criterion: ${kill.name}. ${kill.detail}")
+        // As a manual switch to paper does: stop while still live (so live orders are handled as on any stop), then paper.
+        // Launched, because this runs inside the pass that the stop waits for.
+        scope?.launch {
+            stopStrategy(s, callOnStop = true)
+            stores.state.put("strategy.${s.id}.armed", null)
+            stores.state.put("strategy.${s.id}.mode", Mode.PAPER.name)
+            launchStrategy(s)
+            publish(s.id) { it.copy(mode = Mode.PAPER, armed = false) }
+        }
+    }
+
+    /** Health of a strategy's record in [mode], for its screen. */
+    suspend fun healthChecks(s: Strategy, mode: Mode): List<com.marketbot.core.strategy.Check> =
+        runCatching { s.healthChecks(ctx(s, mode), mode) }.getOrElse { listOf(com.marketbot.core.strategy.Check("Health checks", com.marketbot.core.strategy.Check.Verdict.INSUFFICIENT, "could not be computed: ${it.message}")) }
+
+    /** Compare live Kalshi P&L in the ledger with Kalshi's settlement figures; once a day from the service, or on demand. */
+    suspend fun reconcilePnl(): com.marketbot.core.strategy.PnlReconciliation {
+        val rows = strategies.flatMap { stores.ledger.all(it.id, Mode.LIVE) }
+        val r = com.marketbot.core.strategy.PnlReconcile.kalshi(kalshi, rows, clock.now())
+        stores.state.put("engine.recon_last", JSON.encodeToString(com.marketbot.core.strategy.PnlReconciliation.serializer(), r))
+        val lvl = if (r.error != null || !r.clean) LogEvent.Level.WARN else LogEvent.Level.INFO
+        if (r.compared > 0 || r.error != null || r.notAtExchange.isNotEmpty()) log(null, lvl, "reconcile", r.summary)
+        if (!r.clean && r.error == null) notifier("P&L differs from Kalshi", r.summary)
+        return r
+    }
+
+    /** The daily reconciliation, after 09:00 local, when a Kalshi key is set. Returns the result when it ran. */
+    suspend fun reconcileIfDue(zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): com.marketbot.core.strategy.PnlReconciliation? {
+        if (!kalshi.hasCredentials) return null
+        val now = clock.now().atZone(zone)
+        if (now.hour < 9) return null
+        val today = now.toLocalDate().toString()
+        if (stores.state.get("engine.recon_day") == today) return null
+        stores.state.put("engine.recon_day", today)
+        return reconcilePnl()
+    }
+
+    suspend fun lastReconciliation(): com.marketbot.core.strategy.PnlReconciliation? = stores.state.get("engine.recon_last")
+        ?.let { runCatching { JSON.decodeFromString(com.marketbot.core.strategy.PnlReconciliation.serializer(), it) }.getOrNull() }
 
     private suspend fun stopStrategy(s: Strategy, callOnStop: Boolean) {
         val job = lock.withLock { jobs.remove(s.id) }
