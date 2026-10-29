@@ -52,6 +52,19 @@
     <string name="heartbeat_url">Check ping address</string>
     <string name="send_test_ping">Send test ping</string>
     <string name="last_ping">Last ping: %1$s</string>
+    <string name="by_period">By period</string>
+    <string name="after_the_fill">After the fill (%1$s)</string>
+    <string name="markout_help">Average gain per contract if each filled position were marked at the mid this long after the app saw the fill. Steadily negative means fills come when they hurt, visible within the hour instead of at settlement.</string>
+    <string name="calibration_title">Calibration (%1$s)</string>
+    <string name="calibration_help">How often the markets this strategy quoted settled YES, against the probability their price gave at the time.</string>
+    <string name="calibration_footer">Ratio = settled YES / priced. Below 1 at low prices is the favourite-longshot bias paying; coloured once a bucket has 30 markets. Research = the weatherbot strict sample.</string>
+    <string name="locks_title">Locks</string>
+    <string name="no_locks">No locks. A protection that fires adds one here, with its reason and when it lifts.</string>
+    <string name="unlock">Lift</string>
+    <string name="protections_title">Protections</string>
+    <string name="protections_help">Each pauses new orders for a while when its condition holds; exits and cancels continue. None has been measured on these strategies, so all start off: try one in paper first.</string>
+    <string name="notifications_title">Notifications</string>
+    <string name="safety_off_warning">With safety notifications off, you will not hear about kills, brakes or a tripped fill limit.</string>
     <string name="as_of">as of %1$s</string>
     <string name="paper_accounts">Paper accounts</string>
     <string name="strategies">Strategies</string>

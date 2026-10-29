@@ -315,6 +315,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (live.isNotEmpty()) Mode.LIVE to live else Mode.PAPER to engine.stores.ledger.all(s.id, Mode.PAPER)
     }
 
+    // ---------------------------------------------------------------- reports, locks, protections
+    suspend fun periods(mode: Mode, unit: com.marketbot.core.strategy.Periods.Unit, n: Int) = withContext(Dispatchers.Default) {
+        val rows = strategies.flatMap { engine.stores.ledger.all(it.id, mode) }
+        com.marketbot.core.strategy.Periods.table(rows, unit, n, java.time.ZoneId.systemDefault(), java.time.Instant.now())
+    }
+    private val _locksChanged = MutableStateFlow(0)
+    val locksChanged = _locksChanged.asStateFlow()
+    suspend fun activeLocks() = withContext(Dispatchers.IO) { engine.locks.active(java.time.Instant.now()) }
+    fun unlock(l: com.marketbot.core.strategy.Lock) = once("unlock:${l.id}") {
+        engine.locks.remove(l.id, java.time.Instant.now())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "lock", "Lock lifted by hand: ${l.reason} (${l.strategyId}${l.series?.let { ", $it" } ?: ""}).")
+        _locksChanged.update { it + 1 }; say("Lock lifted.")
+    }
+    suspend fun protections() = withContext(Dispatchers.IO) { com.marketbot.core.strategy.Protection.load(engine.stores.state) }
+    fun saveProtection(p: com.marketbot.core.strategy.Protection) = once("protection") {
+        val all = com.marketbot.core.strategy.Protection.load(engine.stores.state).map { if (it.type == p.type) p else it }
+        com.marketbot.core.strategy.Protection.save(engine.stores.state, all)
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "protection", "${p.type.label} ${if (p.enabled) "on" else "off"}: look-back ${p.lookbackHours} h, " +
+            "limit ${p.tradeLimit}, lock ${p.stopHours} h" + (if (p.type == com.marketbot.core.strategy.Protection.Type.MAX_DRAWDOWN) ", drawdown ${money(p.maxDrawdownUsd)}" else "") + ".")
+        _locksChanged.update { it + 1 }
+    }
+
     // ---------------------------------------------------------------- safety at the exchanges
     suspend fun fillLimit(): Int = withContext(Dispatchers.IO) {
         engine.stores.state.get(com.marketbot.core.engine.Engine.FILL_LIMIT_KEY)?.toIntOrNull() ?: com.marketbot.core.engine.Engine.DEFAULT_FILL_LIMIT }

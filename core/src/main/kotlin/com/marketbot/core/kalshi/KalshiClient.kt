@@ -59,6 +59,9 @@ class KalshiClient(
      */
     @Volatile var fillLimit: FillLimit? = null
 
+    /** The last check before any order leaves the phone: a non-null reason refuses it (the kill switch). */
+    @Volatile var orderGate: (() -> com.marketbot.core.strategy.Reason?)? = null
+
     private fun requireSigner(): RequestSigner =
         signer ?: throw IllegalStateException("Kalshi API key not configured")
 
@@ -166,6 +169,7 @@ class KalshiClient(
     ): PlacedOrder {
         require(side == "bid" || side == "ask") { "side must be bid or ask" }
         require(count >= 1) { "refusing an order of $count contracts" }
+        orderGate?.invoke()?.let { throw com.marketbot.core.strategy.OrderDenied(it) }
         val shard = exchangeIndex ?: 0
         val group = fillLimit?.let { fl ->
             fl.trippedAt(shard)?.let { throw FillLimitTripped(shard, it) }

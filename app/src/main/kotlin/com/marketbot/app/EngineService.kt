@@ -98,7 +98,8 @@ class EngineService : LifecycleService() {
             }
             if (app.engine.busy.value == 0) AlarmReceiver.releasePassLock()
             Health.beat(this)
-            app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.trade(this, t, b) }
+            app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.post(this, "daily", t, b) }
+            runCatching { app.engine.trackMarkoutsIfDue() }
             runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
             runCatching { app.engine.reconcileOrdersIfDue() }
             // Off the main thread: the ping is a network call.

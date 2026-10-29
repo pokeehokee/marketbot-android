@@ -82,6 +82,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
 
         PortfolioHeader(vm)
         EquitySection(vm)
+        PeriodsSection(vm)
         val resumed = rememberResumeCount()
         val batteryOk = remember(resumed) { ignoringBattery(ctx) }
         if (!batteryOk) Surface(shape = Radius.banner, color = LocalDesk.current.warn.copy(alpha = 0.12f),
@@ -141,6 +142,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                         Text(s.name, style = MaterialTheme.typography.titleSmall)
                         Text(st?.lastSummary?.let { "Last: $it" } ?: s.venue.label, style = MaterialTheme.typography.bodySmall,
                             color = if (st?.lastError != null) LocalDesk.current.loss else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        if (st?.state != null && st.state != com.marketbot.core.strategy.TradingState.ACTIVE || st?.reason != null) TradingStateLine(st)
                     }
                     ModePill(mode, st?.armed == true, running)
                 }

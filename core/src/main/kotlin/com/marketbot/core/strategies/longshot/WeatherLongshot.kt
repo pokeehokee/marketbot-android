@@ -252,7 +252,9 @@ class WeatherLongshot : Strategy {
         var budget = budget0
         var placed = 0; var locked = 0.0; var expected = 0.0
         val feeTypes = mutableMapOf<String, Sourced<String>?>()
+        var gated = 0
         for (c in ordered) {
+            if (ctx.gate(c.ticker) != null) { gated++; continue }
             val affordable = LongshotModel.sizeForBudget(c.yesAsk, budget, lot)
             if (affordable <= 0) continue
             val q = LongshotModel.evaluate(c.ticker, c.yesBid, c.yesAsk, openMarkets, affordable, r) ?: continue
@@ -303,7 +305,7 @@ class WeatherLongshot : Strategy {
             FunnelStep("Open markets in ${WeatherSeries.ALL.size} series", markets.size),
             step("Not already quoted", quotedAlready), step("Have a two-sided book", noBook),
             step("Close at least ${r.minLeadHours.roundToInt()} h away", shortLead), step("Price and spread pass the selector", rejected),
-            step("Kind not paused", paused), step("Ask outside skipped bands", deadBand),
+            step("Kind not paused", paused), step("Ask outside skipped bands", deadBand), step("Not locked", gated),
             FunnelStep("Offered within the budget", placed)))
     }
 

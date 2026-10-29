@@ -122,6 +122,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
             if (mode != Mode.OFF && !running) Text(stringResource(R.string.the_engine_is_off_so_nothing_runs_start), style = MaterialTheme.typography.bodySmall,
                 color = LocalDesk.current.warn, modifier = Modifier.padding(top = 6.dp))
             if (s.needsBtcIndex && mode != Mode.OFF && running) WarmUp(vm)
+            TradingStateLine(st)
             Spacer(Modifier.size(8.dp))
             ValueRow("Last pass", st?.lastRunAt?.short() ?: "never", null)
             ValueRow("Result", st?.lastSummary ?: "-", null)
@@ -146,6 +147,8 @@ private fun Overview(vm: MainViewModel, s: Strategy, onGoLive: () -> Unit) {
         RecordSection(vm, s)
         HealthSection(vm, s)
         OutcomesSection(vm, s)
+        MarkoutSection(vm, s)
+        CalibrationSection(vm, s)
         CollateralSection(vm, s)
         Section(stringResource(R.string.evidence)) {
             EvidenceBadge(s.evidence.level)

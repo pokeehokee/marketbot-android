@@ -324,6 +324,7 @@ class RewardFarm : Strategy {
         for (d in want) {
             if (d in keep || d.side in stuck || (stuck.isNotEmpty() && d.kind == "entry")) continue
             if (d.kind == "entry" && slots <= 0) continue
+            if (d.kind == "entry" && ctx.gate(slug) != null) continue   // locked: exits still go out
             var expires = now.plusSeconds((r.orderTtlMin * 60).toLong())
             if (start != null && start.isAfter(now)) expires = minOf(expires, start.minusSeconds((r.eventCutoffMin * 60).toLong()))
             if (!expires.isAfter(now.plusSeconds(60))) continue

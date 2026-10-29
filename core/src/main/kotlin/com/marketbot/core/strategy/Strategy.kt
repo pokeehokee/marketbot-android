@@ -160,7 +160,12 @@ class StrategyContext(
     val notify: suspend (title: String, body: String) -> Unit = { _, _ -> },
     /** Trade notices (fills, settlements): a quieter channel than [notify]'s alerts. */
     val tradeNotify: suspend (title: String, body: String) -> Unit = { _, _ -> },
+    /** Why a NEW order on a market may not be placed now (a lock, the kill switch), or null. Exits and cancels never ask. */
+    private val gateFn: suspend (ticker: String) -> Reason? = { null },
 ) {
+    /** Strategies call this before every new (position-opening) order. */
+    suspend fun gate(ticker: String): Reason? = gateFn(ticker)
+
     suspend fun log(level: LogEvent.Level, kind: String, message: String, values: Map<String, Sourced<*>> = emptyMap()) {
         stores.events.log(LogEvent(clock.now(), strategyId, level, kind, message, values))
         for ((k, v) in values) stores.audit.record("$strategyId.$k", v)

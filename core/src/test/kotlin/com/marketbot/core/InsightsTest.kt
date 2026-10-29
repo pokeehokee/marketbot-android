@@ -153,7 +153,7 @@ class InsightsTest {
             fake.client(false), PolymarketClient(null), BtcIndex(venues = emptyMap(), candles = { emptyList() }), liveArmed = false)
         val f = s.runOnce(ctx).funnel
         assertEquals(4, f.first().count)
-        assertEquals(listOf(4, 4, 4, 3, 2, 2, 1, 1), f.map { it.count }, f.toString())
+        assertEquals(listOf(4, 4, 4, 3, 2, 2, 1, 1, 1), f.map { it.count }, f.toString())
         assertTrue(f.zipWithNext().all { (a, b) -> b.count <= a.count }, "each step can only narrow")
     }
 }

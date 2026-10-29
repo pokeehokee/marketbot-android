@@ -235,6 +235,7 @@ abstract class DeepItmStrategy(
         val live = ctx.stores.ledger.open(id, mode).filter { it.resting }.map { it.ticker }.toSet()
         for ((ticker, c) in chosen) {
             if (ticker in live || ticker in held) continue
+            if (ctx.gate(ticker) != null) continue
             val m = markets.first { it.ticker == ticker }
             var orderId: String? = null; var coid: String? = null
             val expiry = minOf(m.close, now.plus(deadMan))

@@ -76,3 +76,20 @@ class HeartbeatTest {
         kotlin.test.assertFalse(Heartbeat.beatIfDue(null), "no address, no ping")
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+class NotifyPrefsTest {
+    @org.junit.Test fun `each kind follows its own setting, and safety starts on`() {
+        val ctx = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        kotlin.test.assertEquals(NotifyPrefs.Level.ON, NotifyPrefs.get(ctx, "safety"))
+        NotifyPrefs.set(ctx, "fills", NotifyPrefs.Level.SILENT)
+        NotifyPrefs.set(ctx, "daily", NotifyPrefs.Level.OFF)
+        kotlin.test.assertEquals(NotifyPrefs.Level.SILENT, NotifyPrefs.get(ctx, "fills"))
+        MarketbotApp.createChannels(ctx)
+        val nm = org.robolectric.Shadows.shadowOf(ctx.getSystemService(android.app.NotificationManager::class.java))
+        MarketbotApp.post(ctx, "daily", "Yesterday", "x")
+        kotlin.test.assertEquals(0, nm.allNotifications.size, "off posts nothing")
+        MarketbotApp.post(ctx, "fills", "Filled", "y")
+        kotlin.test.assertEquals(MarketbotApp.CH_QUIET, nm.allNotifications.single().channelId)
+    }
+}

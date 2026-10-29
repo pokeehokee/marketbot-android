@@ -217,7 +217,11 @@ class PolymarketClient(
      * docs, which is why NO/short orders are blocked until the preflight check
      * confirms it with `/v1/order/preview`.
      */
+    /** The last check before any order leaves the phone: a non-null reason refuses it (the kill switch). */
+    @Volatile var orderGate: (() -> com.marketbot.core.strategy.Reason?)? = null
+
     suspend fun placeOrder(slug: String, intent: String, wirePrice: Double, qty: Double, goodTill: Instant? = null): String? {
+        orderGate?.invoke()?.let { throw com.marketbot.core.strategy.OrderDenied(it) }
         val body = buildJsonObject {
             put("marketSlug", slug)
             put("intent", intent)
