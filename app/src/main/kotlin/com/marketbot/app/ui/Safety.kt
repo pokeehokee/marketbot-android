@@ -77,6 +77,24 @@ fun SafetySection(vm: MainViewModel) {
             Text(stringResource(if ("order_recon" in busy) R.string.running else R.string.check_now)) }
     }
 
+    Section(stringResource(R.string.contract_title)) {
+        Text(stringResource(R.string.contract_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val runsC by vm.contractRuns.collectAsState()
+        val rep = loaded(runsC) { vm.contractReport() }
+        if (rep == null) Text(stringResource(R.string.contract_never), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Space.xs))
+        else Column(Modifier.padding(top = Space.xs)) {
+            Text(rep.summary, style = MaterialTheme.typography.bodySmall,
+                color = when { rep.failures.isNotEmpty() -> LocalDesk.current.loss; rep.warnings.isNotEmpty() -> LocalDesk.current.warn; else -> MaterialTheme.colorScheme.onSurface })
+            (rep.failures + rep.warnings).take(8).forEach { f ->
+                Text("· ${f.area}, ${f.check}: ${f.detail}. Affects ${f.affects}.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            runCatching { java.time.Instant.parse(rep.at) }.getOrNull()?.let {
+                Text(stringResource(R.string.contract_last, it.short(), rep.findings.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        OutlinedButton({ vm.runContractCheck() }, enabled = "contract" !in busy) {
+            Text(stringResource(if ("contract" in busy) R.string.running else R.string.check_now)) }
+    }
+
     Section(stringResource(R.string.heartbeat_title)) {
         Text(stringResource(R.string.heartbeat_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         var url by remember { mutableStateOf(vm.heartbeatUrl() ?: "") }

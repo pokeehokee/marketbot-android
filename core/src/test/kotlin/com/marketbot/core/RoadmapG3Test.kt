@@ -115,3 +115,21 @@ class RoadmapG3Test {
         assertEquals(t0.plusSeconds(4 * 3600), l.untilInstant)
     }
 }
+
+class VariantEquityTest {
+    @kotlin.test.Test fun `a paper variant does not write the venue's paper equity curve`() = kotlinx.coroutines.runBlocking {
+        val fake = FakeKalshi()
+        try {
+            val stores = com.marketbot.core.store.inMemoryStores()
+            val clock = com.marketbot.core.util.MutableClock(Instant.parse("2026-10-27T20:00:00Z"))
+            for (s in listOf(WeatherLongshot(), WeatherLongshot("${WeatherLongshot.ID}@b", WeatherLongshot.ID))) {
+                val ctx = com.marketbot.core.strategy.StrategyContext(s.id, Mode.PAPER, com.marketbot.core.strategy.StrategyConfig(s.params), stores, clock,
+                    fake.client(false), com.marketbot.core.polymarket.PolymarketClient(null),
+                    com.marketbot.core.btc.BtcIndex(venues = emptyMap(), candles = { emptyList() }), liveArmed = false)
+                s.runOnce(ctx)
+            }
+            assertEquals(1, stores.equity.history("kalshi", Mode.PAPER, Instant.EPOCH).size, "only the base strategy's paper cash")
+        } finally { fake.close() }
+        Unit
+    }
+}

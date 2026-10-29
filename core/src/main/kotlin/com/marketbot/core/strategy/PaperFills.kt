@@ -28,7 +28,7 @@ object TapeFillModel {
     /** (volume, strictlyThrough) a print contributes to OUR bid, or (0, false). Port of `qualifying`. */
     fun qualifying(trade: JsonObject, side: String, price: Double): Pair<Double, Boolean> {
         val n = trade.num("count_fp") ?: trade.num("count") ?: 0.0
-        val taker = trade.str("taker_side")
+        val taker = com.marketbot.core.contract.Vocabulary.kalshiTakerSide(trade)
         val px = when {
             side == "yes" && taker == "no" -> trade.num("yes_price_dollars")
             side == "no" && taker == "yes" -> trade.num("no_price_dollars")

@@ -69,7 +69,7 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
     private var settlementsAt = Instant.EPOCH
 
     /** The crypto shard. KXBTCD markets carry exchange_index 2; the status read is per shard. */
-    override suspend fun tradingOpen(): Boolean = k.tradingActive(2).value
+    override suspend fun tradingOpen(): Boolean = k.tradingActive(com.marketbot.core.contract.Vocabulary.KXBTCD_SHARD).value
 
     override suspend fun ladder(now: Instant, spot: Double, sigma: Double): List<LadderMarket> {
         val (event, close) = DeepItmRule.nextHourEvent(now, series)
@@ -166,7 +166,7 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
     }
 
     private fun toLadder(m: KalshiMarket): LadderMarket? {
-        if (m.strikeType != "greater") return null
+        if (m.strikeType != com.marketbot.core.contract.Vocabulary.KXBTCD_STRIKE_TYPE) return null
         val strike = m.floorStrike ?: return null
         val close = m.closeTime ?: return null
         return LadderMarket(m.ticker, strike, close, m.num("yes_bid_dollars"), m.num("no_bid_dollars"),
@@ -200,7 +200,7 @@ class PolymarketBtcLadder(private val pm: PolymarketClient) : LadderVenue {
     fun eventSlug(now: Instant): Pair<String, Instant> {
         var day = ZonedDateTime.ofInstant(now, ET).withHour(17).withMinute(0).withSecond(0).withNano(0)
         if (!day.toInstant().isAfter(now)) day = day.plusDays(1)
-        return "btc-above-day-%04d-%02d-%02d".format(day.year, day.monthValue, day.dayOfMonth) to day.toInstant()
+        return (com.marketbot.core.contract.Vocabulary.PM_BTC_EVENT_PREFIX + "%04d-%02d-%02d").format(day.year, day.monthValue, day.dayOfMonth) to day.toInstant()
     }
 
     override suspend fun ladder(now: Instant, spot: Double, sigma: Double): List<LadderMarket> {

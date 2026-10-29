@@ -86,6 +86,9 @@ class EngineService : LifecycleService() {
     }
 
     /** Re-evaluates every few seconds whether to hold the CPU or hand over to an alarm. */
+    private var lastContractTry = 0L
+    private var contractJob: kotlinx.coroutines.Job? = null
+
     private suspend fun managePower(app: MarketbotApp) {
         while (lifecycleScope.isActive) {
             val continuous = app.engine.needsContinuousWake()
@@ -103,6 +106,11 @@ class EngineService : LifecycleService() {
             runCatching { app.engine.trackMarkoutsIfDue() }
             runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
             runCatching { app.engine.reconcileOrdersIfDue() }
+            // The daily API wording check runs beside the loop (about 50 reads), at most one at a time.
+            if (System.currentTimeMillis() - lastContractTry > 30 * 60_000L && contractJob?.isActive != true && Connectivity.online(this)) {
+                lastContractTry = System.currentTimeMillis()
+                contractJob = lifecycleScope.launch(Dispatchers.IO) { runCatching { app.engine.contractCheckIfDue() } }
+            }
             // Off the main thread: the ping is a network call.
             kotlinx.coroutines.withContext(Dispatchers.IO) { Heartbeat.beatIfDue(app.vault.heartbeatUrl(), online = Connectivity.online(this@EngineService)) }
             if (System.currentTimeMillis() - lastPrune > 86_400_000L) { lastPrune = System.currentTimeMillis(); app.pruneRoutine() }

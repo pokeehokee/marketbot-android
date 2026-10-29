@@ -457,6 +457,50 @@ class Engine(
      * resting at the exchange in the app's markets that no ledger knows is reported
      * (once per order) and left alone, since another device may own it.
      */
+    // ---------------------------------------------------------------- daily API wording check
+    @Volatile var lastContract: com.marketbot.core.contract.ApiContract.Report? = null; private set
+    private val contractMutex = kotlinx.coroutines.sync.Mutex()
+    /** What the daily check runs; replaced in tests, which must not reach the venues. */
+    var contractRunner: suspend (KalshiClient, PolymarketClient, Instant) -> com.marketbot.core.contract.ApiContract.Report =
+        { k, p, t -> com.marketbot.core.contract.ApiContract.run(k, p, t) }
+
+    /** The last report, from memory or the state store. */
+    suspend fun contractReport(): com.marketbot.core.contract.ApiContract.Report? = lastContract
+        ?: stores.state.get(CONTRACT_KEY)?.let { runCatching { JSON.decodeFromString(com.marketbot.core.contract.ApiContract.Report.serializer(), it) }.getOrNull() }
+            ?.also { lastContract = it }
+
+    /**
+     * Once a day: are the venues still answering in the words the app relies on
+     * (com.marketbot.core.contract.ApiContract)? Read-only. A finding that is new since the
+     * last run is notified once as a safety notice; a run that only skipped (offline) is
+     * not recorded, so it does not hide yesterday's result.
+     */
+    suspend fun contractCheckIfDue(every: java.time.Duration = java.time.Duration.ofHours(24)): com.marketbot.core.contract.ApiContract.Report? {
+        val prev = contractReport()
+        if (prev != null && java.time.Duration.between(Instant.parse(prev.at), clock.now()) < every) return null
+        return contractCheck()
+    }
+
+    suspend fun contractCheck(): com.marketbot.core.contract.ApiContract.Report = contractMutex.withLock {
+        val prev = contractReport()
+        val r = contractRunner(kalshi, polymarket, clock.now())
+        if (r.findings.all { it.verdict == com.marketbot.core.contract.ApiContract.Verdict.SKIP }) return@withLock r
+        lastContract = r
+        stores.state.put(CONTRACT_KEY, JSON.encodeToString(com.marketbot.core.contract.ApiContract.Report.serializer(), r))
+        val bad = setOf(com.marketbot.core.contract.ApiContract.Verdict.FAIL, com.marketbot.core.contract.ApiContract.Verdict.WARN)
+        fun key(f: com.marketbot.core.contract.ApiContract.Finding) = "${f.area}/${f.check}/${f.verdict}"
+        val seen = prev?.findings?.filter { it.verdict in bad }?.map(::key)?.toSet() ?: emptySet()
+        val fresh = r.findings.filter { it.verdict in bad && key(it) !in seen }
+        if (fresh.isNotEmpty()) {
+            val fail = fresh.any { it.verdict == com.marketbot.core.contract.ApiContract.Verdict.FAIL }
+            stores.events.log(com.marketbot.core.store.LogEvent(clock.now(), null, if (fail) com.marketbot.core.store.LogEvent.Level.ERROR else com.marketbot.core.store.LogEvent.Level.WARN,
+                "api_contract", fresh.joinToString("\n") { it.line }))
+            notify("safety", if (fail) "A venue changed something the app relies on" else "A venue answered with something new",
+                fresh.joinToString("\n") { "${it.area}: ${it.check}. ${it.detail}" }.take(900))
+        }
+        r
+    }
+
     suspend fun reconcileOrdersIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(5)): OrderReconciliation? {
         val now = clock.now()
         if (java.time.Duration.between(lastOrderReconAt, now) < every) return null
@@ -828,6 +872,7 @@ class Engine(
     companion object {
         private val CFG = MapSerializer(String.serializer(), String.serializer())
         const val FILL_LIMIT_KEY = "engine.fill_limit"
+        const val CONTRACT_KEY = "engine.api_contract_last"
         /** Contracts per rolling 15 s per Kalshi shard: four 5-lots. Above that, fills are a burst, and bursts are how losers arrive. */
         const val DEFAULT_FILL_LIMIT = 20
 

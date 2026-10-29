@@ -39,6 +39,8 @@ class FakeKalshi : AutoCloseable {
     val groupActions = CopyOnWriteArrayList<String>()
     /** When set, an order carrying an order group is refused as Kalshi does once the group tripped. */
     var groupTripped = false
+    /** The refusal message used while [groupTripped]; Kalshi may reword it. */
+    var groupRefusal = """{"error":{"code":"order_group_triggered","message":"order group is triggered"}}"""
     val batchCancels = CopyOnWriteArrayList<JsonObject>()
 
     init {
@@ -55,6 +57,11 @@ class FakeKalshi : AutoCloseable {
                         groups[id] = body["contracts_limit"].toString().toInt() to (body["exchange_index"]?.toString()?.toInt() ?: 0)
                         MockResponse().setResponseCode(201).setBody("""{"order_group_id":"$id","subaccount":0}""")
                     }
+                    request.method == "GET" && path.startsWith("/portfolio/order_groups/") -> {
+                        val id = path.removePrefix("/portfolio/order_groups/")
+                        if (groups.containsKey(id)) ok("""{"is_auto_cancel_enabled":true,"contracts_limit_fp":"${groups[id]!!.first}.00","orders":[]}""")
+                        else MockResponse().setResponseCode(404).setBody("""{"error":{"code":"not_found","message":"order group not found"}}""")
+                    }
                     request.method == "PUT" && path.startsWith("/portfolio/order_groups/") -> {
                         groupActions += path.removePrefix("/portfolio/order_groups/") + "?" + (q.queryParameter("exchange_index") ?: "")
                         ok("{}")
@@ -66,7 +73,7 @@ class FakeKalshi : AutoCloseable {
                         ok("""{"orders":[${ids.joinToString(",") { """{"order_id":"$it","reduced_by":"5.00","ts_ms":1}""" }}]}""")
                     }
                     request.method == "POST" && path == "/portfolio/events/orders" && groupTripped && request.body.peek().readUtf8().contains("order_group_id") ->
-                        MockResponse().setResponseCode(400).setBody("""{"error":{"code":"order_group_triggered","message":"order group is triggered"}}""")
+                        MockResponse().setResponseCode(400).setBody(groupRefusal)
                     request.method == "POST" && path == "/portfolio/events/orders" -> {
                         val body = JSON.parseToJsonElement(request.body.readUtf8()) as JsonObject
                         bodies += body

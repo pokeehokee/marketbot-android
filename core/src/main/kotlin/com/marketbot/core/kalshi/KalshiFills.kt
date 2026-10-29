@@ -22,7 +22,8 @@ data class KalshiFill(
             val m = message.obj("msg") ?: return null
             return KalshiFill(
                 m.str("trade_id") ?: return null, m.str("order_id") ?: return null, m.str("market_ticker") ?: return null,
-                m.str("side") ?: "", m.str("action") ?: "", m.num("count_fp") ?: m.num("count") ?: return null,
+                // side is the outcome side the fill gave us (outcome_side; the legacy side is deprecated).
+                com.marketbot.core.contract.Vocabulary.kalshiFillSide(m) ?: "", m.str("action") ?: "", m.num("count_fp") ?: m.num("count") ?: return null,
                 m.num("yes_price_dollars"), (m["is_taker"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull(),
                 (m.num("ts_ms") ?: m.num("ts")?.times(1000))?.toLong(),
             )

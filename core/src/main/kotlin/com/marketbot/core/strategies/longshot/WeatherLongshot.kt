@@ -320,7 +320,8 @@ class WeatherLongshot(override val id: String = ID, override val baseId: String?
         val start = ctx.config.num("paper_cash")
         val realised = realisedSince(ctx.stores.ledger.all(id, Mode.PAPER), null)
         val cash = Sourced(start + realised, Source.PAPER_MODEL, "paper start ${money(start)} + realised paper P&L")
-        ctx.stores.equity.record(EquitySnapshot(ctx.clock.now(), "kalshi", Mode.PAPER, cash, null, null))
+        // A paper variant's book is its own; the venue's paper equity curve is the base strategy's.
+        if (baseId == null) ctx.stores.equity.record(EquitySnapshot(ctx.clock.now(), "kalshi", Mode.PAPER, cash, null, null))
         return cash to null
     }
 

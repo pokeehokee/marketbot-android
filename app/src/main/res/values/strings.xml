@@ -270,4 +270,9 @@
     <string name="variant_settings">Settings</string>
     <string name="variant_copy">Copy current settings</string>
     <string name="variants_note">Paper records only, settled positions. Paper fills are optimistic for every row alike, so compare rows with each other, not with live.</string>
+    <string name="contract_title">API wording check</string>
+    <string name="contract_help">Once a day the app checks that Kalshi, Polymarket and the BTC price sources still answer in the exact words it relies on: field names, status values, market name shapes and error messages. Read-only. A change is notified as a safety notice before a strategy quietly stops finding markets.</string>
+    <string name="contract_never">Not run yet. It runs within a day of the engine starting.</string>
+    <string name="contract_last">Last run %1$s, %2$d checks.</string>
+    <string name="variants_farm_note">Rewards are the program formula\'s estimate, not money received; fill P&amp;L and rebates come from the paper book.</string>
 </resources>

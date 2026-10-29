@@ -203,7 +203,7 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
         }
         val liveIds = orders.map { it.id }.toSet()
         rt.orderSeen.keys.retainAll(liveIds); for (id in liveIds) rt.orderSeen.putIfAbsent(id, now)
-        ctx.stores.equity.record(EquitySnapshot(now, "polymarket", mode(ctx), bal.equity, null, bal.exchangeEquity))
+        if (baseId == null) ctx.stores.equity.record(EquitySnapshot(now, "polymarket", mode(ctx), bal.equity, null, bal.exchangeEquity))
         val risk = FarmRisk.update(riskState(ctx), bal.equity.value, r)
         saveRisk(ctx, risk)
         if (risk.halted) {
@@ -543,6 +543,16 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
         }
 
         private val EST = MapSerializer(String.serializer(), Double.serializer())
+
+        /** The farm's paper record. It keeps its own book (not the shared ledger), so its variants are compared on this. */
+        data class PaperRecord(val realized: Double, val rebates: Double, val estimatedRewards: Double?)
+
+        suspend fun paperRecord(state: com.marketbot.core.store.StateStore, id: String): PaperRecord? {
+            val s = state.get("$id.paper.paper_state")?.let { PaperFarmBroker.fromJson(it, 0.0).s }
+            val est = state.get("$id.paper.estimates")?.let { runCatching { JSON.decodeFromString(EST, it) }.getOrNull() }?.values?.sum()
+            if (s == null && est == null) return null
+            return PaperRecord(s?.realized ?: 0.0, s?.rebates ?: 0.0, est)
+        }
     }
 
 }

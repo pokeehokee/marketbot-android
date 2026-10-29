@@ -33,7 +33,7 @@ data class Level(val price: Double, val qty: Double)
 data class PmBook(val slug: String, val bids: List<Level>, val asks: List<Level>, val state: String, val at: Instant) {
     val bestBid: Double? get() = bids.firstOrNull()?.price
     val bestAsk: Double? get() = asks.firstOrNull()?.price
-    val open: Boolean get() = state.isEmpty() || state == "MARKET_STATE_OPEN"
+    val open: Boolean get() = state.isEmpty() || state == com.marketbot.core.contract.Vocabulary.PM_BOOK_OPEN
 
     companion object {
         fun parse(slug: String, md: JsonObject, at: Instant): PmBook {

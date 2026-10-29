@@ -419,7 +419,7 @@ class PolymarketBtcDeepItm(id: String = ID, baseId: String? = null) : DeepItmStr
     override val params: List<Param> = super.params + Param.Bool("allow_no_live", "Allow live NO bids",
         "Polymarket's price convention for short (NO) orders is not documented; leave off until preflight confirms it.", false)
 
-    override fun ownsMarket(venue: String, ticker: String) = venue == "polymarket" && ticker.startsWith("btc-above-")
+    override fun ownsMarket(venue: String, ticker: String) = venue == "polymarket" && com.marketbot.core.contract.Vocabulary.isPmBtcMarket(ticker)
 
     override fun ladderVenue(ctx: StrategyContext): LadderVenue =
         (venues.getOrPut(ctx.polymarket) { PolymarketBtcLadder(ctx.polymarket) } as PolymarketBtcLadder)

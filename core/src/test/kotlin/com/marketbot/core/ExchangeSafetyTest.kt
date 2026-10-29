@@ -61,6 +61,27 @@ class ExchangeSafetyTest {
         assertNotNull(k.placeOrder("KXHIGHNY-26OCT30-B76.5", "ask", 5, 0.07, 0.01, 0).orderId)
     }
 
+    @Test fun `a group refusal in words the app does not know halts the shard instead of making a new group`() = runTest {
+        val stores = inMemoryStores()
+        val k = fake.client(signed = true)
+        val fl = FillLimit(stores.state, { 20 })
+        k.fillLimit = fl
+        k.placeOrder("KXHIGHNY-26OCT30-B70.5", "ask", 5, 0.07, 0.01, 0)
+        fake.groupTripped = true
+        fake.groupRefusal = """{"error":{"code":"order_group_paused","message":"order group is paused"}}"""
+        assertFailsWith<FillLimitTripped> { k.placeOrder("KXHIGHNY-26OCT30-B72.5", "ask", 5, 0.07, 0.01, 0) }
+        assertEquals(1, fake.groups.size, "no second group created to route around it")
+        assertTrue(fl.lastError!!.contains("does not recognise"), fl.lastError)
+        // A group Kalshi deleted is different: forgotten, and the next order makes a new one.
+        fake.groupTripped = false; fl.reset(k, 0)
+        fake.groups.clear()
+        fake.groupTripped = true
+        fake.groupRefusal = """{"error":{"code":"not_found","message":"order group not found"}}"""
+        runCatching { k.placeOrder("KXHIGHNY-26OCT30-B74.5", "ask", 5, 0.07, 0.01, 0) }
+        assertNull(fl.groups()[0], "a deleted group is forgotten")
+        assertTrue(fl.trippedShards().isEmpty())
+    }
+
     private fun engine(stores: com.marketbot.core.store.Stores) =
         Engine(stores, MutableClock(now), clientFactory = { _ -> fake.client(true) to PolymarketClient(null) }, fillStreamFactory = null)
 

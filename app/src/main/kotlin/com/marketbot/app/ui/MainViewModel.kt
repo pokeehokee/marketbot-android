@@ -378,6 +378,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Strategies for lists: every base strategy, plus any variant that is switched on. */
     fun listed(): List<Strategy> = strategies.filter { it.baseId == null || modeOf(it.id) != Mode.OFF }
     fun variantsOf(baseId: String) = strategies.filter { it.baseId == baseId }
+    suspend fun farmPaperRecord(id: String) = withContext(Dispatchers.IO) {
+        com.marketbot.core.strategies.rewards.RewardFarm.paperRecord(engine.stores.state, id) }
     fun paperComparison(id: String) = com.marketbot.core.strategy.VariantRecord.of(settled.value.filter { it.strategyId == id })
     fun copyConfig(from: Strategy, to: Strategy) = once("copy_config:${to.id}") {
         val c = engine.config(from).asMap
@@ -415,6 +417,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val d = st.get(com.marketbot.core.strategy.CashFlows.DISMISSED)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
         st.put(com.marketbot.core.strategy.CashFlows.DISMISSED, (d + f.at).takeLast(200).joinToString("\n"))
         _flowsChanged.update { it + 1 }
+    }
+
+    // ---------------------------------------------------------------- daily API wording check
+    private val _contractRuns = MutableStateFlow(0)
+    val contractRuns = _contractRuns.asStateFlow()
+    suspend fun contractReport() = withContext(Dispatchers.IO) { engine.contractReport() }
+    fun runContractCheck() = once("contract") {
+        val r = withContext(Dispatchers.IO) { engine.contractCheck() }
+        _contractRuns.update { it + 1 }; say(r.summary)
     }
 
     // ---------------------------------------------------------------- safety at the exchanges

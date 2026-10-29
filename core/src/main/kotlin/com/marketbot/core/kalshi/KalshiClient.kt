@@ -94,6 +94,13 @@ class KalshiClient(
     suspend fun eventMarkets(eventTicker: String) =
         markets(listOf("event_ticker" to eventTicker, "limit" to "200"))
 
+    /** The first page only, for sampling (the daily API check); never where a complete listing matters. */
+    suspend fun marketsSample(query: List<Pair<String, String>>): List<KalshiMarket> =
+        http.get("/markets", query).objects("markets").map { KalshiMarket(it) }
+
+    /** The first page of a series' events, for sampling. */
+    suspend fun eventsSample(query: List<Pair<String, String>>): List<JsonObject> = http.get("/events", query).objects("events")
+
     suspend fun trades(ticker: String, minTs: Long, maxPages: Int = 20): List<JsonObject> =
         paginate("/markets/trades", "trades",
             listOf("ticker" to ticker, "min_ts" to minTs.toString(), "limit" to "1000"), maxPages, signed = false)
@@ -114,6 +121,10 @@ class KalshiClient(
 
     suspend fun orders(status: String, maxPages: Int = 20): List<JsonObject> =
         paginate("/portfolio/orders", "orders", sub(listOf("status" to status, "limit" to "200")), maxPages, signed = true)
+
+    /** The first page of an account listing (`orders`, `settlements`, `fills`), for sampling only. */
+    suspend fun accountSample(path: String, key: String, query: List<Pair<String, String>> = emptyList()): List<JsonObject> =
+        http.get(path, sub(query + ("limit" to "100")), requireSigner()).objects(key)
 
     suspend fun positions(): List<JsonObject> =
         paginate("/portfolio/positions", "market_positions", sub(listOf("limit" to "200", "count_filter" to "position")), 20, signed = true)
@@ -202,11 +213,21 @@ class KalshiClient(
         } catch (e: ApiException) {
             val text = (e.message ?: "").lowercase() + " " + (e.code ?: "")
             // Kalshi refuses orders in a group that has tripped: remember it, never route around it.
+            // Kalshi gives no structured "triggered" field, so the message is all there is. When it
+            // mentions the group but not in the words below, the group is looked up: gone (404) means
+            // a new one is created; still there means the refusal is treated as a trip, because
+            // creating a fresh group would route around Kalshi's own limit.
             if (group != null && "group" in text) {
-                if ("trigger" in text || "limit" in text || "exceed" in text) { fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now()) }
-                fillLimit?.forget(shard)   // unknown or deleted group: the next order creates a new one
+                if (KalshiWording.groupTripped(text)) { fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now()) }
+                val gone = try { orderGroup(group, shard); false } catch (g: ApiException) { g.status == 404 } catch (g: IOException) { false }
+                if (gone) fillLimit?.forget(shard)
+                else {
+                    fillLimit?.lastError = "Kalshi refused an order in the fill-limit group with a message the app does not recognise " +
+                        "(\"${e.message}\"); treated as tripped. Check it, then Reset."
+                    fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now())
+                }
             }
-            if ("cross" in text || "post_only" in text || "post only" in text)
+            if (KalshiWording.postOnlyCross(text))
                 return PlacedOrder(null, coid, filtered = true, reason = e.code ?: "post_only_cross")
             if (e.status == 400 || e.status == 409 || e.status >= 500) {
                 findByClientOrderId(coid)?.let { return PlacedOrder(it.str("order_id"), coid, raw = it) }
@@ -252,6 +273,15 @@ class KalshiClient(
         }
         return http.post("/portfolio/order_groups/create", body, requireSigner()).str("order_group_id")
             ?: throw IOException("order group created without an order_group_id")
+    }
+
+    /** One group: `is_auto_cancel_enabled`, `contracts_limit_fp`, `orders`. 404 once it is deleted. */
+    suspend fun orderGroup(id: String, exchangeIndex: Int): JsonObject =
+        http.get("/portfolio/order_groups/$id", groupQuery(exchangeIndex), requireSigner())
+
+    /** Delete a group; Kalshi cancels the orders in it. */
+    suspend fun deleteOrderGroup(id: String, exchangeIndex: Int) {
+        http.delete("/portfolio/order_groups/$id", groupQuery(exchangeIndex), requireSigner())
     }
 
     /** This account's groups: id, limit, shard. */
@@ -394,11 +424,25 @@ class FillLimit(private val state: com.marketbot.core.store.StateStore, private 
         runCatching { client.triggerOrderGroup(id, shard); markTripped(shard, java.time.Instant.now(), "kill") }.exceptionOrNull()?.let { "shard $shard: ${it.message}" }
     }
 
-    /** After review: reset at Kalshi, then allow orders again. */
+    /** After review: reset at Kalshi, then allow orders again. A group Kalshi no longer has is forgotten (the next order makes a new one). */
     suspend fun reset(client: KalshiClient, shard: Int) {
-        groups()[shard]?.let { client.resetOrderGroup(it, shard) }
+        groups()[shard]?.let { id ->
+            try { client.resetOrderGroup(id, shard) } catch (e: ApiException) { if (e.status == 404) forget(shard) else throw e }
+        }
         tripped.remove(shard); state.put(key(shard, "tripped"), null); state.put(key(shard, "reason"), null)
     }
 
     suspend fun trippedShards(): Map<Int, java.time.Instant> = (0..3).mapNotNull { s -> trippedAt(s)?.let { s to it } }.toMap()
+}
+
+/**
+ * The exact words the app relies on in Kalshi's error messages, in one place so the
+ * daily API check and the tests exercise the same rules the order path uses.
+ */
+object KalshiWording {
+    /** Words Kalshi has used when an order group has hit its limit or been triggered. */
+    val GROUP_TRIP_WORDS = listOf("trigger", "limit", "exceed")
+    val POST_ONLY_WORDS = listOf("cross", "post_only", "post only")
+    fun groupTripped(text: String) = "group" in text && GROUP_TRIP_WORDS.any { it in text }
+    fun postOnlyCross(text: String) = POST_ONLY_WORDS.any { it in text }
 }

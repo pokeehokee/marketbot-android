@@ -303,19 +303,8 @@ fun VariantsSection(vm: MainViewModel, s: com.marketbot.core.strategy.Strategy, 
     val confirm = com.marketbot.app.rememberConfirm()
     Section(stringResource(R.string.variants_title)) {
         Text(stringResource(R.string.variants_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        val rows = remember(settled, s.id) { (listOf(s) + variants).map { it to vm.paperComparison(it.id) } }
-        Row(Modifier.fillMaxWidth().padding(top = Space.s)) {
-            listOf("" to 1.6f, "Settled" to 1f, "P&L" to 1f, "Per contract" to 1.2f).forEach { (h, w) ->
-                Text(h, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(w)) }
-        }
-        rows.forEach { (v, c) ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (v.baseId == null) "Current" else "Variant ${v.id.substringAfterLast('@').uppercase()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.6f))
-                Text("${c.n}", style = Figures, modifier = Modifier.weight(1f))
-                Text(if (c.n == 0) "-" else money(c.pnl), style = Figures, color = moneyColor(c.pnl) ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                Text(c.perContract?.let { "%+.2fc".format(it * 100) } ?: "-", style = Figures, modifier = Modifier.weight(1.2f))
-            }
-        }
+        if (s is com.marketbot.core.strategies.rewards.RewardFarm) FarmVariantTable(vm, listOf(s) + variants)
+        else LedgerVariantTable(vm, listOf(s) + variants, settled)
         variants.forEach { v ->
             val mode = vm.modeOf(v.id)
             Row(Modifier.fillMaxWidth().padding(top = Space.s), verticalAlignment = Alignment.CenterVertically) {
@@ -330,4 +319,43 @@ fun VariantsSection(vm: MainViewModel, s: com.marketbot.core.strategy.Strategy, 
         }
         Text(stringResource(R.string.variants_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+private fun variantLabel(v: com.marketbot.core.strategy.Strategy) = if (v.baseId == null) "Current" else "Variant ${v.id.substringAfterLast('@').uppercase()}"
+
+@Composable
+private fun LedgerVariantTable(vm: MainViewModel, all: List<com.marketbot.core.strategy.Strategy>, settled: List<com.marketbot.core.store.QuoteRow>) {
+        val rows = remember(settled, all.first().id) { all.map { it to vm.paperComparison(it.id) } }
+        Row(Modifier.fillMaxWidth().padding(top = Space.s)) {
+            listOf("" to 1.6f, "Settled" to 1f, "P&L" to 1f, "Per contract" to 1.2f).forEach { (h, w) ->
+                Text(h, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(w)) }
+        }
+        rows.forEach { (v, c) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(variantLabel(v), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.6f))
+                Text("${c.n}", style = Figures, modifier = Modifier.weight(1f))
+                Text(if (c.n == 0) "-" else money(c.pnl), style = Figures, color = moneyColor(c.pnl) ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text(c.perContract?.let { "%+.2fc".format(it * 100) } ?: "-", style = Figures, modifier = Modifier.weight(1.2f))
+            }
+        }
+}
+
+/** The farm keeps its own paper book: realised fill P&L, maker rebates and the reward estimate, per variant. */
+@Composable
+private fun FarmVariantTable(vm: MainViewModel, all: List<com.marketbot.core.strategy.Strategy>) {
+    val status by vm.status.collectAsState()
+    val recs = loaded(all.mapNotNull { status[it.id]?.lastRunAt }.maxOrNull()) { all.map { it to vm.farmPaperRecord(it.id) } } ?: return
+    Row(Modifier.fillMaxWidth().padding(top = Space.s)) {
+        listOf("" to 1.6f, "Fill P&L" to 1f, "Rebates" to 1f, "Est. rewards" to 1.2f).forEach { (h, w) ->
+            Text(h, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(w)) }
+    }
+    recs.forEach { (v, r) ->
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(variantLabel(v), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1.6f))
+            Text(r?.let { money(it.realized) } ?: "-", style = Figures, color = r?.let { moneyColor(it.realized) } ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Text(r?.let { money(it.rebates) } ?: "-", style = Figures, modifier = Modifier.weight(1f))
+            Text(r?.estimatedRewards?.let { money(it) } ?: "-", style = Figures, modifier = Modifier.weight(1.2f))
+        }
+    }
+    Text(stringResource(R.string.variants_farm_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

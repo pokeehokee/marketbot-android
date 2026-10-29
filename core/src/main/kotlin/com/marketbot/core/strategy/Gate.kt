@@ -124,7 +124,7 @@ data class Lock(val id: String, val strategyId: String, val mode: Mode, val seri
 /** The market family a ticker belongs to: a Kalshi series, or the market itself on Polymarket. */
 fun seriesOf(ticker: String): String = when {
     ticker.startsWith("KX") -> ticker.substringBefore('-')
-    ticker.startsWith("btc-above-") -> "btc-above"
+    com.marketbot.core.contract.Vocabulary.isPmBtcMarket(ticker) -> "btc-above"
     else -> ticker
 }
 
