@@ -381,6 +381,10 @@ class RewardFarm : Strategy {
 
     suspend fun resetKill(ctx: StrategyContext) { ctx.stores.state.put(k(ctx, "risk"), null) }
 
+    /** The live broker's own record of the orders it placed (the farm keeps no ledger rows for quotes). */
+    override suspend fun extraOrderIds(ctx: StrategyContext): Set<String> =
+        ctx.stores.state.get("$id.live.owned_orders")?.split(',')?.filter { it.isNotBlank() }?.toSet() ?: emptySet()
+
     override suspend fun liveRequirements(ctx: StrategyContext): List<Requirement> {
         val creds = ctx.polymarket.hasCredentials
         val pre = ctx.stores.state.get("$id.preflight_ok_at")?.let { Instant.parse(it) }

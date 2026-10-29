@@ -185,6 +185,7 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
         }
         SystemSettings(vm)
         ReconciliationSection(vm)
+        SafetySection(vm)
         BackupSection(vm)
         Section(stringResource(R.string.data)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

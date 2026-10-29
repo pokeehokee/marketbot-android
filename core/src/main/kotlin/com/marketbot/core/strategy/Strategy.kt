@@ -238,6 +238,16 @@ interface Strategy {
      */
     suspend fun healthChecks(ctx: StrategyContext, mode: Mode): List<Check> = emptyList()
 
+    /**
+     * Whether [ticker] at [venue] ("kalshi" or "polymarket") is a market this strategy
+     * trades. The kill switch and order reconciliation sweep the exchange by it, so an
+     * order the ledger lost track of is still found.
+     */
+    fun ownsMarket(venue: String, ticker: String): Boolean = false
+
+    /** Live order ids this strategy keeps outside the ledger (the reward farm's own book). */
+    suspend fun extraOrderIds(ctx: StrategyContext): Set<String> = emptySet()
+
     /** Price bands for the fills-by-outcome table, or null when the strategy has no binary orders. */
     val outcomeBands: List<Pair<Double, Double>>? get() = null
 }

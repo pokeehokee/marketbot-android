@@ -183,7 +183,7 @@ fun ReconciliationSection(vm: MainViewModel) {
 
 /** The result of [load], re-run whenever a key changes; null until the first result. */
 @Composable
-private fun <T> loaded(vararg keys: Any?, load: suspend () -> T): T? {
+fun <T> loaded(vararg keys: Any?, load: suspend () -> T): T? {
     var v by remember { mutableStateOf<T?>(null) }
     LaunchedEffect(*keys) { v = load() }
     return v

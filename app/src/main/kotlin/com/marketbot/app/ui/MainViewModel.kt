@@ -200,7 +200,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun askKill() { _killAsked.value = true }
     fun killAskHandled() { _killAsked.value = false }
 
-    fun kill(on: Boolean) = once("kill") { engine.setGlobalKill(on); say(if (on) "Kill switch on: orders cancelled." else "Kill switch off.") }
+    fun kill(on: Boolean) = once("kill") {
+        engine.setGlobalKill(on)
+        say(if (on) "Kill switch on. ${engine.lastSweep?.summary ?: ""}".trim() else "Kill switch off.")
+    }
 
     suspend fun config(s: Strategy): StrategyConfig = withContext(Dispatchers.IO) { engine.config(s) }
     fun saveConfig(s: Strategy, values: Map<String, String>, done: (List<String>) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
@@ -310,6 +313,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun recordRows(s: Strategy): Pair<Mode, List<com.marketbot.core.store.QuoteRow>> = withContext(Dispatchers.IO) {
         val live = engine.stores.ledger.all(s.id, Mode.LIVE)
         if (live.isNotEmpty()) Mode.LIVE to live else Mode.PAPER to engine.stores.ledger.all(s.id, Mode.PAPER)
+    }
+
+    // ---------------------------------------------------------------- safety at the exchanges
+    suspend fun fillLimit(): Int = withContext(Dispatchers.IO) {
+        engine.stores.state.get(com.marketbot.core.engine.Engine.FILL_LIMIT_KEY)?.toIntOrNull() ?: com.marketbot.core.engine.Engine.DEFAULT_FILL_LIMIT }
+    fun setFillLimit(n: Int) = once("fill_limit") {
+        engine.stores.state.put(com.marketbot.core.engine.Engine.FILL_LIMIT_KEY, n.coerceIn(0, 1000).toString())
+        a.note(com.marketbot.core.store.LogEvent.Level.WARN, "fill_limit", if (n <= 0) "Kalshi fill limit turned off." else "Kalshi fill limit set to $n contracts per 15 s per shard.")
+        say(if (n <= 0) "Fill limit off." else "Fill limit: $n contracts per 15 s.")
+    }
+    suspend fun fillLimitState(): Pair<Map<Int, java.time.Instant>, String?> = withContext(Dispatchers.IO) {
+        val fl = engine.kalshiFillLimit; (fl?.trippedShards() ?: emptyMap()) to fl?.lastError }
+    fun resetFillLimit(shard: Int) = once("fill_reset:$shard") {
+        val fl = engine.kalshiFillLimit ?: return@once
+        runCatching { fl.reset(engine.kalshiClient, shard) }
+            .onSuccess { a.note(com.marketbot.core.store.LogEvent.Level.WARN, "fill_limit", "Kalshi fill limit on shard $shard reset by hand."); say("Fill limit reset: orders allowed again.") }
+            .onFailure { say("Reset failed. " + plainError(it.message)) }
+    }
+    suspend fun lastOrderRecon(): com.marketbot.core.engine.OrderReconciliation? = withContext(Dispatchers.IO) {
+        engine.lastOrderRecon ?: engine.stores.state.get("engine.order_recon_last")?.let {
+            runCatching { com.marketbot.core.util.JSON.decodeFromString(com.marketbot.core.engine.OrderReconciliation.serializer(), it) }.getOrNull() } }
+    private val _orderRecon = MutableStateFlow(0)
+    /** Bumps after a manual check so the card re-reads. */
+    val orderReconRuns = _orderRecon.asStateFlow()
+    fun reconcileOrdersNow() = once("order_recon") { val r = engine.reconcileOrders(); _orderRecon.update { it + 1 }; say(r.summary) }
+    fun heartbeatUrl() = a.vault.heartbeatUrl()
+    fun saveHeartbeatUrl(u: String) {
+        val v = u.trim().ifEmpty { null }
+        if (v != null && !com.marketbot.app.Heartbeat.valid(v)) { say("Use the full https:// address of the check."); return }
+        a.vault.saveHeartbeatUrl(v); say(if (v == null) "Outside heartbeat off." else "Outside heartbeat saved.")
+    }
+    fun testHeartbeat() = once("heartbeat") {
+        val u = a.vault.heartbeatUrl() ?: run { say("Save a check address first."); return@once }
+        say(if (com.marketbot.app.Heartbeat.ping(u)) "Ping delivered: ${com.marketbot.app.Heartbeat.lastResult}" else "Ping failed: ${com.marketbot.app.Heartbeat.lastResult}")
     }
 
     // ---------------------------------------------------------------- health and system

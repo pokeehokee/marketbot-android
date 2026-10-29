@@ -391,6 +391,7 @@ class KalshiBtcDeepItm : DeepItmStrategy(
     loopSeconds = 2,
 ) {
     override fun ladderVenue(ctx: StrategyContext): LadderVenue = venues.getOrPut(ctx.kalshi) { KalshiBtcLadder(ctx.kalshi) }
+    override fun ownsMarket(venue: String, ticker: String) = venue == "kalshi" && ticker.startsWith("KXBTCD-")
     private val venues = mutableMapOf<Any, LadderVenue>()
 }
 
@@ -411,6 +412,8 @@ class PolymarketBtcDeepItm : DeepItmStrategy(
 ) {
     override val params: List<Param> = super.params + Param.Bool("allow_no_live", "Allow live NO bids",
         "Polymarket's price convention for short (NO) orders is not documented; leave off until preflight confirms it.", false)
+
+    override fun ownsMarket(venue: String, ticker: String) = venue == "polymarket" && ticker.startsWith("btc-above-")
 
     override fun ladderVenue(ctx: StrategyContext): LadderVenue =
         (venues.getOrPut(ctx.polymarket) { PolymarketBtcLadder(ctx.polymarket) } as PolymarketBtcLadder)

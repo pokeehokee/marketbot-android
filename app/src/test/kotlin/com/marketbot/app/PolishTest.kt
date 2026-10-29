@@ -66,3 +66,13 @@ class WidgetBeatTest {
         kotlin.test.assertEquals("Engine stopped", WidgetBeat.of(false, false, null, now).text)
     }
 }
+
+class HeartbeatTest {
+    @org.junit.Test fun `only an https check address is ever pinged`() {
+        kotlin.test.assertTrue(Heartbeat.valid("https://hc-ping.com/0f3c2d0a-1111-2222-3333-444455556666"))
+        kotlin.test.assertFalse(Heartbeat.valid("http://hc-ping.com/abc"), "the token in the address must not travel in the clear")
+        kotlin.test.assertFalse(Heartbeat.valid("hc-ping.com/abc"))
+        kotlin.test.assertFalse(Heartbeat.valid(null))
+        kotlin.test.assertFalse(Heartbeat.beatIfDue(null), "no address, no ping")
+    }
+}

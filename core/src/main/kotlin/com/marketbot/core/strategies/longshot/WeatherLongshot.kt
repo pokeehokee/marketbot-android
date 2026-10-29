@@ -594,6 +594,7 @@ class WeatherLongshot : Strategy {
     private fun quotedMid(q: QuoteRow) = StageGates.quotedMid(q)
 
     override val outcomeBands get() = AdverseSelection.LONGSHOT_BANDS
+    override fun ownsMarket(venue: String, ticker: String) = venue == "kalshi" && WeatherSeries.kind(ticker) != null
 
     /** The source repo's kill criteria and stage gates, plus the maker-fee check, on the [mode] record. */
     override suspend fun healthChecks(ctx: StrategyContext, mode: Mode): List<Check> {

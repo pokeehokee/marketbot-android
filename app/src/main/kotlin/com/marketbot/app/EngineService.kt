@@ -100,6 +100,9 @@ class EngineService : LifecycleService() {
             Health.beat(this)
             app.engine.dailySummaryIfDue()?.let { (t, b) -> MarketbotApp.trade(this, t, b) }
             runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
+            runCatching { app.engine.reconcileOrdersIfDue() }
+            // Off the main thread: the ping is a network call.
+            kotlinx.coroutines.withContext(Dispatchers.IO) { Heartbeat.beatIfDue(app.vault.heartbeatUrl(), online = Connectivity.online(this@EngineService)) }
             if (System.currentTimeMillis() - lastPrune > 86_400_000L) { lastPrune = System.currentTimeMillis(); app.pruneRoutine() }
             delay(5_000)
         }
