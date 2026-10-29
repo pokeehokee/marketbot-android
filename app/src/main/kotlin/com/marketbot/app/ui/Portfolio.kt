@@ -110,9 +110,10 @@ fun EquitySection(vm: MainViewModel) {
 /** A strategy's own record against what its evidence predicts, and its curve. */
 @Composable
 fun RecordSection(vm: MainViewModel, s: Strategy) {
-    vm.settled.collectAsState().value
+    val settled by vm.settled.collectAsState()
     var mode by rememberSaveable { mutableStateOf(Mode.LIVE) }
-    val rec = vm.record(s.id, mode)
+    val rec = remember(settled, s.id, mode) { vm.record(s.id, mode) }
+    val curve = remember(settled, s.id, mode) { vm.strategyCurve(s.id, mode) }
     val exp = s.evidence.expectation
     Section(stringResource(R.string.record_vs_evidence)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -139,7 +140,7 @@ fun RecordSection(vm: MainViewModel, s: Strategy) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        LineChart(vm.strategyCurve(s.id, mode), label = "${s.name} cumulative P&L")
+        LineChart(curve, label = "${s.name} cumulative P&L")
     }
 }
 
@@ -148,7 +149,8 @@ private val dayHeader = DateTimeFormatter.ofPattern("EEEE, MMM d")
 /** Orders: filter by state and mode, grouped by day with the day's realised P&L, swipe a live resting order to cancel it. */
 @Composable
 fun OrdersList(vm: MainViewModel, s: Strategy) {
-    val rows by vm.quotes(s.id).collectAsState(initial = emptyList())
+    // remember: a new Room flow per recomposition re-ran the query and resubscribed every frame.
+    val rows by remember(s.id) { vm.quotes(s.id) }.collectAsState(initial = emptyList())
     var state by rememberSaveable { mutableStateOf("all") }
     var mode by rememberSaveable { mutableStateOf("all") }
     var cancel by remember { mutableStateOf<QuoteRow?>(null) }

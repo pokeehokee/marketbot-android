@@ -41,9 +41,14 @@ data class PmTrade(val slug: String, val price: Double, val qty: Double, val tak
  * Public trade prints for the markets the farm works, over the authenticated
  * markets websocket (pmfarm's TradeStream). Prints wait in an inbox until the
  * next tick drains them; the paper broker uses them to tell trades from cancels.
+ *
+ * The inbox is bounded: only subscribed markets are kept, a market dropped from
+ * the subscription loses its waiting prints, and each market keeps at most
+ * [maxPerMarket] (oldest dropped). An undrained market used to grow without
+ * limit, and 13 hours of prints on busy markets exhausted the app's heap.
  */
-class PmTradeStream(signer: RequestSigner, url: String = PM_WS_MARKETS) {
-    private val inbox = mutableMapOf<String, MutableList<PmTrade>>()
+class PmTradeStream(signer: RequestSigner, url: String = PM_WS_MARKETS, private val maxPerMarket: Int = 2_000) {
+    private val inbox = mutableMapOf<String, ArrayDeque<PmTrade>>()
     @Volatile private var want: Set<String> = emptySet()
     @Volatile private var active: String? = null
     private var n = 0
@@ -52,8 +57,21 @@ class PmTradeStream(signer: RequestSigner, url: String = PM_WS_MARKETS) {
         // On every (re)connect: one subscription for the current set.
         if (want.isEmpty()) { active = null; emptyList() } else listOf(PmTrade.subscribe(nextId().also { active = it }, want))
     }, { m ->
-        PmTrade.parse(m)?.let { t -> synchronized(inbox) { inbox.getOrPut(t.slug) { mutableListOf() }.add(t) } }
+        PmTrade.parse(m)?.let { offer(it) }
     })
+
+    /** Queue one print; public for tests. Prints for markets not subscribed (a late print after a change) are dropped. */
+    internal fun offer(t: PmTrade) {
+        if (t.slug !in want) return
+        synchronized(inbox) {
+            val q = inbox.getOrPut(t.slug) { ArrayDeque() }
+            q.addLast(t)
+            while (q.size > maxPerMarket) q.removeFirst()
+        }
+    }
+
+    /** Prints waiting across all markets; for tests and diagnostics. */
+    val pending: Int get() = synchronized(inbox) { inbox.values.sumOf { it.size } }
     val connected get() = stream.connected
     val received get() = stream.received.get()
 
@@ -63,11 +81,12 @@ class PmTradeStream(signer: RequestSigner, url: String = PM_WS_MARKETS) {
     fun setMarkets(slugs: Set<String>) {
         if (slugs == want) return
         want = slugs
+        synchronized(inbox) { inbox.keys.retainAll(slugs) }
         // Replace the subscription, never stack a second one, or every print would arrive twice.
         active?.let { stream.send(PmTrade.unsubscribe(it)) }
         active = null
         if (slugs.isNotEmpty()) nextId().let { id -> if (stream.send(PmTrade.subscribe(id, slugs))) active = id }
     }
 
-    fun drain(slug: String): List<PmTrade> = synchronized(inbox) { inbox.remove(slug) ?: emptyList() }
+    fun drain(slug: String): List<PmTrade> = synchronized(inbox) { inbox.remove(slug)?.toList() ?: emptyList() }
 }

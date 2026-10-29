@@ -164,7 +164,11 @@ class RewardFarm : Strategy {
         val books = mutableMapOf<String, PmBook>()
         if (!br.live) {
             val slugs = (br.positions().keys + br.openOrders().map { it.slug }).toSet()
-            printStream(ctx, rt)?.setMarkets(slugs + rt.targets.keys)
+            val subscribed = slugs + rt.targets.keys
+            printStream(ctx, rt)?.setMarkets(subscribed)
+            // Targets with nothing resting still get their prints drained: the broker only marks them trade-fed,
+            // and an undrained market's inbox otherwise grows for as long as the farm runs.
+            for (s in subscribed - slugs) rt.prints?.drain(s)?.forEach { br.onTrade(it) }
             for (s in slugs) {
                 val fromPrints = rt.prints?.drain(s).orEmpty().flatMap { br.onTrade(it) }
                 val b = runCatching { ctx.polymarket.book(s) }.getOrNull()

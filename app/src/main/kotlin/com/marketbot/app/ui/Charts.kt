@@ -44,7 +44,8 @@ fun LineChart(series: Series, modifier: Modifier = Modifier, height: Dp = 140.dp
         Text(stringResource(R.string.not_enough_points_for_a_chart_yet), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
-    val pts = series.sortedBy { it.first }
+    // Sorted and thinned once per series, not on every frame: a phone draws ~400 px, not 20,000 points.
+    val pts = androidx.compose.runtime.remember(series) { thin(series.sortedBy { it.first }, 400) }
     val lo = pts.minOf { it.second }; val hi = pts.maxOf { it.second }
     val span = (hi - lo).takeIf { it > 1e-9 } ?: 1.0
     val t0 = pts.first().first; val t1 = pts.last().first
@@ -73,6 +74,23 @@ fun LineChart(series: Series, modifier: Modifier = Modifier, height: Dp = 140.dp
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/**
+ * At most about [max] points: each bucket keeps its first, lowest and highest
+ * point, so spikes survive; the last point is always kept. Input must be sorted.
+ */
+fun thin(pts: Series, max: Int): Series {
+    if (pts.size <= max) return pts
+    val per = (pts.size + max / 3 - 1) / (max / 3)
+    val out = ArrayList<Pair<Long, Double>>(max + 1)
+    for (b in pts.indices step per) {
+        val chunk = pts.subList(b, minOf(b + per, pts.size))
+        val lo = chunk.minBy { it.second }; val hi = chunk.maxBy { it.second }
+        listOf(chunk.first(), lo, hi).distinct().sortedBy { it.first }.forEach { out += it }
+    }
+    if (out.last() != pts.last()) out += pts.last()
+    return out
 }
 
 /** Running sum of settled P&L: the shape of a strategy's record. */

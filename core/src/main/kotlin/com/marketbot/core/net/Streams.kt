@@ -23,9 +23,20 @@ class SignedStream(
     private val signer: RequestSigner,
     private val subscriptions: () -> List<JsonObject>,
     private val onMessage: (JsonObject) -> Unit,
-    private val client: OkHttpClient = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build(),
-    private val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "stream").apply { isDaemon = true } },
+    private val client: OkHttpClient = SHARED_CLIENT,
+    scheduler: ScheduledExecutorService? = null,
 ) {
+    // A stream is used once: stop() ends it, and a restart builds a new one. An owned
+    // scheduler is shut down with it, so a stream per credential change leaks no thread.
+    private val ownsScheduler = scheduler == null
+    private val scheduler: ScheduledExecutorService = scheduler
+        ?: Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "stream").apply { isDaemon = true } }
+
+    companion object {
+        /** One client (connection pool, dispatcher, ping timer) for every stream. */
+        val SHARED_CLIENT: OkHttpClient by lazy { OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build() }
+    }
+
     @Volatile var connected = false; private set
     val received = AtomicInteger()
     @Volatile private var ws: WebSocket? = null
@@ -37,7 +48,12 @@ class SignedStream(
 
     fun start() { stopped = false; connect() }
 
-    fun stop() { stopped = true; ws?.close(1000, "stop"); ws = null; connected = false }
+    fun stop() {
+        stopped = true; ws?.close(1000, "stop"); ws = null; connected = false
+        if (ownsScheduler) scheduler.shutdownNow()
+    }
+
+    internal val schedulerShutdown get() = scheduler.isShutdown
 
     /** Send one message now; false when not connected (the next connect re-sends the subscriptions anyway). */
     fun send(o: JsonObject): Boolean = connected && ws?.send(JSON.encodeToString(JsonObject.serializer(), o)) == true
