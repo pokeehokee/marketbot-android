@@ -40,7 +40,7 @@ fun StrategiesScreen(vm: MainViewModel, onGoLive: (String) -> Unit = {}, onOpen:
         items(vm.strategies, key = { it.id }) { s ->
             val st = status[s.id]
             val mode = st?.mode ?: vm.modeOf(s.id)
-            Surface(Modifier.fillMaxWidth().clickable { onOpen(s.id) }, shape = RoundedCornerShape(14.dp),
+            Surface(Modifier.fillMaxWidth().clickable { onOpen(s.id) }, shape = Radius.card,
                 color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

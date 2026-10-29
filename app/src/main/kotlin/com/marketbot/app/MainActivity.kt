@@ -19,6 +19,19 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= 33) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        Shortcuts.from(intent)
         setContent { MarketbotTheme { AppRoot() } }
     }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        Shortcuts.from(intent)
+    }
+}
+
+/** The launcher shortcut that opened the app (res/xml/shortcuts.xml), handed to the UI once. */
+object Shortcuts {
+    val requested = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    private val known = setOf("kill", "trades", "stop")
+    fun from(intent: android.content.Intent?) { intent?.getStringExtra("shortcut")?.takeIf { it in known }?.let { requested.value = it } }
 }

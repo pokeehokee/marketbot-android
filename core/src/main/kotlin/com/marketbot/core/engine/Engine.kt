@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -118,6 +119,15 @@ class Engine(
 
     /** Wake the strategy loops: they re-check, by wall clock, whether a pass is due. */
     fun poke() { pokes.tryEmit(Unit) }
+
+    private val reschedules = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    /**
+     * The phone's clock or time zone changed: every waiting strategy recomputes when
+     * its next pass is due (a "run at :05 local" schedule moves with the zone) instead
+     * of sleeping until a time computed on the old clock. A pass in progress is not
+     * interrupted.
+     */
+    fun reschedule() { reschedules.tryEmit(Unit) }
 
     /**
      * Whether any running strategy re-runs within [CONTINUOUS_BELOW]: only then must the
@@ -398,9 +408,15 @@ class Engine(
                     val n = synchronized(failures) { if (ok) { failures.remove(s.id); 0 } else (failures.merge(s.id, 1, Int::plus) ?: 1) }
                     if (n > 0) d = maxOf(d, backoff(n))
                     synchronized(delays) { delays[s.id] = d }
-                    val dueAt = clock.now().plus(d)
-                    publish(s.id) { it.copy(nextRunAt = dueAt) }
-                    waitUntil(dueAt)
+                    var dueAt = clock.now().plus(d)
+                    while (true) {
+                        publish(s.id) { it.copy(nextRunAt = dueAt) }
+                        if (!waitUntil(dueAt)) break
+                        // Rescheduled: the delay is worked out again on the new clock, the failure backoff kept.
+                        d = runCatching { s.nextDelay(ctx(s)) }.getOrDefault(d).let { if (n > 0) maxOf(it, backoff(n)) else it }
+                        synchronized(delays) { delays[s.id] = d }
+                        dueAt = clock.now().plus(d)
+                    }
                     noteLateness(s, d, dueAt)
                 }
             }
@@ -412,12 +428,26 @@ class Engine(
      * [poke], because a coroutine delay runs on the monotonic clock, which stops
      * while the phone's CPU sleeps; the OS alarm pokes us when the pass is due.
      */
-    private suspend fun waitUntil(dueAt: Instant) {
-        while (true) {
-            val left = java.time.Duration.between(clock.now(), dueAt).toMillis()
-            if (left <= 0) return
-            withTimeoutOrNull(minOf(left, 30_000L).coerceAtLeast(200)) { pokes.first() }
-        }
+    private suspend fun waitUntil(dueAt: Instant): Boolean = kotlinx.coroutines.coroutineScope {
+        // Listening before the first check, so a reschedule sent while this starts is not missed.
+        val moved = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val listener = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { reschedules.first(); moved.complete(Unit) }
+        try {
+            while (true) {
+                if (moved.isCompleted) return@coroutineScope true
+                val left = java.time.Duration.between(clock.now(), dueAt).toMillis()
+                if (left <= 0) return@coroutineScope false
+                withTimeoutOrNull(minOf(left, 30_000L).coerceAtLeast(200)) {
+                    kotlinx.coroutines.coroutineScope {
+                        val poked = async { pokes.first() }
+                        val rescheduled = async { moved.await() }
+                        kotlinx.coroutines.selects.select<Unit> { poked.onAwait { }; rescheduled.onAwait { } }
+                        poked.cancel(); rescheduled.cancel()
+                    }
+                }
+            }
+            @Suppress("UNREACHABLE_CODE") false
+        } finally { listener.cancel() }
     }
 
     /**

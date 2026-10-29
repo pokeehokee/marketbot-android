@@ -61,8 +61,11 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
     vm.modes.collectAsState().value
     val ctx = LocalContext.current
     var confirmKill by remember { mutableStateOf(false) }
+    val askKill by vm.killAsked.collectAsState()
+    LaunchedEffect(askKill) { if (askKill) { if (!killed) confirmKill = true; vm.killAskHandled() } }
     val confirm = com.marketbot.app.rememberConfirm()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val busy by vm.inFlight.collectAsState()
     LaunchedEffect(Unit) { vm.refreshAccounts() }
 
     val refreshing by vm.refreshing.collectAsState()
@@ -81,7 +84,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         EquitySection(vm)
         val resumed = rememberResumeCount()
         val batteryOk = remember(resumed) { ignoringBattery(ctx) }
-        if (!batteryOk) Surface(shape = RoundedCornerShape(12.dp), color = LocalDesk.current.warn.copy(alpha = 0.12f),
+        if (!batteryOk) Surface(shape = Radius.banner, color = LocalDesk.current.warn.copy(alpha = 0.12f),
             modifier = Modifier.fillMaxWidth().clickable { requestBatteryExemption(ctx) }) {
             Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.BatteryAlert, null, tint = LocalDesk.current.warn)
@@ -91,7 +94,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         }
 
         // Kill switch
-        Surface(shape = RoundedCornerShape(14.dp), color = if (killed) LocalDesk.current.loss.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer,
+        Surface(shape = Radius.card, color = if (killed) LocalDesk.current.loss.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer,
             border = BorderStroke(1.dp, if (killed) LocalDesk.current.loss else MaterialTheme.colorScheme.outlineVariant)) {
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -99,8 +102,10 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                     Text(if (killed) "Live trading is off. Paper strategies keep running." else "Cancels every resting order and turns live trading off.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (killed) OutlinedButton({ confirm("Turn the kill switch off") { vm.kill(false) } }) { Text(stringResource(R.string.turn_off)) }
-                else Button({ confirmKill = true }, colors = ButtonDefaults.buttonColors(containerColor = LocalDesk.current.loss)) { Text(stringResource(R.string.kill)) }
+                if (killed) OutlinedButton({ confirm("Turn the kill switch off") { vm.kill(false) } }, enabled = "kill" !in busy) { Text(stringResource(R.string.turn_off)) }
+                // Hold to fire; a screen reader's double-tap opens the confirmation instead.
+                else HoldToConfirm(stringResource(R.string.kill), LocalDesk.current.loss, MaterialTheme.colorScheme.onError, "kill" !in busy,
+                    stringResource(R.string.kill_a11y), onConfirm = { vm.kill(true) }, a11yAction = { confirmKill = true })
             }
         }
 

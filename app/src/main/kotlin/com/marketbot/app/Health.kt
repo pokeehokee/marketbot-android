@@ -65,11 +65,23 @@ object Health {
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching {
-                crashFile(ctx).writeText("Marketbot ${BuildConfig.VERSION_NAME} on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}\n" +
-                    "${Instant.now()} thread ${t.name}\n\n${e.stackTraceToString()}")
+                crashFile(ctx).writeText(crashReport(t.name, e))
             }
             prev?.uncaughtException(t, e)
         }
+    }
+
+    /**
+     * The report kept for a crash. It names the build's commit (retrace it with that
+     * build's mapping-N.txt from the release) and, for running out of memory, how
+     * full the heap was and how big the long-lived caches had grown.
+     */
+    fun crashReport(thread: String, e: Throwable, rt: Runtime = Runtime.getRuntime(), at: Instant = Instant.now()): String {
+        val mb = { b: Long -> b / 1_048_576 }
+        val heap = "heap ${mb(rt.totalMemory() - rt.freeMemory())} MB used of ${mb(rt.maxMemory())} MB"
+        val oom = if (e is OutOfMemoryError || e.cause is OutOfMemoryError) "\n" + com.marketbot.core.util.Diagnostics.lines().joinToString("\n") else ""
+        return "Marketbot ${BuildConfig.VERSION_NAME} (${BuildConfig.GIT_SHA}) on ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}\n" +
+            "$at thread $thread, $heap$oom\n\n${e.stackTraceToString()}"
     }
 
     fun lastCrash(ctx: Context): String? = crashFile(ctx).takeIf { it.exists() }?.readText()
@@ -84,5 +96,59 @@ object Health {
         "vivo", "iqoo" -> "Vivo: Settings > Battery > Background power consumption: allow Marketbot high background power use."
         "google" -> null
         else -> null
+    }
+}
+
+
+/**
+ * Whether Android (or the maker's battery manager) is holding the app back, and
+ * the settings page that fixes it on this phone.
+ */
+object Background {
+    enum class Limit { NONE, STANDBY_RARE, RESTRICTED }
+
+    /** From the app's standby bucket and the background-restriction flag; both readable without a permission. */
+    fun limit(ctx: Context): Limit {
+        val am = ctx.getSystemService(android.app.ActivityManager::class.java)
+        if (am?.isBackgroundRestricted == true) return Limit.RESTRICTED
+        val bucket = ctx.getSystemService(android.app.usage.UsageStatsManager::class.java)?.appStandbyBucket ?: return Limit.NONE
+        return classify(bucket)
+    }
+
+    /** RESTRICTED (45) stops jobs and alarms; RARE (40) defers them by hours. ACTIVE..FREQUENT are fine. */
+    fun classify(bucket: Int): Limit = when {
+        bucket >= android.app.usage.UsageStatsManager.STANDBY_BUCKET_RESTRICTED -> Limit.RESTRICTED
+        bucket >= android.app.usage.UsageStatsManager.STANDBY_BUCKET_RARE -> Limit.STANDBY_RARE
+        else -> Limit.NONE
+    }
+
+    /**
+     * The maker's own battery screen where "sleeping apps" live (Samsung's Device
+     * Care), else Android's app page, whose Battery entry has "Unrestricted".
+     */
+    fun settingsIntents(ctx: Context, manufacturer: String = Build.MANUFACTURER): List<android.content.Intent> {
+        val oem = when (manufacturer.lowercase()) {
+            "samsung" -> listOf(
+                android.content.ComponentName("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"),
+                android.content.ComponentName("com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"))
+            "xiaomi", "redmi", "poco" -> listOf(android.content.ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"))
+            else -> emptyList()
+        }.map { android.content.Intent().setComponent(it).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+        val app = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${ctx.packageName}"))
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        return oem + app
+    }
+
+    /** Open the first of [settingsIntents] that this phone can show. */
+    fun openSettings(ctx: Context) {
+        for (i in settingsIntents(ctx)) if (runCatching { ctx.startActivity(i) }.isSuccess) return
+    }
+
+    /** The most recent pause the engine noticed (a late pass), if within [withinH] hours: when and how long. */
+    fun recentGap(raw: String?, now: Instant = Instant.now(), withinH: Long = 24): Pair<Instant, Long>? {
+        val parts = raw?.split('|') ?: return null
+        val at = runCatching { Instant.parse(parts[0]) }.getOrNull() ?: return null
+        val secs = parts.getOrNull(1)?.toLongOrNull() ?: return null
+        return if (java.time.Duration.between(at, now).toHours() < withinH) at to secs else null
     }
 }

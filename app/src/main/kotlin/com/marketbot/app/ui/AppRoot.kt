@@ -62,6 +62,22 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
     if (!setupDone) { SetupWizard(vm) { keys -> setupDone = true; goAccounts = keys }; return }
     // After the graph exists: navigating in the frame that first composes the NavHost would fail.
     LaunchedEffect(goAccounts) { if (goAccounts) { nav.navigate("accounts"); goAccounts = false } }
+    // Launcher shortcuts: each lands on a screen and, for anything that acts, asks first.
+    val shortcut by com.marketbot.app.Shortcuts.requested.collectAsState()
+    var askStop by remember { mutableStateOf(false) }
+    LaunchedEffect(shortcut) {
+        when (shortcut) {
+            "kill" -> { nav.navigate("home") { popUpTo("home") { inclusive = false }; launchSingleTop = true }; vm.askKill() }
+            "trades" -> nav.navigate("activity?q=&level=TRADE") { launchSingleTop = true }
+            "stop" -> askStop = true
+        }
+        if (shortcut != null) com.marketbot.app.Shortcuts.requested.value = null
+    }
+    if (askStop) AlertDialog(onDismissRequest = { askStop = false },
+        confirmButton = { Button({ askStop = false; vm.stopService() }) { Text(androidx.compose.ui.res.stringResource(com.marketbot.app.R.string.stop_engine)) } },
+        dismissButton = { androidx.compose.material3.TextButton({ askStop = false }) { Text(androidx.compose.ui.res.stringResource(com.marketbot.app.R.string.back)) } },
+        title = { Text(androidx.compose.ui.res.stringResource(com.marketbot.app.R.string.stop_the_engine)) },
+        text = { Text(androidx.compose.ui.res.stringResource(com.marketbot.app.R.string.stop_the_engine_text)) })
 
     val width = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val rail = width >= 600          // tablets, foldables open, phones in landscape
@@ -100,8 +116,9 @@ fun AppRoot(vm: MainViewModel = viewModel()) {
                 StrategyScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() }, initialTab = e.arguments!!.getInt("tab"),
                     onHelp = { nav.navigate("help/$it") })
             }
-            composable("activity?q={q}", arguments = listOf(navArgument("q") { type = NavType.StringType; defaultValue = "" })) { e ->
-                ActivityScreen(vm, e.arguments?.getString("q").orEmpty())
+            composable("activity?q={q}&level={level}", arguments = listOf(navArgument("q") { type = NavType.StringType; defaultValue = "" },
+                navArgument("level") { type = NavType.StringType; defaultValue = "" })) { e ->
+                ActivityScreen(vm, e.arguments?.getString("q").orEmpty(), e.arguments?.getString("level")?.ifBlank { null })
             }
             composable("help/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) { e ->
                 HelpScreen(vm, e.arguments!!.getString("id")!!, onBack = { nav.popBackStack() })

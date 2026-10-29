@@ -52,9 +52,9 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 @Composable
-fun ActivityScreen(vm: MainViewModel, initialQuery: String = "") {
+fun ActivityScreen(vm: MainViewModel, initialQuery: String = "", initialLevel: String? = null) {
     val events by vm.events.collectAsState()
-    var level by remember { mutableStateOf<String?>(null) }
+    var level by remember(initialLevel) { mutableStateOf(initialLevel) }
     var strat by remember { mutableStateOf<String?>(null) }
     var query by androidx.compose.runtime.saveable.rememberSaveable(initialQuery) { mutableStateOf(initialQuery) }
     val shown = events.filter { (level == null || it.level == level) && (strat == null || it.strategyId == strat) &&
@@ -114,6 +114,9 @@ fun AccountsScreen(vm: MainViewModel) {
     val pickPem = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { kPem = ctx.contentResolver.openInputStream(it)?.bufferedReader()?.readText().orEmpty() }
     }
+    val refreshing by vm.refreshing.collectAsState()
+    // Pull down to read both balances from the exchanges again.
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(refreshing, { vm.refreshAccounts() }) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(stringResource(R.string.accounts), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(R.string.keys_are_encrypted_with_a_key_held_in_th),
@@ -159,6 +162,7 @@ fun AccountsScreen(vm: MainViewModel) {
             accounts.polymarketError?.let { ErrorCard("Polymarket: $it") { vm.refreshAccounts() } }
         }
         OutlinedButton({ vm.refreshAccounts() }) { Text(stringResource(R.string.test_connections)) }
+    }
     }
 }
 

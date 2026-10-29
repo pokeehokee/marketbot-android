@@ -122,6 +122,7 @@ class RewardFarm : Strategy {
     }
     private data class RecentCancel(val price: Double, val side: String, val qty: Double, val atMs: Long)
     private val rts = mutableMapOf<Mode, Rt>()
+    init { com.marketbot.core.util.Diagnostics.track(this, "Reward farm market records") { f -> f.rts.values.sumOf { it.metas.size + it.known.size + it.recentCancels.size } } }
     private fun mode(ctx: StrategyContext) = if (ctx.live) Mode.LIVE else Mode.PAPER
     private fun k(ctx: StrategyContext, s: String) = "$id.${mode(ctx).name.lowercase()}.$s"
 

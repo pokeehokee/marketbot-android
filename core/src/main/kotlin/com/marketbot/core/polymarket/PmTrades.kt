@@ -72,6 +72,8 @@ class PmTradeStream(signer: RequestSigner, url: String = PM_WS_MARKETS, private 
 
     /** Prints waiting across all markets; for tests and diagnostics. */
     val pending: Int get() = synchronized(inbox) { inbox.values.sumOf { it.size } }
+    init { com.marketbot.core.util.Diagnostics.track(this, "Polymarket trade prints waiting") { it.pending } }
+
     val connected get() = stream.connected
     val received get() = stream.received.get()
 

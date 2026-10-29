@@ -36,6 +36,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,7 +80,10 @@ fun ParametersForm(vm: MainViewModel, s: Strategy, onLeave: () -> Unit) {
     val dirty = vm.dirty(s)
     BackHandler(dirty) { askLeave = true }
 
-    LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    // A tap on empty space closes the keyboard; scrolling the list does too.
+    LazyColumn(Modifier.imePadding().pointerInput(Unit) { detectTapGestures { focus.clearFocus() } },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Text(stringResource(R.string.defaults_are_the_measured_values_from_th),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
@@ -148,10 +156,11 @@ private fun ParamRow(p: Param, v: String, changed: Boolean, problem: String?, on
                     val zones = listOf("" to "Phone's zone", "America/New_York" to "Eastern", "America/Chicago" to "Central",
                         "America/Denver" to "Mountain", "America/Los_Angeles" to "Pacific")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) { zones.forEach { (z, l) -> FilterChip(v.trim() == z, { onChange(z) }, { Text(l) }) } }
-                    if (zones.none { it.first == v.trim() }) OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.time_zone)) })
+                    if (zones.none { it.first == v.trim() }) OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.time_zone)) },
+                        keyboardOptions = doneKeys, keyboardActions = closeKeyboard())
                 }
                 Param.TextKind.BANDS -> BandsControl(v, onChange)
-                Param.TextKind.FREE -> OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true)
+                Param.TextKind.FREE -> OutlinedTextField(v, onChange, Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = doneKeys, keyboardActions = closeKeyboard())
             }
         }
         problem?.let { Text(it, color = LocalDesk.current.loss, style = MaterialTheme.typography.bodySmall) }
@@ -165,9 +174,27 @@ private fun NumberControl(value: Double?, min: Double, max: Double, step: Double
     val v = (value ?: min).coerceIn(min, max)
     fun emit(x: Double) = onChange(fmt(((x / step).roundToInt() * step).coerceIn(min, max), decimals))
     val label = (if (unit == "$") "$" else "") + fmt(v, decimals) + (if (unit.isNotEmpty() && unit != "$") " $unit" else "")
+    // Tap the value to type it exactly: a slider cannot hit 0.0725 by thumb.
+    var typing by remember { mutableStateOf<String?>(null) }
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    fun commit() { typing?.replace(',', '.')?.toDoubleOrNull()?.let { onChange(fmt(it.coerceIn(min, max), decimals)) }; typing = null; focus.clearFocus() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton({ emit(v - step) }, enabled = v > min) { Icon(Icons.Outlined.Remove, "Decrease") }
-        Text(label, style = Figures, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        val t = typing
+        if (t == null) Text(label, style = Figures, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.weight(1f).clickable(onClickLabel = "Type an exact value") { typing = fmt(v, decimals) }.padding(vertical = 10.dp))
+        else {
+            val req = remember { androidx.compose.ui.focus.FocusRequester() }
+            OutlinedTextField(t, { typing = it }, Modifier.weight(1f).focusRequester(req),
+                singleLine = true, textStyle = Figures,
+                suffix = { if (unit.isNotEmpty() && unit != "$") Text(unit) }, prefix = { if (unit == "$") Text("$") },
+                supportingText = { Text("${fmt(min, decimals)} to ${fmt(max, decimals)}") },
+                isError = t.replace(',', '.').toDoubleOrNull()?.let { it < min || it > max } ?: true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { commit() }))
+            LaunchedEffect(Unit) { req.requestFocus() }
+        }
         IconButton({ emit(v + step) }, enabled = v < max) { Icon(Icons.Outlined.Add, "Increase") }
     }
     // A slider only where its range is usable by thumb; huge ranges use the steppers alone.
@@ -190,4 +217,12 @@ private fun BandsControl(v: String, onChange: (String) -> Unit) {
     }
     TextButton({ emit(bands + (0.20 to 0.25)) }) { Text(stringResource(R.string.add_a_skipped_band)) }
     if (bands.isEmpty()) Text(stringResource(R.string.no_bands_skipped), style = MaterialTheme.typography.bodySmall)
+}
+
+private val doneKeys = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done)
+
+@Composable
+private fun closeKeyboard(): androidx.compose.foundation.text.KeyboardActions {
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    return androidx.compose.foundation.text.KeyboardActions(onDone = { focus.clearFocus() })
 }

@@ -34,6 +34,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Keys of actions in progress; [claim] is atomic, so two taps in one frame still run once. */
+class InFlight {
+    private val _keys = MutableStateFlow<Set<String>>(emptySet())
+    val keys: StateFlow<Set<String>> = _keys.asStateFlow()
+    fun claim(key: String): Boolean { var won = false; _keys.update { if (key in it) it else { won = true; it + key } }; return won }
+    fun release(key: String) = _keys.update { it - key }
+}
+
 data class AccountReading(
     val kalshi: KalshiBalance? = null, val kalshiError: String? = null,
     val polymarket: PmBalance? = null, val polymarketError: String? = null,
@@ -98,8 +106,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun record(id: String, mode: Mode) = com.marketbot.core.strategy.RecordVsExpected.of(settled.value.filter { it.strategyId == id && it.mode == mode })
 
+    // ---------------------------------------------------------------- one at a time
+    private val actions = InFlight()
+    /** Actions running now, by key ("cancel:12", "run:longshot", "kill"). Their buttons are disabled meanwhile. */
+    val inFlight = actions.keys
+
+    /**
+     * Run [block] unless an action with the same [key] is already running: a second
+     * tap on Cancel used to send a second DELETE. Returns null when it was ignored.
+     */
+    fun once(key: String, block: suspend () -> Unit): kotlinx.coroutines.Job? {
+        if (!actions.claim(key)) return null
+        return viewModelScope.launch(Dispatchers.IO) { try { block() } finally { actions.release(key) } }
+    }
+
     /** Cancel one resting order (swipe on Orders); the engine reads fills first. */
-    fun cancelOrder(strategyId: String, rowId: Long) = viewModelScope.launch(Dispatchers.IO) {
+    fun cancelOrder(strategyId: String, rowId: Long) = once("cancel:$rowId") {
         say(runCatching { engine.cancelOne(strategyId, rowId) }.getOrElse { "Cancel failed. " + plainError(it.message) })
     }
 
@@ -134,7 +156,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val strategyUi = _ui.asStateFlow()
     private fun edit(id: String, f: (StrategyUi) -> StrategyUi) = _ui.update { m -> m + (id to f(m[id] ?: StrategyUi())) }
 
-    fun loadStats(s: Strategy) = viewModelScope.launch(Dispatchers.IO) { val st = stats(s); edit(s.id) { it.copy(stats = st) } }
+    fun loadStats(s: Strategy) = once("stats:${s.id}") { val st = stats(s); edit(s.id) { it.copy(stats = st) } }
 
     /** The go-live checklist; some checks call the exchange, so only on first open or when asked. */
     fun loadGoLive(s: Strategy, force: Boolean = false) = viewModelScope.launch(Dispatchers.IO) {
@@ -143,14 +165,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         edit(s.id) { it.copy(reqs = r, arm = arm) }
     }
 
-    fun runPreflight(s: Strategy) = viewModelScope.launch(Dispatchers.IO) {
+    fun runPreflight(s: Strategy) = once("preflight:${s.id}") {
         edit(s.id) { it.copy(preflightBusy = true) }
         val p = preflight(s)
         edit(s.id) { it.copy(preflight = p, preflightBusy = false) }
         loadGoLive(s, force = true)
     }
 
-    fun armLive(s: Strategy, acks: Set<String>) = viewModelScope.launch(Dispatchers.IO) {
+    fun armLive(s: Strategy, acks: Set<String>) = once("arm:${s.id}") {
         val (ok, m) = arm(s, acks)
         edit(s.id) { it.copy(message = m) }
         if (ok) loadGoLive(s, force = true)
@@ -172,7 +194,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun ensureService() { if (!engine.running.value) EngineService.start(getApplication()) }
     fun stopService() = EngineService.stop(getApplication())
 
-    fun kill(on: Boolean) = viewModelScope.launch(Dispatchers.IO) { engine.setGlobalKill(on); say(if (on) "Kill switch on: orders cancelled." else "Kill switch off.") }
+    private val _killAsked = MutableStateFlow(false)
+    /** Set by the kill-switch shortcut: Home opens its confirmation. */
+    val killAsked = _killAsked.asStateFlow()
+    fun askKill() { _killAsked.value = true }
+    fun killAskHandled() { _killAsked.value = false }
+
+    fun kill(on: Boolean) = once("kill") { engine.setGlobalKill(on); say(if (on) "Kill switch on: orders cancelled." else "Kill switch off.") }
 
     suspend fun config(s: Strategy): StrategyConfig = withContext(Dispatchers.IO) { engine.config(s) }
     fun saveConfig(s: Strategy, values: Map<String, String>, done: (List<String>) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
@@ -201,7 +229,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun disarm(s: Strategy) = viewModelScope.launch(Dispatchers.IO) { engine.disarm(s); say("Live trading disarmed.") }
     suspend fun armRecord(s: Strategy) = withContext(Dispatchers.IO) { engine.armRecord(s.id) }
-    fun runNow(s: Strategy) = viewModelScope.launch(Dispatchers.IO) { say("Running ${s.name}..."); engine.runNow(s); say("${s.name}: pass finished.") }
+    fun runNow(s: Strategy) = once("run:${s.id}") { say("Running ${s.name}..."); engine.runNow(s); say("${s.name}: pass finished.") }
     fun resetKill(s: Strategy) = viewModelScope.launch(Dispatchers.IO) {
         val ctx = engine.context(s, Mode.PAPER, engine.config(s), false, false)
         val live = engine.context(s, Mode.LIVE, engine.config(s), true, false)
@@ -263,7 +291,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Move cash between Kalshi exchange shards (e.g. into the crypto shard for BTC deep-ITM). */
-    fun transferShards(amount: Double, from: Int, to: Int) = viewModelScope.launch(Dispatchers.IO) {
+    fun transferShards(amount: Double, from: Int, to: Int) = once("transfer") {
         runCatching { engine.kalshiClient.transferBetweenShards(amount, from, to) }
             .onSuccess { id ->
                 a.note(com.marketbot.core.store.LogEvent.Level.TRADE, "transfer", "Moved ${money(amount)} from shard $from to shard $to (transfer ${id ?: "accepted"}).")

@@ -72,9 +72,11 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
     override suspend fun tradingOpen(): Boolean = k.tradingActive(2).value
 
     override suspend fun ladder(now: Instant, spot: Double, sigma: Double): List<LadderMarket> {
-        val (event, _) = DeepItmRule.nextHourEvent(now, series)
+        val (event, close) = DeepItmRule.nextHourEvent(now, series)
         cachedEvent = event
-        return k.eventMarkets(event).mapNotNull { toLadder(it) }
+        // Only markets closing at this hour: on the night clocks go back, two hours carry the same ET label,
+        // and the listing for the second must never return the first one's (already closed) strikes.
+        return k.eventMarkets(event).mapNotNull { toLadder(it) }.filter { kotlin.math.abs(java.time.Duration.between(it.close, close).seconds) <= 60 }
     }
 
     private class Tape(val minTs: Long, val at: Instant, val trades: List<kotlinx.serialization.json.JsonObject>)
@@ -92,6 +94,7 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
     }
 
     internal val cachedTapes get() = tapes.size
+    init { com.marketbot.core.util.Diagnostics.track(this, "Kalshi BTC paper tapes cached") { v -> v.tapes.values.sumOf { it.trades.size } } }
 
     override suspend fun paperFill(q: QuoteRow, now: Instant, book: LadderMarket?): FillRead? {
         val trades = tape(q.ticker, q.placedAt.epochSecond, now)
@@ -190,6 +193,7 @@ class PolymarketBtcLadder(private val pm: PolymarketClient) : LadderVenue {
     }
     private val books = mutableMapOf<String, PmBook>()
     internal val cachedBooks get() = books.size
+    init { com.marketbot.core.util.Diagnostics.track(this, "Polymarket BTC books + fill trackers") { it.books.size + it.trackers.size } }
 
     override suspend fun tradingOpen() = true
 

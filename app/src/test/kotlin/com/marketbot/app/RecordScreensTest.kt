@@ -69,7 +69,7 @@ class RecordScreensTest {
             rule.onAllNodesWithText("Paper")[1].performScrollTo().performClick()   // the record's filter chip, not the mode control
             shot(sc, "7_strategy_record")
             rule.onNodeWithText("Orders").performClick()
-            waitFor("the orders list") { rule.onAllNodesWithText("DALLAS HIGH", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            waitFor("the orders list") { rule.onAllNodesWithText("Dallas high", substring = true, ignoreCase = true).fetchSemanticsNodes().isNotEmpty() }
             shot(sc, "8_orders")
         }
     }

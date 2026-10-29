@@ -218,3 +218,20 @@ class BootReceiver : BroadcastReceiver() {
             context.startForegroundService(Intent(context, EngineService::class.java).putExtra(EngineService.EXTRA_BOOT, true))
     }
 }
+
+/**
+ * The clock or the time zone changed (travel, a manual set, a carrier update):
+ * waiting strategies work out their next pass again, and the alarm follows.
+ */
+class TimeChangeReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_TIMEZONE_CHANGED && intent.action != Intent.ACTION_TIME_CHANGED) return
+        val app = context.applicationContext as MarketbotApp
+        app.engine.reschedule()
+        app.appScope.launch {
+            app.note(com.marketbot.core.store.LogEvent.Level.INFO, "clock",
+                if (intent.action == Intent.ACTION_TIMEZONE_CHANGED) "Time zone changed to ${java.util.TimeZone.getDefault().id}: schedules recomputed."
+                else "The phone's clock was set: schedules recomputed.")
+        }
+    }
+}
