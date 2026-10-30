@@ -332,15 +332,26 @@ object ApiContract {
             }
         }
         out += probe("Polymarket", "daily BTC ladder event", PDEEP) {
-            val (event, _) = PolymarketBtcLadder(pm).eventSlug(now)
-            val ms = pm.event(event).objects("markets").map { PmMarketMeta(it) }
+            // Polymarket lists the next 5 PM ET event only some hours ahead (the 2026-10-29 one was
+            // created about 21 h before its close), while the strategy needs it in the last 52 min.
+            // So the format is checked on the latest listed event, and a missing next event is only
+            // a finding once it is close enough to matter.
+            val ladder = PolymarketBtcLadder(pm)
+            val (next, close) = ladder.eventSlug(now)
+            val (prev, _) = ladder.eventSlug(close.minus(java.time.Duration.ofHours(30)))
+            suspend fun read(slug: String) = try { pm.event(slug).objects("markets").map { PmMarketMeta(it) } } catch (e: ApiException) { if (e.status == 404) null else throw e }
+            val nextMs = read(next)
+            val event = if (nextMs != null) next else prev
+            val ms = nextMs ?: read(prev) ?: return@probe fail("neither $next nor $prev is listed: the event slug format may have changed")
+            val hoursLeft = java.time.Duration.between(now, close).toMinutes() / 60.0
             when {
+                nextMs == null && hoursLeft <= 2.0 -> warn("$next is not listed ${"%.1f".format(hoursLeft)} h before its close; the strategy quotes it in the last 52 min")
                 ms.isEmpty() -> fail("event $event has no markets (slug format changed?)")
                 ms.any { !Vocabulary.isPmBtcMarket(it.slug) } -> fail("market slugs the app does not recognise as its BTC ladder (e.g. ${ms.first { !Vocabulary.isPmBtcMarket(it.slug) }.slug}): " +
                     "the kill sweep and order check would not claim them")
                 ms.all { it.strike == null } -> fail("no assetPriceTerms.strike: the ladder drops every market")
                 ms.any { it.windowEnd == null } -> warn("assetPriceTerms.windowEnd missing on some markets: the event close is used")
-                else -> pass("${ms.size} markets under $event with strikes")
+                else -> pass("${ms.size} markets under $event with strikes" + if (nextMs == null) " ($next not listed yet, ${"%.0f".format(hoursLeft)} h before its close)" else "")
             }
         }
         out += probe("Polymarket", "daily temperature buckets", "Polymarket temperature longshot (paper)") {
