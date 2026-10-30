@@ -173,7 +173,7 @@ fun EvidenceBadge(level: EvidenceLevel) {
         EvidenceLevel.LIVE_PROVEN -> d.gain
         EvidenceLevel.REPORTED -> d.warn
         EvidenceLevel.BACKTEST_ONLY -> d.warn
-        EvidenceLevel.UNPROVEN -> d.loss
+        EvidenceLevel.UNPROVEN, EvidenceLevel.NO_EDGE -> d.loss
     }
     Text(level.label, style = MaterialTheme.typography.labelSmall, color = c,
         modifier = Modifier.clip(Radius.chip).background(c.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
