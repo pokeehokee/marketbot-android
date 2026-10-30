@@ -66,6 +66,48 @@ object Periods {
             .groupBy { startOf(it.resolvedAt!!.atZone(zone).toLocalDate()) }
         return starts.map { s -> val l = settled[s].orEmpty(); Row(s, l.size, l.sumOf { it.pnl!! }, l.count { it.pnl!! < 0 }) }
     }
+
+    /** The same table for each strategy on its own, keyed by strategy id; strategies with nothing settled in the window are left out. */
+    fun byStrategy(rows: List<QuoteRow>, unit: Unit, n: Int, zone: ZoneId, now: Instant): Map<String, List<Row>> =
+        rows.groupBy { it.strategyId }.mapValues { (_, l) -> table(l, unit, n, zone, now) }.filterValues { t -> t.any { it.settled > 0 } }
+}
+
+/**
+ * One method's own record in one book (live or paper), for the lists on Home and
+ * Strategies: what it actually made, not what the research said it would.
+ * Realised P&L counts settled real rows only. Per contract is the weighted figure
+ * [RecordVsExpected] uses. Losses against implied are for binary outcomes only
+ * (the losses the prices said to expect when each order was placed).
+ */
+data class MethodRecord(
+    val mode: Mode, val settled: Int, val pnl: Double, val today: Double,
+    val perContract: Double?, val losses: Int, val impliedLosses: Double?,
+) {
+    /** One line: "Live +$3.20 on 41 settled, +1.10c/contract, 3 lost vs 3.4 implied". */
+    fun line(): String = buildString {
+        append(mode.name.lowercase().replaceFirstChar { it.uppercase() }).append(' ')
+        append(if (pnl >= 0) "+" else "").append(money(pnl)).append(" on ").append(settled).append(" settled")
+        perContract?.let { append(", ").append(cents(it)).append("/contract") }
+        impliedLosses?.let { append(", ").append(losses).append(" lost vs ").append("%.1f".format(java.util.Locale.ROOT, it)).append(" implied") }
+    }
+
+    companion object {
+        fun of(mode: Mode, rows: List<QuoteRow>, since: Instant): MethodRecord? {
+            val real = rows.filter { it.mode == mode && it.resolvedAt != null && it.hypothetical == false && it.pnl != null }
+            if (real.isEmpty()) return null
+            val binary = real.filter { Outcomes.binary(it) && Outcomes.lost(it) != null && (it.filledContracts ?: 0.0) > 0 }
+            val w = real.map { (it.filledContracts ?: it.contracts) to it.pnl!! }.filter { it.first > 0 }
+            return MethodRecord(mode, real.size, real.sumOf { it.pnl!! }, realisedSince(real, since),
+                w.takeIf { it.isNotEmpty() }?.let { l -> l.sumOf { it.second } / l.sumOf { it.first } },
+                binary.count { Outcomes.lost(it) == true }, binary.takeIf { it.isNotEmpty() }?.sumOf { Outcomes.impliedLoss(it) })
+        }
+
+        /** The book to show for a method: its current mode's when that has a record, else the other one. */
+        fun preferred(current: Mode, rows: List<QuoteRow>, since: Instant): MethodRecord? {
+            val first = if (current == Mode.PAPER) Mode.PAPER else Mode.LIVE
+            return of(first, rows, since) ?: of(if (first == Mode.LIVE) Mode.PAPER else Mode.LIVE, rows, since)
+        }
+    }
 }
 
 /**

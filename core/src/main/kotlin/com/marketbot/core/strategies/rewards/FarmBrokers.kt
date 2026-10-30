@@ -123,6 +123,8 @@ data class PaperFarmState(
     var realized: Double = 0.0,
     var rebates: Double = 0.0,
     var startingCash: Double = 0.0,
+    /** Contracts filled since the start, for the shared ledger's per-day rows. */
+    var filled: Double = 0.0,
 )
 
 /**
@@ -199,6 +201,7 @@ class PaperFarmBroker(var s: PaperFarmState, private val clockMs: () -> Long = {
         s.cash -= qty * o.price
         val fee = pmTradeFee(PM_MAKER_THETA, q, o.price)
         s.cash -= fee; s.rebates -= fee
+        s.filled += q
         val new = p.qty + qty
         if (p.qty == 0.0 || (p.qty > 0) == (qty > 0)) {
             p.avgPx = if (new != 0.0) (p.qty * p.avgPx + qty * o.price) / new else o.price

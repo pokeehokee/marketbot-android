@@ -31,6 +31,7 @@ fun StrategiesScreen(vm: MainViewModel, onGoLive: (String) -> Unit = {}, onOpen:
     val status by vm.status.collectAsState()
     val running by vm.engineRunning.collectAsState()
     vm.modes.collectAsState().value
+    val settledRows by vm.settled.collectAsState()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text(stringResource(R.string.strategies), style = MaterialTheme.typography.headlineSmall)
@@ -53,6 +54,7 @@ fun StrategiesScreen(vm: MainViewModel, onGoLive: (String) -> Unit = {}, onOpen:
                     Text(s.summary, style = MaterialTheme.typography.bodyMedium)
                     EvidenceBadge(s.evidence.level)
                     Text(s.evidence.headline, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MethodRecordLine(vm.methodRecord(s, settledRows), showEmpty = true)
                     Spacer(Modifier.height(2.dp))
                     ModeControl(vm, s, mode) { onGoLive(s.id) }
                 }

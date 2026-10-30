@@ -71,19 +71,35 @@ fun TradingStateLine(st: StrategyStatus?) {
 private val dayFmtShort = DateTimeFormatter.ofPattern("EEE MMM d")
 private val monthFmt = DateTimeFormatter.ofPattern("MMMM yyyy")
 
-/** Settled P&L by day, week or month (freqtrade's /daily, /weekly, /monthly). */
+/** A method's own settled record, one line, for lists. */
+@Composable
+fun MethodRecordLine(r: com.marketbot.core.strategy.MethodRecord?, showEmpty: Boolean = false) {
+    if (r == null) {
+        if (showEmpty) Text(stringResource(R.string.no_settled_record_yet), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    Text(r.line(), style = MaterialTheme.typography.bodySmall, maxLines = 2,
+        color = moneyColor(r.pnl) ?: MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** Settled P&L by day, week or month (freqtrade's /daily, /weekly, /monthly), pooled or split by method. */
 @Composable
 fun PeriodsSection(vm: MainViewModel) {
     var unit by rememberSaveable { mutableStateOf(Periods.Unit.DAY) }
     var mode by rememberSaveable { mutableStateOf(Mode.LIVE) }
+    var split by rememberSaveable { mutableStateOf(false) }
     val settled by vm.settled.collectAsState()
-    val rows = loaded(unit, mode, settled.size) { vm.periods(mode, unit, when (unit) { Periods.Unit.DAY -> 7; Periods.Unit.WEEK -> 8; Periods.Unit.MONTH -> 6 }) }
+    val n = when (unit) { Periods.Unit.DAY -> 7; Periods.Unit.WEEK -> 8; Periods.Unit.MONTH -> 6 }
+    val rows = loaded(unit, mode, settled.size, settled.lastOrNull()?.resolvedAt) { vm.periods(mode, unit, n) }
+    val byMethod = loaded(unit, mode, settled.size, settled.lastOrNull()?.resolvedAt, split) { if (split) vm.periodsByMethod(mode, unit, n) else emptyMap() }
+    val names = vm.strategies.associate { it.id to it.name }
     Section(stringResource(R.string.by_period)) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
             listOf(Periods.Unit.DAY to "Days", Periods.Unit.WEEK to "Weeks", Periods.Unit.MONTH to "Months").forEach { (u, l) ->
                 FilterChip(unit == u, { unit = u }, { Text(l) }) }
             FilterChip(mode == Mode.LIVE, { mode = if (mode == Mode.LIVE) Mode.PAPER else Mode.LIVE }, { Text(if (mode == Mode.LIVE) "Live" else "Paper") })
         }
+        FilterChip(split, { split = !split }, { Text(stringResource(R.string.split_by_method)) })
         if (rows == null) { SkeletonLine(); return@Section }
         Row(Modifier.padding(top = Space.s)) {
             listOf("Period" to 2f, "Settled" to 1f, "Lost" to 1f, "P&L" to 1.4f).forEach { (h, w) ->
@@ -98,6 +114,17 @@ fun PeriodsSection(vm: MainViewModel) {
                 Text("${r.losses}", style = Figures, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                 Text(if (r.settled == 0) "-" else money(r.pnl), style = Figures, modifier = Modifier.weight(1.4f), textAlign = TextAlign.End,
                     color = if (r.settled == 0) MaterialTheme.colorScheme.onSurfaceVariant else moneyColor(r.pnl) ?: MaterialTheme.colorScheme.onSurface)
+            }
+            if (split) byMethod.orEmpty().forEach { (id, t) ->
+                val m = t.firstOrNull { it.start == r.start }?.takeIf { it.settled > 0 } ?: return@forEach
+                Row(Modifier.padding(start = Space.m, bottom = 2.dp)) {
+                    Text(names[id] ?: id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(2f), maxLines = 1)
+                    Text("${m.settled}", style = Figures, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                    Text("${m.losses}", style = Figures, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                    Text(money(m.pnl), style = Figures, modifier = Modifier.weight(1.4f), textAlign = TextAlign.End,
+                        color = moneyColor(m.pnl) ?: MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
     }

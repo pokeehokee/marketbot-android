@@ -136,6 +136,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         }
 
         Section(stringResource(R.string.strategies)) {
+            val settledRows by vm.settled.collectAsState()
             vm.listed().forEach { s ->
                 val st = status[s.id]
                 val mode = st?.mode ?: vm.modeOf(s.id)
@@ -144,6 +145,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                         Text(s.name, style = MaterialTheme.typography.titleSmall)
                         Text(st?.lastSummary?.let { "Last: $it" } ?: s.venue.label, style = MaterialTheme.typography.bodySmall,
                             color = if (st?.lastError != null) LocalDesk.current.loss else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        MethodRecordLine(vm.methodRecord(s, settledRows))
                         if (st?.state != null && st.state != com.marketbot.core.strategy.TradingState.ACTIVE || st?.reason != null) TradingStateLine(st)
                     }
                     ModePill(mode, st?.armed == true, running)
