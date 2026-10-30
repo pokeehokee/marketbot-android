@@ -119,6 +119,7 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
         var lastScan = Instant.EPOCH; var lastTick: Instant? = null; var paper: PaperFarmBroker? = null; var scannedOnce = false
         var lastSettleCheck = Instant.EPOCH; val metas = mutableMapOf<String, PmMarketMeta>()
         var live: LiveFarmBroker? = null
+        var lastEarnings = Instant.EPOCH
         /** When each resting order was first seen (for the maximum age); pruned to orders still resting. */
         val orderSeen = mutableMapOf<String, Instant>()
         /** The last fill seen per market (for the pause after a fill), and the position it left. */
@@ -209,7 +210,7 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
         if (risk.halted) {
             ctx.error("halt", "KILL SWITCH: ${risk.reason}. All orders cancelled; reset it after review.", mapOf("equity" to bal.equity))
             ctx.notify("$name halted", risk.reason)
-            runCatching { br.cancelAll() }; savePaper(ctx, rt)
+            runCatching { br.cancelAll() }; bookLedger(ctx, rt, br, now); savePaper(ctx, rt)
             return RunReport("halted")
         }
 
@@ -232,6 +233,7 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
             }
         }
         if (dt > 0) accrue(ctx, now, estRate * dt / 86_400.0, dt)
+        bookLedger(ctx, rt, br, now)
         savePaper(ctx, rt)
         ctx.info("tick", "Working ${orders.map { it.slug }.toSet().size} market(s) with ${orders.size} order(s) and ${positions.size} position(s); equity ${money(bal.equity.value)}, rewards estimated at ${money(estRate)}/day",
             buildMap {
@@ -378,12 +380,40 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
         }
     }
 
+    /**
+     * The farm's money into the shared ledger ([FarmLedger]): paper fill P&L and rebates
+     * every pass; live rewards from Polymarket's earnings at most hourly (the main
+     * strategy only: variants share the account but not its rewards).
+     */
+    private suspend fun bookLedger(ctx: StrategyContext, rt: Rt, br: FarmBroker, now: Instant) {
+        try {
+            if (!br.live) rt.paper?.s?.let { s ->
+                val key = k(ctx, "ledger_booked")
+                val prev = ctx.stores.state.get(key)?.split(',')?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 2 }
+                val total = s.realized + s.rebates
+                if (prev == null) {
+                    ctx.info("ledger", "Booking paper fill P&L into the shared ledger from now on; the ${money(total)} before this stays in the farm's own results.")
+                } else FarmLedger.bookPaperFills(ctx.stores.ledger, id, total, s.filled - prev[1], prev[0], now)
+                ctx.stores.state.put(key, "$total,${s.filled}")
+            } else if (baseId == null && ctx.polymarket.hasCredentials && Duration.between(rt.lastEarnings, now) >= Duration.ofHours(1)) {
+                rt.lastEarnings = now
+                val skipped = FarmLedger.bookEarnings(ctx.stores.ledger, id, ctx.polymarket.earnings())
+                if (skipped > 0) ctx.warn("ledger", "$skipped reward row(s) had no date, market or numeric reward and were not booked.")
+            }
+        } catch (e: Exception) {
+            if (br.live) rt.lastEarnings = now.minus(Duration.ofMinutes(50))   // retry in about 10 min
+            ctx.warn("ledger", "Could not book the farm's results into the ledger this pass: ${e.message}")
+        }
+    }
+
     private suspend fun accrue(ctx: StrategyContext, now: Instant, usd: Double, seconds: Double) {
         val day = LocalDate.ofInstant(now, ZoneOffset.UTC).toString()
         val key = k(ctx, "estimates")
         val map = ctx.stores.state.get(key)?.let { runCatching { JSON.decodeFromString(EST, it) }.getOrNull() }?.toMutableMap() ?: mutableMapOf()
         map[day] = (map[day] ?: 0.0) + usd
         ctx.stores.state.put(key, JSON.encodeToString(EST, map.toSortedMap().entries.toList().takeLast(120).associate { it.key to it.value }))
+        FarmLedger.upsert(ctx.stores.ledger, id, mode(ctx), FarmLedger.REWARD_EST, day, now, map.getValue(day), 0.0, Source.DERIVED,
+            "program scoring formula x calibration ${ctx.config.num("reward_calibration")}: an estimate, not money", add = false)
         if (seconds > 3600) ctx.warn("gap", "A ${"%.0f".format(seconds / 60)} min gap between passes: the phone likely slept. Estimated rewards for that gap are not counted as quoting time.")
     }
 
@@ -544,7 +574,7 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
 
         private val EST = MapSerializer(String.serializer(), Double.serializer())
 
-        /** The farm's paper record. It keeps its own book (not the shared ledger), so its variants are compared on this. */
+        /** The farm's paper record from its own broker (fills, rebates, estimates): what its variants are compared on. */
         data class PaperRecord(val realized: Double, val rebates: Double, val estimatedRewards: Double?)
 
         suspend fun paperRecord(state: com.marketbot.core.store.StateStore, id: String): PaperRecord? {

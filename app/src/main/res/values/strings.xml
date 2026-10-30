@@ -53,6 +53,8 @@
     <string name="send_test_ping">Send test ping</string>
     <string name="last_ping">Last ping: %1$s</string>
     <string name="by_period">By period</string>
+    <string name="split_by_method">Split by method</string>
+    <string name="no_settled_record_yet">No settled record yet in this app.</string>
     <string name="after_the_fill">After the fill (%1$s)</string>
     <string name="markout_help">Average gain per contract if each filled position were marked at the mid this long after the app saw the fill. Steadily negative means fills come when they hurt, visible within the hour instead of at settlement.</string>
     <string name="calibration_title">Calibration (%1$s)</string>

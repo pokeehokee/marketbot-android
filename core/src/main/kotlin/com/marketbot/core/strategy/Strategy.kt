@@ -20,6 +20,8 @@ enum class EvidenceLevel(val label: String) {
     REPORTED("Reported live result, not verifiable"),
     BACKTEST_ONLY("Backtest only"),
     UNPROVEN("Unproven"),
+    /** Measured on history and found no edge (or a negative one): paper only until something new says otherwise. */
+    NO_EDGE("Tested: no edge"),
 }
 
 data class Evidence(val level: EvidenceLevel, val headline: String, val details: List<String>, val source: String,

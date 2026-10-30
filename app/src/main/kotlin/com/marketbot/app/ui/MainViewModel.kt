@@ -106,6 +106,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun record(id: String, mode: Mode) = com.marketbot.core.strategy.RecordVsExpected.of(settled.value.filter { it.strategyId == id && it.mode == mode })
 
+    /** A method's own settled record for the lists, from [rows] (pass [settled]'s value so the caller recomposes on it). */
+    fun methodRecord(s: Strategy, rows: List<com.marketbot.core.store.QuoteRow>) = com.marketbot.core.strategy.MethodRecord.preferred(
+        modeOf(s.id), rows.filter { it.strategyId == s.id }, com.marketbot.core.strategy.startOfLocalDay(java.time.Instant.now()))
+
     // ---------------------------------------------------------------- one at a time
     private val actions = InFlight()
     /** Actions running now, by key ("cancel:12", "run:longshot", "kill"). Their buttons are disabled meanwhile. */
@@ -318,7 +322,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------- exposure by venue
     data class Exposure(val venue: String, val resting: Int, val restingLocked: Double, val held: Int, val heldAtRisk: Double, val realisedToday: Double)
 
-    /** Live money tied up per venue, from the ledger (the reward farm's own book is not in it). */
+    /** Live money tied up per venue, from the ledger's binary positions (the reward farm's day rows lock nothing and are left out). */
     suspend fun exposure(): List<Exposure> = withContext(Dispatchers.IO) {
         val today = com.marketbot.core.strategy.startOfLocalDay(java.time.Instant.now())
         val rows = strategies.flatMap { engine.stores.ledger.all(it.id, Mode.LIVE) }.filter { com.marketbot.core.strategy.Outcomes.binary(it) }
@@ -336,6 +340,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun periods(mode: Mode, unit: com.marketbot.core.strategy.Periods.Unit, n: Int) = withContext(Dispatchers.Default) {
         val rows = strategies.flatMap { engine.stores.ledger.all(it.id, mode) }
         com.marketbot.core.strategy.Periods.table(rows, unit, n, java.time.ZoneId.systemDefault(), java.time.Instant.now())
+    }
+    suspend fun periodsByMethod(mode: Mode, unit: com.marketbot.core.strategy.Periods.Unit, n: Int) = withContext(Dispatchers.Default) {
+        val rows = strategies.flatMap { engine.stores.ledger.all(it.id, mode) }
+        com.marketbot.core.strategy.Periods.byStrategy(rows, unit, n, java.time.ZoneId.systemDefault(), java.time.Instant.now())
     }
     private val _locksChanged = MutableStateFlow(0)
     val locksChanged = _locksChanged.asStateFlow()
