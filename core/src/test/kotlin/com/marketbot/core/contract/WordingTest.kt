@@ -146,3 +146,35 @@ class AccountProbeTest {
         Unit
     }
 }
+
+class BtcEventProbeTest {
+    private fun run(listed: Set<String>, now: java.time.Instant): ApiContract.Finding = runBlocking {
+        val server = okhttp3.mockwebserver.MockWebServer()
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse {
+                val p = request.requestUrl!!.encodedPath
+                val slug = p.removePrefix("/v1/events/slug/")
+                return if (p.startsWith("/v1/events/slug/") && slug in listed)
+                    okhttp3.mockwebserver.MockResponse().setBody("""{"event":{"slug":"$slug","markets":[{"slug":"cpc-$slug-73000","active":true,"closed":false,
+                        "assetPriceTerms":{"strike":{"value":"73000"},"windowEnd":"2026-10-29T21:00:00Z"}}]}}""")
+                else okhttp3.mockwebserver.MockResponse().setResponseCode(404).setBody("""{"code":5,"message":"not found"}""")
+            }
+        }
+        server.start()
+        try {
+            val base = server.url("").toString().trimEnd('/')
+            val pm = com.marketbot.core.polymarket.PolymarketClient(null, gateway = com.marketbot.core.net.JsonHttp(base, sleep = {}, maxRetries = 0),
+                api = com.marketbot.core.net.JsonHttp(base, sleep = {}, maxRetries = 0))
+            ApiContract.polymarketPublic(pm, now).single { it.check == "daily BTC ladder event" }
+        } finally { server.shutdown() }
+    }
+
+    @Test fun `the next BTC event not being listed yet is not a failure, only close to its close`() {
+        val evening = java.time.Instant.parse("2026-10-30T00:36:00Z")        // 19:36 CDT: tomorrow's event not listed yet
+        assertEquals(ApiContract.Verdict.PASS, run(setOf("btc-above-day-2026-10-29"), evening).verdict, "the format is checked on the latest listed one")
+        val nearClose = java.time.Instant.parse("2026-10-30T19:30:00Z")      // 15:30 ET, 1.5 h before
+        assertEquals(ApiContract.Verdict.WARN, run(setOf("btc-above-day-2026-10-29"), nearClose).verdict)
+        assertEquals(ApiContract.Verdict.FAIL, run(emptySet(), evening).verdict, "neither listed: the slug format changed")
+        assertEquals(ApiContract.Verdict.PASS, run(setOf("btc-above-day-2026-10-30"), nearClose).verdict)
+    }
+}
