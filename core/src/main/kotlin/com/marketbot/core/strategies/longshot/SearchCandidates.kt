@@ -137,14 +137,14 @@ class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : PaperRa
     )
     override val evidence = Evidence(
         EvidenceLevel.BACKTEST_ONLY,
-        "History, held-out newest third: +5.68c/contract (p 0.046) one hour before close; +4.91c under the weather adverse-fill stress.",
+        "History through 2026-10-29, held-out newest third: +6.69c/contract (p 0.031) one hour before close; +5.44c under the weather adverse-fill stress.",
         listOf(
-            "172 markets on 99 days across 12 series; 7 losses against about 21 implied (loss ratio 0.24).",
+            "220 markets on 127 days across 12 series; losses at 0.23 of the rate the prices implied.",
             "Matches weatherbot's 2026-09-08 finding: the deepest bin is overpriced in the last hours, and the bias reverses a day out.",
-            "Thin: the holdout p-value is 0.046.",
+            "Thin: the holdout p-value is 0.031 and it rests on a handful of losing markets.",
         ),
         SEARCH,
-        Expectation(0.0568, null, null, "pool search holdout, resting at the maker price; fills unmeasured"),
+        Expectation(0.0669, null, null, "pool search holdout through 2026-10-29 (220 markets), resting at the maker price; +5.44c with adverse fills; fills unmeasured"),
     )
     override val defaultMinLeadMin = 40
     override val defaultMaxLeadMin = 90

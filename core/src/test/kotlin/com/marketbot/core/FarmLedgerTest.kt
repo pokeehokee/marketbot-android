@@ -115,3 +115,19 @@ class MethodRecordTest {
         assertEquals(-2.0, split.getValue("b")[0].pnl); assertEquals(0.5, split.getValue("b")[1].pnl)
     }
 }
+
+/** The CSV export carries what a review off the phone needs, including the stored extras. */
+class LedgerCsvTest {
+    @Test fun `extras and order details are exported, quoted, after the original columns`() {
+        val q = com.marketbot.core.store.QuoteRow(id = 7, strategyId = "w", mode = Mode.PAPER, venue = "kalshi", ticker = "KXHIGHNY-26OCT31-B70.5",
+            action = "sell_yes", price = 0.07, contracts = 5.0, placedAt = Instant.parse("2026-10-30T10:00:00Z"),
+            closeTime = Instant.parse("2026-10-31T04:00:00Z"), clientOrderId = "c1", marketKind = "HIGH", queueAhead = 12.0,
+            extra = Json.parseToJsonElement("""{"quoted_mid":0.065,"markout_5":-0.5}""") as JsonObject)
+        val header = com.marketbot.core.store.LedgerCsv.header().trim().split(',')
+        assertEquals("hypothetical", header[17]); assertEquals("extra", header.last())
+        val row = com.marketbot.core.store.LedgerCsv.row(q)
+        assertTrue(row.endsWith("\"{\"\"quoted_mid\"\":0.065,\"\"markout_5\"\":-0.5}\"\n"), row)
+        assertTrue("\"2026-10-31T04:00:00Z\"" in row && "\"HIGH\"" in row && "\"12.0\"" in row && "\"c1\"" in row, row)
+        assertTrue(com.marketbot.core.store.LedgerCsv.row(q.copy(extra = JsonObject(emptyMap()))).endsWith(",\"\"\n"))
+    }
+}

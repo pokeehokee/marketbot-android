@@ -547,14 +547,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         androidx.core.content.FileProvider.getUriForFile(getApplication(), "${getApplication<Application>().packageName}.files", f)
     }
 
-    /** CSV of every ledger row with its sources, for the share sheet. */
+    /** CSV of every ledger row with its sources and stored extras ([com.marketbot.core.store.LedgerCsv]), for the share sheet. */
     suspend fun exportCsv(): String = withContext(Dispatchers.IO) {
-        val sb = StringBuilder("strategy,mode,venue,ticker,action,price,contracts,placed_at,order_id,filled,fill_source,cancelled_at,resolved_at,result,pnl,pnl_source,pnl_origin,hypothetical\n")
-        for (s in strategies) for (q in engine.stores.ledger.all(s.id)) {
-            fun c(x: Any?) = "\"" + (x?.toString() ?: "").replace("\"", "\"\"") + "\""
-            sb.append(listOf(q.strategyId, q.mode, q.venue, q.ticker, q.action, q.price, q.contracts, q.placedAt, q.orderId, q.filledContracts,
-                q.fillSource, q.cancelledAt, q.resolvedAt, q.result, q.pnl, q.pnlSource, q.pnlOrigin, q.hypothetical).joinToString(",") { c(it) }).append('\n')
-        }
+        val sb = StringBuilder(com.marketbot.core.store.LedgerCsv.header())
+        for (s in strategies) for (q in engine.stores.ledger.all(s.id)) sb.append(com.marketbot.core.store.LedgerCsv.row(q))
         sb.toString()
     }
 
