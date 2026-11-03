@@ -115,4 +115,33 @@ class SignerTest {
         assertTrue("private key" in KalshiSigner.keyIdProblem(r["pkcs1_pem"].s!!)!!)
         assertTrue("spaces" in KalshiSigner.keyIdProblem("abc def")!!)
     }
+
+    @Test fun `marker lines with spaces, long dashes, no dashes, or a wrong label still parse`() {
+        val r = sig["rsa_pss"].o()
+        val good = r["pkcs1_pem"].s!!
+        val body = good.lines().filterNot { it.startsWith("-----") }.joinToString("\n")
+        val p8body = r["pkcs8_pem"].s!!.lines().filterNot { it.startsWith("-----") }.joinToString("\n")
+        for (pem in listOf(
+            "----- BEGIN RSA PRIVATE KEY -----\n$body\n----- END RSA PRIVATE KEY -----",
+            "\u2014\u2014\u2014\u2014\u2014BEGIN RSA PRIVATE KEY\u2014\u2014\u2014\u2014\u2014\n$body\n\u2014\u2014\u2014\u2014\u2014END RSA PRIVATE KEY\u2014\u2014\u2014\u2014\u2014",
+            "\u2013\u2013BEGIN RSA PRIVATE KEY\u2013\u2013 $body \u2013\u2013END RSA PRIVATE KEY\u2013\u2013",
+            "BEGIN RSA PRIVATE KEY\n$body\nEND RSA PRIVATE KEY",
+            "-----BEGIN RSA PRIVATE KEY-----\n${body.trimEnd('=', '\n')}\n-----END RSA PRIVATE KEY-----",   // padding lost
+            "-----BEGIN PRIVATE KEY-----\n$body\n-----END PRIVATE KEY-----",                          // PKCS#1 under a PKCS#8 label
+            "-----BEGIN RSA PRIVATE KEY-----\n$p8body\n-----END RSA PRIVATE KEY-----",                // and the reverse
+            "\uFEFF$good\u200B",                                                                    // BOM and zero-width space
+        )) {
+            val s = KalshiSigner("kid", pem)
+            assertTrue(pssVerify(r["public_pem"].s!!, r["preimage"].s!!, s.sign(r["preimage"].s!!)), pem.take(60))
+        }
+    }
+
+    @Test fun `a damaged key says what was read without printing any of it`() {
+        val good = sig["rsa_pss"].o()["pkcs1_pem"].s!!
+        val lines = good.lines()
+        val cut = (lines.take(5) + lines.last { it.isNotBlank() }).joinToString("\n")   // most of the key missing
+        val e = assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", cut) }.message!!
+        assertTrue("bytes" in e && "BEGIN line \"RSA PRIVATE KEY\"" in e && "Import PEM file" in e, e)
+        assertTrue(lines[2] !in e && lines[2].take(12) !in e, "no key text in the message")
+    }
 }
