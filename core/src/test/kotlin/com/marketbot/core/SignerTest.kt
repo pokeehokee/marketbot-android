@@ -85,4 +85,34 @@ class SignerTest {
         assertFailsWith<IllegalArgumentException> { PolymarketSigner("k", "@@@") }
         assertFailsWith<IllegalArgumentException> { PolymarketSigner("k", Base64.getEncoder().encodeToString(ByteArray(10))) }
     }
+
+    @Test fun `pasted keys a phone has mangled still parse`() {
+        val r = sig["rsa_pss"].o()
+        for (good in listOf(r["pkcs1_pem"].s!!, r["pkcs8_pem"].s!!)) {
+            val body = good.lines().filterNot { it.startsWith("-----") }.joinToString("")
+            val head = good.lines().first(); val foot = good.lines().last { it.isNotBlank() }
+            for (pem in listOf(
+                good.replace("\n", "\r\n"),                 // Windows line ends
+                good.replace("\n", " "),                      // newlines became spaces
+                "$head$body$foot",                           // all on one line
+                "  \n$good\n\n  ",                             // stray whitespace
+                body,                                        // no BEGIN/END lines
+                good.lines().joinToString("\n") { "  $it" },    // indented
+            )) {
+                val s = KalshiSigner("kid", pem)
+                assertTrue(pssVerify(r["public_pem"].s!!, r["preimage"].s!!, s.sign(r["preimage"].s!!)), pem.take(40))
+            }
+        }
+    }
+
+    @Test fun `wrong keys get a message that says what to do`() {
+        val r = sig["rsa_pss"].o()
+        val e = assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", r["public_pem"].s!!) }
+        assertTrue("public key" in e.message!!, e.message)
+        assertTrue("password" in assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA\n-----END ENCRYPTED PRIVATE KEY-----") }.message!!)
+        assertTrue("RSA private key" in assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----") }.message!!)
+        assertEquals(null, KalshiSigner.keyIdProblem("a952bcbe-ec3b-4b5b-b8f9-11dae589608c"))
+        assertTrue("private key" in KalshiSigner.keyIdProblem(r["pkcs1_pem"].s!!)!!)
+        assertTrue("spaces" in KalshiSigner.keyIdProblem("abc def")!!)
+    }
 }

@@ -106,13 +106,21 @@ fun ActivityScreen(vm: MainViewModel, initialQuery: String = "", initialLevel: S
 fun AccountsScreen(vm: MainViewModel) {
     val ctx = LocalContext.current
     val confirm = com.marketbot.app.rememberConfirm()
+    val confirmOr = com.marketbot.app.rememberConfirmOr()
     val accounts by vm.accounts.collectAsState()
+    vm.keys.collectAsState().value   // redraw when a key is saved or removed
+    var kResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var pResult by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var kId by remember { mutableStateOf("") }
     var kPem by remember { mutableStateOf("") }
     var pId by remember { mutableStateOf("") }
     var pSecret by remember { mutableStateOf("") }
     val pickPem = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { kPem = ctx.contentResolver.openInputStream(it)?.bufferedReader()?.readText().orEmpty() }
+        uri?.let { u ->
+            runCatching { ctx.contentResolver.openInputStream(u)?.bufferedReader()?.use { it.readText() }.orEmpty() }
+                .onSuccess { kPem = it; kResult = if (it.isBlank()) false to "That file is empty." else null }
+                .onFailure { kResult = false to "Could not read that file: ${it.message}" }
+        }
     }
     val refreshing by vm.refreshing.collectAsState()
     // Pull down to read both balances from the exchanges again.
@@ -131,9 +139,15 @@ fun AccountsScreen(vm: MainViewModel) {
                 visualTransformation = if (kPem.length > 60) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ pickPem.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.import_pem_file)) }
-                Button({ val id = kId.trim(); val pem = kPem; confirm("Save Kalshi key") { vm.saveKalshi(id, pem) }; kId = ""; kPem = "" }, enabled = kId.isNotBlank() && kPem.isNotBlank()) { Text(stringResource(R.string.save)) }
+                // The fields are cleared only once the key is saved, so a rejected key can be fixed instead of retyped.
+                Button({ val id = kId.trim(); val pem = kPem; kResult = null
+                    confirmOr("Save Kalshi key", { kResult = false to it }) {
+                        vm.saveKalshi(id, pem) { e -> kResult = if (e == null) true to "Saved." else false to e; if (e == null) { kId = ""; kPem = "" } }
+                    } }, enabled = kId.isNotBlank() && kPem.isNotBlank()) { Text(stringResource(R.string.save)) }
                 if (vm.hasKalshi()) TextButton({ confirm("Remove Kalshi key") { vm.clearKalshi() } }) { Text(stringResource(R.string.remove)) }
             }
+            kResult?.let { (ok, msg) -> Text(msg, style = MaterialTheme.typography.bodySmall,
+                color = if (ok) LocalDesk.current.gain else LocalDesk.current.loss) }
             accounts.kalshi?.let { b ->
                 SourcedRow("Cash", b.cash, { money(it) }); b.portfolioValue?.let { SourcedRow("Positions", it, { v -> money(v) }) }
                 b.byExchangeIndex.toSortedMap().forEach { (i, v) -> SourcedRow("Shard $i cash${if (i == 2) " (crypto)" else ""}", v, { money(it) }) }
@@ -152,9 +166,14 @@ fun AccountsScreen(vm: MainViewModel) {
             OutlinedTextField(pSecret, { pSecret = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.secret_key)) }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ val id = pId.trim(); val sec = pSecret.trim(); confirm("Save Polymarket key") { vm.savePolymarket(id, sec) }; pId = ""; pSecret = "" }, enabled = pId.isNotBlank() && pSecret.isNotBlank()) { Text(stringResource(R.string.save)) }
+                Button({ val id = pId.trim(); val sec = pSecret.trim(); pResult = null
+                    confirmOr("Save Polymarket key", { pResult = false to it }) {
+                        vm.savePolymarket(id, sec) { e -> pResult = if (e == null) true to "Saved." else false to e; if (e == null) { pId = ""; pSecret = "" } }
+                    } }, enabled = pId.isNotBlank() && pSecret.isNotBlank()) { Text(stringResource(R.string.save)) }
                 if (vm.hasPolymarket()) TextButton({ confirm("Remove Polymarket key") { vm.clearPolymarket() } }) { Text(stringResource(R.string.remove)) }
             }
+            pResult?.let { (ok, msg) -> Text(msg, style = MaterialTheme.typography.bodySmall,
+                color = if (ok) LocalDesk.current.gain else LocalDesk.current.loss) }
             accounts.polymarket?.let { b ->
                 SourcedRow("Balance", b.currentBalance, { money(it) }); SourcedRow("Buying power", b.buyingPower, { money(it) })
                 b.openOrders?.let { SourcedRow("In open orders", it, { v -> money(v) }) }
