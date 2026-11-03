@@ -59,21 +59,17 @@ class KalshiSigner private constructor(
         fun parseRsaPrivateKey(pem: String): RSAPrivateCrtKeyParameters {
             val text = pem.trim()
             require(text.isNotEmpty()) { "Paste the private key, or import the key file Kalshi gave you." }
-            require(!text.contains("ENCRYPTED")) { "The key is password-protected; export it without a password." }
-            require(!text.contains("PUBLIC KEY")) { "That is a public key. Kalshi needs the private key (the file it gave you when you created the API key)." }
-            // Phones mangle pasted PEMs: the lines run together, newlines become spaces, the
-            // header goes missing. Take whatever sits between the markers (or the whole text if
-            // there are none) and keep only base64 characters.
-            val m = Regex("-----BEGIN ([A-Z ]+)-----(.*?)-----END", RegexOption.DOT_MATCHES_ALL).find(text)
-            val label = m?.groupValues?.get(1)?.trim()
-            val body = (m?.groupValues?.get(2) ?: text).filter { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' }
-            val der = runCatching { Base64.getDecoder().decode(body) }.getOrElse {
-                throw IllegalArgumentException("This does not look like a PEM private key: the text between the BEGIN and END lines is not base64.")
+            require(!text.contains("ENCRYPTED", ignoreCase = true)) { "The key is password-protected; export it without a password." }
+            require(!text.contains("PUBLIC KEY", ignoreCase = true)) { "That is a public key. Kalshi needs the private key (the file it gave you when you created the API key)." }
+            val p = PemPieces.of(text)
+            val der = runCatching { Base64.getDecoder().decode(p.base64) }.getOrElse {
+                throw IllegalArgumentException("This does not look like a PEM private key: the key text is not base64. ${p.describe(null)}")
             }
-            fun pkcs1() = RSAPrivateKey.getInstance(der)
-            fun pkcs8() = RSAPrivateKey.getInstance(PrivateKeyInfo.getInstance(der).parsePrivateKey())
-            val rsa = runCatching { if (label == "RSA PRIVATE KEY") pkcs1() else if (label == "PRIVATE KEY") pkcs8() else runCatching { pkcs8() }.getOrElse { pkcs1() } }
-                .getOrElse { throw IllegalArgumentException("This does not look like an RSA private key. Import the key file Kalshi gave you, or paste all of it, including the BEGIN and END lines.") }
+            // Try both layouts whatever the label says: some tools write PKCS#8 under an RSA label.
+            val rsa = runCatching { RSAPrivateKey.getInstance(PrivateKeyInfo.getInstance(der).parsePrivateKey()) }
+                .recoverCatching { RSAPrivateKey.getInstance(der) }
+                .getOrElse { throw IllegalArgumentException("This does not look like an RSA private key. ${p.describe(der.size)} " +
+                    "Try the Import PEM file button with the key file Kalshi downloaded: pasting can damage a key.") }
             return RSAPrivateCrtKeyParameters(rsa.modulus, rsa.publicExponent, rsa.privateExponent,
                 rsa.prime1, rsa.prime2, rsa.exponent1, rsa.exponent2, rsa.coefficient)
         }
@@ -129,5 +125,49 @@ class PolymarketSigner(
         val b = message.toByteArray(Charsets.UTF_8)
         s.update(b, 0, b.size)
         return Base64.getEncoder().encodeToString(s.generateSignature())
+    }
+}
+
+/**
+ * A pasted PEM taken apart, tolerating what phones and notes apps do to it: spaces
+ * inside the marker lines, long dashes (U+2013/2014) in place of hyphens, lines run
+ * together or turned into spaces, CRLF, a missing marker, missing `=` padding.
+ * [describe] says what was found without printing any of the key itself.
+ */
+internal class PemPieces private constructor(
+    val base64: String, private val label: String?, private val hasBegin: Boolean, private val hasEnd: Boolean,
+    private val odd: Map<Char, Int>, private val chars: Int,
+) {
+    fun describe(bytes: Int?): String = buildString {
+        append("(Read ").append(chars).append(" characters; ")
+        append(if (hasBegin) "BEGIN line${label?.let { " \"$it\"" } ?: ""}" else "no BEGIN line").append(", ")
+        append(if (hasEnd) "END line" else "no END line").append("; ")
+        append(base64.length).append(" key characters")
+        bytes?.let { append(" = ").append(it).append(" bytes, where a complete 2048-bit key is about 1,190 and a 4096-bit key about 2,350") }
+        if (odd.isNotEmpty()) append("; unexpected characters: ").append(odd.entries.joinToString { (c, n) -> "U+%04X x%d".format(c.code, n) })
+        append(".)")
+    }
+
+    companion object {
+        private const val DASH = "[-\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]"
+        private val MARKER = Regex("$DASH{2,}\\s*(BEGIN|END)\\s*([A-Za-z0-9 ]*?)\\s*$DASH{2,}")
+        private val BARE = Regex("(BEGIN|END)\\s+[A-Z0-9 ]*PRIVATE KEY")
+
+        fun of(text: String): PemPieces {
+            val marks = MARKER.findAll(text).toList()
+            val begin = marks.firstOrNull { it.groupValues[1] == "BEGIN" }
+            val end = marks.lastOrNull { it.groupValues[1] == "END" }
+            var body = when {
+                begin != null && end != null && end.range.first > begin.range.last -> text.substring(begin.range.last + 1, end.range.first)
+                else -> marks.fold(text) { t, m -> t.replace(m.value, " ") }
+            }
+            body = BARE.replace(body, " ")   // marker words left behind when the dashes were lost
+            val isB64 = { c: Char -> c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '+' || c == '/' || c == '=' }
+            val odd = body.filter { !isB64(it) && !it.isWhitespace() && it != '-' }.groupingBy { it }.eachCount().toSortedMap()
+            var b64 = body.filter(isB64).trimEnd('=')
+            if (b64.length % 4 != 0) b64 += "=".repeat(4 - b64.length % 4)
+            return PemPieces(b64, begin?.groupValues?.get(2)?.trim()?.uppercase()?.ifEmpty { null }, begin != null || "BEGIN" in text,
+                end != null || "END" in text, odd, text.length)
+        }
     }
 }
