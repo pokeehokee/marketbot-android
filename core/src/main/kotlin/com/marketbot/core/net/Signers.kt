@@ -58,14 +58,35 @@ class KalshiSigner private constructor(
         /** Accepts PKCS#1 (`BEGIN RSA PRIVATE KEY`, what Kalshi hands out) and PKCS#8 (`BEGIN PRIVATE KEY`). */
         fun parseRsaPrivateKey(pem: String): RSAPrivateCrtKeyParameters {
             val text = pem.trim()
-            require(text.startsWith("-----BEGIN ")) { "This does not look like a PEM private key." }
+            require(text.isNotEmpty()) { "Paste the private key, or import the key file Kalshi gave you." }
             require(!text.contains("ENCRYPTED")) { "The key is password-protected; export it without a password." }
-            val der = Base64.getMimeDecoder().decode(
-                text.lines().filterNot { it.startsWith("-----") }.joinToString(""))
-            val rsa = if (text.contains("BEGIN RSA PRIVATE KEY")) RSAPrivateKey.getInstance(der)
-            else RSAPrivateKey.getInstance(PrivateKeyInfo.getInstance(der).parsePrivateKey())
+            require(!text.contains("PUBLIC KEY")) { "That is a public key. Kalshi needs the private key (the file it gave you when you created the API key)." }
+            // Phones mangle pasted PEMs: the lines run together, newlines become spaces, the
+            // header goes missing. Take whatever sits between the markers (or the whole text if
+            // there are none) and keep only base64 characters.
+            val m = Regex("-----BEGIN ([A-Z ]+)-----(.*?)-----END", RegexOption.DOT_MATCHES_ALL).find(text)
+            val label = m?.groupValues?.get(1)?.trim()
+            val body = (m?.groupValues?.get(2) ?: text).filter { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' }
+            val der = runCatching { Base64.getDecoder().decode(body) }.getOrElse {
+                throw IllegalArgumentException("This does not look like a PEM private key: the text between the BEGIN and END lines is not base64.")
+            }
+            fun pkcs1() = RSAPrivateKey.getInstance(der)
+            fun pkcs8() = RSAPrivateKey.getInstance(PrivateKeyInfo.getInstance(der).parsePrivateKey())
+            val rsa = runCatching { if (label == "RSA PRIVATE KEY") pkcs1() else if (label == "PRIVATE KEY") pkcs8() else runCatching { pkcs8() }.getOrElse { pkcs1() } }
+                .getOrElse { throw IllegalArgumentException("This does not look like an RSA private key. Import the key file Kalshi gave you, or paste all of it, including the BEGIN and END lines.") }
             return RSAPrivateCrtKeyParameters(rsa.modulus, rsa.publicExponent, rsa.privateExponent,
                 rsa.prime1, rsa.prime2, rsa.exponent1, rsa.exponent2, rsa.coefficient)
+        }
+
+        /**
+         * A readable reason the Key ID is wrong, or null. Kalshi's key ids are short
+         * (a UUID); the private key pasted into this field is the usual mix-up.
+         */
+        fun keyIdProblem(keyId: String): String? = when {
+            keyId.isBlank() -> "Enter the Key ID shown beside the key on Kalshi."
+            "BEGIN" in keyId || keyId.length > 80 -> "That looks like the private key. The Key ID is the short id Kalshi shows beside the key."
+            keyId.any { it.isWhitespace() } -> "The Key ID should not contain spaces."
+            else -> null
         }
     }
 }

@@ -261,16 +261,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         pb?.getOrNull()?.let { engine.stores.audit.record("polymarket.current_balance", it.currentBalance); engine.stores.audit.record("polymarket.buying_power", it.buyingPower) }
     }
 
-    fun saveKalshi(keyId: String, pem: String) = viewModelScope.launch(Dispatchers.IO) {
-        val err = runCatching { if (pem.isNotBlank()) com.marketbot.core.net.KalshiSigner(keyId, pem) }.exceptionOrNull()
-        if (err != null) { say(err.message ?: "That key could not be read."); return@launch }
-        a.vault.saveKalshi(keyId, pem); engine.setCredentials(a.vault.credentials()); refreshKeys(); say(if (a.vault.kalshiInHardware()) "Kalshi key saved in secure hardware." else "Kalshi key saved."); refreshAccounts()
+    /** Validates, saves and tests the Kalshi key; [done] gets null on success or the reason it was not saved. */
+    fun saveKalshi(keyId: String, pem: String, done: (String?) -> Unit = {}) = viewModelScope.launch(Dispatchers.IO) {
+        val id = keyId.trim()
+        val err = com.marketbot.core.net.KalshiSigner.keyIdProblem(id)
+            ?: runCatching { com.marketbot.core.net.KalshiSigner(id, pem) }.exceptionOrNull()?.let { it.message ?: "That key could not be read." }
+            ?: runCatching { a.vault.saveKalshi(id, pem) }.exceptionOrNull()?.let { "Could not store the key on this phone: ${it.message ?: it.javaClass.simpleName}" }
+        if (err != null) { say(err); withContext(Dispatchers.Main) { done(err) }; return@launch }
+        engine.setCredentials(a.vault.credentials()); refreshKeys()
+        say(if (a.vault.kalshiInHardware()) "Kalshi key saved in secure hardware." else "Kalshi key saved.")
+        withContext(Dispatchers.Main) { done(null) }
+        refreshAccounts()
     }
 
-    fun savePolymarket(keyId: String, secret: String) = viewModelScope.launch(Dispatchers.IO) {
-        val err = runCatching { if (secret.isNotBlank()) com.marketbot.core.net.PolymarketSigner(keyId, secret) }.exceptionOrNull()
-        if (err != null) { say(err.message ?: "That key could not be read."); return@launch }
-        a.vault.savePolymarket(keyId, secret); engine.setCredentials(a.vault.credentials()); refreshKeys(); say("Polymarket key saved."); refreshAccounts()
+    fun savePolymarket(keyId: String, secret: String, done: (String?) -> Unit = {}) = viewModelScope.launch(Dispatchers.IO) {
+        val err = runCatching { com.marketbot.core.net.PolymarketSigner(keyId, secret) }.exceptionOrNull()?.let { it.message ?: "That key could not be read." }
+            ?: runCatching { a.vault.savePolymarket(keyId, secret) }.exceptionOrNull()?.let { "Could not store the key on this phone: ${it.message ?: it.javaClass.simpleName}" }
+        if (err != null) { say(err); withContext(Dispatchers.Main) { done(err) }; return@launch }
+        engine.setCredentials(a.vault.credentials()); refreshKeys(); say("Polymarket key saved.")
+        withContext(Dispatchers.Main) { done(null) }
+        refreshAccounts()
     }
 
     fun clearKalshi() = viewModelScope.launch(Dispatchers.IO) { a.vault.saveKalshi(null, null); engine.setCredentials(a.vault.credentials()); refreshKeys(); say("Kalshi key removed.") }
