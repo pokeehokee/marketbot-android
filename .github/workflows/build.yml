@@ -1,7 +1,10 @@
 name: Build and test
 
 on:
+  # A PR builds once (pull_request); main builds again after the merge, which publishes the APK.
+  # Branch pushes without a PR do not build: start one with workflow_dispatch if needed.
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
