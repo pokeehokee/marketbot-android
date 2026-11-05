@@ -328,10 +328,26 @@ abstract class DeepItmStrategy(
 
     suspend fun resetKill(ctx: StrategyContext) { ctx.stores.state.put(k(ctx, "killed"), null) }
 
+    /**
+     * The index check, saying which part is missing: fresh venues alone are not enough,
+     * the volatility needs 5 minutes of the app's own index samples and the 1-minute candles.
+     */
+    private fun indexLine(ctx: StrategyContext): String {
+        val i = ctx.btcIndex
+        val (share, candles) = i.warmup()
+        val missing = listOfNotNull(
+            "no fresh price".takeIf { i.price() == null },
+            "volatility warming up: ${(share * 100).toInt()}% of the 5 minutes of index samples it needs".takeIf { share < 1.0 },
+            "1-minute candle volatility not loaded yet".takeIf { !candles },
+        )
+        return "BTC index and volatility are live (${i.freshVenues()} of 4 venues fresh" +
+            (if (missing.isEmpty()) ")" else "; ${missing.joinToString("; ")}. Leave the strategy running in paper for 5 minutes, then run Preflight again)")
+    }
+
     override suspend fun preflight(ctx: StrategyContext): PreflightResult {
         val steps = runCatching { ladderVenue(ctx).preflight() }.getOrElse { listOf("Error: ${it.message}" to false) }
         val idx = ctx.btcIndex.price() != null && ctx.btcIndex.sigma() != null
-        val all = steps + ("BTC index and volatility are live (${ctx.btcIndex.freshVenues()} venues fresh)" to idx)
+        val all = steps + (indexLine(ctx) to idx)
         val ok = all.all { it.second }
         if (ok) ctx.stores.state.put("$id.preflight_ok_at", ctx.clock.now().toString())
         ctx.info("preflight", "Preflight ${if (ok) "passed" else "FAILED"}: ${all.joinToString("; ") { (s, b) -> (if (b) "ok " else "FAIL ") + s }}")
