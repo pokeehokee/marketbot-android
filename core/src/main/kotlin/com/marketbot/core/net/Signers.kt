@@ -1,6 +1,7 @@
 package com.marketbot.core.net
 
 import okhttp3.HttpUrl
+import org.bouncycastle.asn1.ASN1OctetString
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey
 import org.bouncycastle.crypto.digests.SHA256Digest
@@ -14,16 +15,21 @@ import java.security.SecureRandom
 import java.util.Base64
 
 /**
- * Kalshi's request signature: RSA-PSS over SHA-256 (MGF1 SHA-256, salt length
- * = digest length) of `timestamp_ms + METHOD + path`, where path excludes the
- * query string. Matches weatherbot's `KalshiAuth.create_auth_headers`.
+ * Kalshi's request signature over `timestamp_ms + METHOD + path` (path without the
+ * query string), base64. Kalshi issues two key types and picks the verifier from the
+ * registered public key (docs.kalshi.com/getting_started/api_keys, read 2026-11-05):
+ * - **Ed25519** (Kalshi's default since 2026): RFC 8032 over the text itself;
+ *   the private key comes as PKCS#8 `BEGIN PRIVATE KEY`.
+ * - **RSA**: RSA-PSS, SHA-256, MGF1 SHA-256, salt = digest length; usually
+ *   PKCS#1 `BEGIN RSA PRIVATE KEY`. Matches weatherbot's `KalshiAuth`.
+ * The PEM label does not say which, so the key's own algorithm id decides.
  */
 class KalshiSigner private constructor(
     private val keyId: String,
     private val signBytes: (ByteArray) -> ByteArray,
     private val nowMs: () -> Long,
 ) : RequestSigner {
-    constructor(keyId: String, pem: String, nowMs: () -> Long = { System.currentTimeMillis() }) : this(keyId, pssSigner(parseRsaPrivateKey(pem)), nowMs)
+    constructor(keyId: String, pem: String, nowMs: () -> Long = { System.currentTimeMillis() }) : this(keyId, signerFor(parseKey(pem)), nowMs)
 
     override fun headers(method: String, url: HttpUrl): Map<String, String> {
         val ts = nowMs().toString()
@@ -45,6 +51,25 @@ class KalshiSigner private constructor(
         fun external(keyId: String, signBytes: (ByteArray) -> ByteArray, nowMs: () -> Long = { System.currentTimeMillis() }) =
             KalshiSigner(keyId, signBytes, nowMs)
 
+        // RFC 8410 algorithm ids.
+        private const val OID_ED25519 = "1.3.101.112"
+        private const val OID_ED448 = "1.3.101.113"
+        private const val OID_X25519 = "1.3.101.110"
+
+        /** A parsed Kalshi private key: which algorithm it signs with decides the signature. */
+        sealed interface Key {
+            data class Rsa(val key: RSAPrivateCrtKeyParameters) : Key
+            data class Ed25519(val key: Ed25519PrivateKeyParameters) : Key
+        }
+
+        private fun signerFor(k: Key): (ByteArray) -> ByteArray = when (k) {
+            is Key.Rsa -> pssSigner(k.key)
+            is Key.Ed25519 -> { bytes -> Ed25519Signer().run { init(true, k.key); update(bytes, 0, bytes.size); generateSignature() } }
+        }
+
+        /** "Ed25519" or "RSA" for a key that parses; for display only. */
+        fun keyType(pem: String): String = when (parseKey(pem)) { is Key.Rsa -> "RSA"; is Key.Ed25519 -> "Ed25519" }
+
         private fun pssSigner(key: RSAPrivateCrtKeyParameters): (ByteArray) -> ByteArray {
             val random = SecureRandom()
             return { bytes ->
@@ -55,8 +80,17 @@ class KalshiSigner private constructor(
             }
         }
 
-        /** Accepts PKCS#1 (`BEGIN RSA PRIVATE KEY`, what Kalshi hands out) and PKCS#8 (`BEGIN PRIVATE KEY`). */
-        fun parseRsaPrivateKey(pem: String): RSAPrivateCrtKeyParameters {
+        /** The RSA key only (the Android Keystore import holds RSA); an Ed25519 key is refused with a reason. */
+        fun parseRsaPrivateKey(pem: String): RSAPrivateCrtKeyParameters = when (val k = parseKey(pem)) {
+            is Key.Rsa -> k.key
+            is Key.Ed25519 -> throw IllegalArgumentException("This is an Ed25519 key, not RSA.")
+        }
+
+        /**
+         * Any Kalshi private key: Ed25519 PKCS#8, or RSA as PKCS#1 or PKCS#8, from a
+         * pasted PEM in whatever state the phone left it ([PemPieces]).
+         */
+        fun parseKey(pem: String): Key {
             val text = pem.trim()
             require(text.isNotEmpty()) { "Paste the private key, or import the key file Kalshi gave you." }
             require(!text.contains("ENCRYPTED", ignoreCase = true)) { "The key is password-protected; export it without a password." }
@@ -65,14 +99,28 @@ class KalshiSigner private constructor(
             val der = runCatching { Base64.getDecoder().decode(p.base64) }.getOrElse {
                 throw IllegalArgumentException("This does not look like a PEM private key: the key text is not base64. ${p.describe(null)}")
             }
-            // Try both layouts whatever the label says: some tools write PKCS#8 under an RSA label.
-            val rsa = runCatching { RSAPrivateKey.getInstance(PrivateKeyInfo.getInstance(der).parsePrivateKey()) }
-                .recoverCatching { RSAPrivateKey.getInstance(der) }
-                .getOrElse { throw IllegalArgumentException("This does not look like an RSA private key. ${p.describe(der.size)} " +
-                    "Try the Import PEM file button with the key file Kalshi downloaded: pasting can damage a key.") }
-            return RSAPrivateCrtKeyParameters(rsa.modulus, rsa.publicExponent, rsa.privateExponent,
-                rsa.prime1, rsa.prime2, rsa.exponent1, rsa.exponent2, rsa.coefficient)
+            runCatching { PrivateKeyInfo.getInstance(der) }.getOrNull()?.let { pki ->
+                val alg = pki.privateKeyAlgorithm.algorithm.id
+                if (alg == OID_ED25519) {
+                    val seed = ASN1OctetString.getInstance(pki.parsePrivateKey()).octets
+                    require(seed.size == 32) { "This Ed25519 key is ${seed.size} bytes, not 32. ${p.describe(der.size)}" }
+                    return Key.Ed25519(Ed25519PrivateKeyParameters(seed, 0))
+                }
+                require(alg != OID_ED448 && alg != OID_X25519) {
+                    "This is a ${if (alg == OID_ED448) "Ed448" else "X25519"} key; Kalshi uses Ed25519 or RSA."
+                }
+                runCatching { RSAPrivateKey.getInstance(pki.parsePrivateKey()) }.getOrNull()?.let { return rsa(it) }
+            }
+            // PKCS#1, or PKCS#8 under the wrong label.
+            val rsa = runCatching { RSAPrivateKey.getInstance(der) }.getOrElse {
+                throw IllegalArgumentException("This does not look like a Kalshi private key (Ed25519 or RSA). ${p.describe(der.size)} " +
+                    "Try the Import PEM file button with the key file Kalshi downloaded: pasting can damage a key.")
+            }
+            return rsa(rsa)
         }
+
+        private fun rsa(k: RSAPrivateKey) = Key.Rsa(RSAPrivateCrtKeyParameters(k.modulus, k.publicExponent, k.privateExponent,
+            k.prime1, k.prime2, k.exponent1, k.exponent2, k.coefficient))
 
         /**
          * A readable reason the Key ID is wrong, or null. Kalshi's key ids are short
@@ -143,7 +191,7 @@ internal class PemPieces private constructor(
         append(if (hasBegin) "BEGIN line${label?.let { " \"$it\"" } ?: ""}" else "no BEGIN line").append(", ")
         append(if (hasEnd) "END line" else "no END line").append("; ")
         append(base64.length).append(" key characters")
-        bytes?.let { append(" = ").append(it).append(" bytes, where a complete 2048-bit key is about 1,190 and a 4096-bit key about 2,350") }
+        bytes?.let { append(" = ").append(it).append(" bytes, where a complete Ed25519 key is 48 and a 2048-bit RSA key about 1,190") }
         if (odd.isNotEmpty()) append("; unexpected characters: ").append(odd.entries.joinToString { (c, n) -> "U+%04X x%d".format(c.code, n) })
         append(".)")
     }
