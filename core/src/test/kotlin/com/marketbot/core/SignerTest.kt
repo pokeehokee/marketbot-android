@@ -110,7 +110,7 @@ class SignerTest {
         val e = assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", r["public_pem"].s!!) }
         assertTrue("public key" in e.message!!, e.message)
         assertTrue("password" in assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", "-----BEGIN ENCRYPTED PRIVATE KEY-----\nAAAA\n-----END ENCRYPTED PRIVATE KEY-----") }.message!!)
-        assertTrue("RSA private key" in assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----") }.message!!)
+        assertTrue("Kalshi private key" in assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", "-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----") }.message!!)
         assertEquals(null, KalshiSigner.keyIdProblem("a952bcbe-ec3b-4b5b-b8f9-11dae589608c"))
         assertTrue("private key" in KalshiSigner.keyIdProblem(r["pkcs1_pem"].s!!)!!)
         assertTrue("spaces" in KalshiSigner.keyIdProblem("abc def")!!)
@@ -143,5 +143,49 @@ class SignerTest {
         val e = assertFailsWith<IllegalArgumentException> { KalshiSigner("kid", cut) }.message!!
         assertTrue("bytes" in e && "BEGIN line \"RSA PRIVATE KEY\"" in e && "Import PEM file" in e, e)
         assertTrue(lines[2] !in e && lines[2].take(12) !in e, "no key text in the message")
+    }
+
+    // ---------------------------------------------------------------- Ed25519 (Kalshi's default key type)
+
+    private fun ed25519Pem(): Pair<String, org.bouncycastle.crypto.params.Ed25519PublicKeyParameters> {
+        val gen = org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator()
+        gen.init(org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters(java.security.SecureRandom()))
+        val kp = gen.generateKeyPair()
+        // Exactly what Kalshi (and `openssl genpkey -algorithm ed25519`) writes: RFC 8410 PKCS#8 v1, seed only.
+        val prefix = byteArrayOf(0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20)
+        val der = prefix + (kp.private as org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters).encoded
+        val b64 = Base64.getEncoder().encodeToString(der)
+        return "-----BEGIN PRIVATE KEY-----\n$b64\n-----END PRIVATE KEY-----\n" to (kp.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters)
+    }
+
+    private fun edVerify(pub: org.bouncycastle.crypto.params.Ed25519PublicKeyParameters, msg: String, sigB64: String): Boolean {
+        val v = org.bouncycastle.crypto.signers.Ed25519Signer(); v.init(false, pub)
+        val m = msg.toByteArray(); v.update(m, 0, m.size)
+        return v.verifySignature(Base64.getDecoder().decode(sigB64))
+    }
+
+    @Test fun `Kalshi Ed25519 keys (the PKCS#8 PEM Kalshi now generates) sign the request text directly`() {
+        val (pem, pub) = ed25519Pem()
+        assertTrue(pem.lines()[1].startsWith("MC4CAQAwBQYDK2Vw"), "the 48-byte PKCS#8 form Kalshi hands out")
+        assertEquals("Ed25519", KalshiSigner.keyType(pem))
+        val s = KalshiSigner("kid", pem, nowMs = { 1_793_134_000_000 })
+        val h = s.headers("get", "https://api.elections.kalshi.com/trade-api/v2/portfolio/balance?subaccount=1".toHttpUrl())
+        assertEquals("kid", h["KALSHI-ACCESS-KEY"]); assertEquals("1793134000000", h["KALSHI-ACCESS-TIMESTAMP"])
+        assertEquals(64, Base64.getDecoder().decode(h["KALSHI-ACCESS-SIGNATURE"]).size)
+        assertTrue(edVerify(pub, "1793134000000GET/trade-api/v2/portfolio/balance", h["KALSHI-ACCESS-SIGNATURE"]!!))
+        // Pasted badly, it still parses.
+        val body = pem.lines()[1]
+        for (p in listOf("----- BEGIN PRIVATE KEY ----- $body ----- END PRIVATE KEY -----", body, pem.replace("\n", "\r\n")))
+            assertTrue(edVerify(pub, "x", KalshiSigner("kid", p).sign("x")), p.take(30))
+        assertEquals("RSA", KalshiSigner.keyType(sig["rsa_pss"].o()["pkcs1_pem"].s!!))
+        // The PKCS#8 v2 form (seed plus public key), as some libraries write it, parses too.
+        val gen = org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator()
+        gen.init(org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters(java.security.SecureRandom()))
+        val kp = gen.generateKeyPair()
+        val v2 = Base64.getEncoder().encodeToString(org.bouncycastle.crypto.util.PrivateKeyInfoFactory.createPrivateKeyInfo(kp.private).encoded)
+        assertTrue(edVerify(kp.public as org.bouncycastle.crypto.params.Ed25519PublicKeyParameters, "y",
+            KalshiSigner("kid", "-----BEGIN PRIVATE KEY-----\n$v2\n-----END PRIVATE KEY-----").sign("y")))
+        // The Keystore holds RSA only, so an Ed25519 key is refused there (and kept encrypted instead).
+        assertTrue("Ed25519" in assertFailsWith<IllegalArgumentException> { KalshiSigner.parseRsaPrivateKey(pem) }.message!!)
     }
 }

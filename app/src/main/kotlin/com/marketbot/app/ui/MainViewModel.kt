@@ -269,7 +269,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ?: runCatching { a.vault.saveKalshi(id, pem) }.exceptionOrNull()?.let { "Could not store the key on this phone: ${it.message ?: it.javaClass.simpleName}" }
         if (err != null) { say(err); withContext(Dispatchers.Main) { done(err) }; return@launch }
         engine.setCredentials(a.vault.credentials()); refreshKeys()
-        say(if (a.vault.kalshiInHardware()) "Kalshi key saved in secure hardware." else "Kalshi key saved.")
+        val type = runCatching { com.marketbot.core.net.KalshiSigner.keyType(pem) }.getOrDefault("")
+        say(if (a.vault.kalshiInHardware()) "Kalshi $type key saved in secure hardware." else "Kalshi $type key saved, encrypted on this phone.")
         withContext(Dispatchers.Main) { done(null) }
         refreshAccounts()
     }
