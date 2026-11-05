@@ -101,6 +101,14 @@ class Vault(private val prefs: SharedPreferences, private val crypter: Crypter, 
     fun heartbeatUrl(): String? = get("heartbeat_url")
     fun saveHeartbeatUrl(u: String?) = put("heartbeat_url", u)
 
+    /** The Claude sync mailbox: a private GitHub repository ("owner/name") and a token limited to it. */
+    fun syncRepo(): String? = prefs.getString("sync_repo", null)
+    fun syncToken(): String? = get("sync_token")
+    fun saveSync(repo: String?, token: String?) {
+        prefs.edit().apply { if (repo.isNullOrBlank()) remove("sync_repo") else putString("sync_repo", repo.trim()) }.apply()
+        if (token != null) put("sync_token", token)
+    }
+
     /** For display: the last four characters of the key id, never the secret. */
     fun kalshiHint(): String? = get("kalshi_key_id")?.takeLast(4)
     fun polymarketHint(): String? = get("pm_key_id")?.takeLast(4)

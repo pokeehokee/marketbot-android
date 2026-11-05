@@ -209,6 +209,7 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
         LocksSection(vm)
         ProtectionsSection(vm)
         NotificationsSection()
+        ClaudeSyncSection(vm)
         BackupSection(vm)
         Section(stringResource(R.string.data)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

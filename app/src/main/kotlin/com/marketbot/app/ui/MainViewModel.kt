@@ -470,6 +470,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Bumps after a manual check so the card re-reads. */
     val orderReconRuns = _orderRecon.asStateFlow()
     fun reconcileOrdersNow() = once("order_recon") { val r = engine.reconcileOrders(); _orderRecon.update { it + 1 }; say(r.summary) }
+    // ---------------------------------------------------------------- Claude sync
+    private val _syncTick = MutableStateFlow(0)
+    /** Bumped after every sync, approval or rejection, so the section reloads. */
+    val syncTick = _syncTick.asStateFlow()
+    fun syncRepo(): String? = a.vault.syncRepo()
+    fun hasSyncToken() = !a.vault.syncToken().isNullOrBlank()
+    suspend fun syncPending() = withContext(Dispatchers.IO) { a.sync.pending() }
+    suspend fun syncStatus() = withContext(Dispatchers.IO) { a.sync.status() }
+    fun saveSync(repo: String, token: String) = once("sync_save") {
+        val r = repo.trim().removePrefix("https://github.com/").trimEnd('/')
+        if (r.isNotBlank() && runCatching { com.marketbot.core.sync.GitHubMailbox(r, "x") }.isFailure) { say("Repository must look like owner/name."); return@once }
+        a.vault.saveSync(r.ifBlank { null }, token.trim().ifBlank { null })
+        say(if (r.isBlank()) "Claude sync off." else "Claude sync saved for $r."); _syncTick.update { it + 1 }
+    }
+    fun syncNow() = once("sync") {
+        val repo = a.vault.syncRepo(); val token = a.vault.syncToken()
+        if (repo.isNullOrBlank() || token.isNullOrBlank()) { say("Save a repository and token first."); return@once }
+        say(a.sync.sync(repo, token, com.marketbot.app.BuildConfig.VERSION_NAME)); _syncTick.update { it + 1 }
+    }
+    fun approveProposal(id: String) = once("proposal:$id") { say(a.sync.approve(id)); _syncTick.update { it + 1 } }
+    fun rejectProposal(id: String) = once("proposal:$id") { say(a.sync.reject(id)); _syncTick.update { it + 1 } }
+
     fun heartbeatUrl() = a.vault.heartbeatUrl()
     fun saveHeartbeatUrl(u: String) {
         val v = u.trim().ifEmpty { null }
