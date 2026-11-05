@@ -20,6 +20,8 @@ class MarketbotApp : Application() {
     lateinit var db: MarketbotDb
     lateinit var vault: Vault
     lateinit var engine: Engine
+    /** The Claude sync (a private GitHub repository as a mailbox); idle until a repository and token are saved. */
+    val sync by lazy { com.marketbot.core.sync.SyncService(engine) }
     /** Background work outside the engine. A failure here is logged, never allowed to crash the process. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
         android.util.Log.e("marketbot", "background task failed", e)

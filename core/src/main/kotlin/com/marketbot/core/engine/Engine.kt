@@ -200,6 +200,9 @@ class Engine(
         poke()
     }
 
+    /** The engine's clock, for collaborators outside the engine (the Claude sync). */
+    fun now(): Instant = clock.now()
+
     // ------------------------------------------------------------------ persisted settings
     suspend fun mode(id: String): Mode = stores.state.get("strategy.$id.mode")?.let { runCatching { Mode.valueOf(it) }.getOrNull() } ?: Mode.OFF
 

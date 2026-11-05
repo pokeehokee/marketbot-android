@@ -88,6 +88,8 @@ class EngineService : LifecycleService() {
     /** Re-evaluates every few seconds whether to hold the CPU or hand over to an alarm. */
     private var lastContractTry = 0L
     private var contractJob: kotlinx.coroutines.Job? = null
+    private var lastSyncTry = 0L
+    private var syncJob: kotlinx.coroutines.Job? = null
 
     private suspend fun managePower(app: MarketbotApp) {
         while (lifecycleScope.isActive) {
@@ -110,6 +112,19 @@ class EngineService : LifecycleService() {
             if (System.currentTimeMillis() - lastContractTry > 30 * 60_000L && contractJob?.isActive != true && Connectivity.online(this)) {
                 lastContractTry = System.currentTimeMillis()
                 contractJob = lifecycleScope.launch(Dispatchers.IO) { runCatching { app.engine.contractCheckIfDue() } }
+            }
+            // The Claude sync, once a day when a repository and token are saved.
+            if (System.currentTimeMillis() - lastSyncTry > 30 * 60_000L && syncJob?.isActive != true && Connectivity.online(this)) {
+                lastSyncTry = System.currentTimeMillis()
+                syncJob = lifecycleScope.launch(Dispatchers.IO) {
+                    val repo = app.vault.syncRepo(); val token = app.vault.syncToken()
+                    if (!repo.isNullOrBlank() && !token.isNullOrBlank() && app.sync.due(java.time.Instant.now())) {
+                        val before = app.sync.pending().size
+                        runCatching { app.sync.sync(repo, token, BuildConfig.VERSION_NAME) }
+                        val now = app.sync.pending().size
+                        if (now > before) MarketbotApp.post(this@EngineService, "safety", "Claude proposed ${now - before} change(s)", "Review them under Settings > Claude sync.")
+                    }
+                }
             }
             // Off the main thread: the ping is a network call.
             kotlinx.coroutines.withContext(Dispatchers.IO) { Heartbeat.beatIfDue(app.vault.heartbeatUrl(), online = Connectivity.online(this@EngineService)) }

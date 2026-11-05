@@ -25,6 +25,28 @@ and `pokeehokee/polymarket` on the phone.
   `.github/workflows/api-contract.yml`, and once a day in the app) compares live answers and Kalshi's OpenAPI spec against it.
   A refusal the app recognises only by its words must fail safe when the words change.
 
+## Claude sync
+
+Settings > Claude sync links the app to a private GitHub repository (`core/sync`). The app writes
+`snapshot/latest.json` (every strategy's mode, settings and record) and `exports/orders-latest.csv`
+once a day or on **Sync now**. It reads `proposals/pending.json`:
+
+```json
+{"proposals": [{"id": "2026-11-05-a", "strategy": "kalshi_weather_longshot@b",
+  "set": {"max_mid_high": "0.15"}, "mode": "PAPER", "reason": "why"}]}
+```
+
+It writes each outcome to `proposals/results.json`. Nothing applies without the user's approval: a tap
+for a setting change, the screen lock for a mode change. `ProposalPolicy` refuses, whatever the file
+says:
+- anything on a live strategy;
+- any switch to live;
+- raising a lot, loss limit or collateral share;
+- values outside a setting's range;
+- unknown settings.
+
+Snapshots and exports never carry keys.
+
 ## Commands
 
 ```bash
