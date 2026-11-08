@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.marketbot.core.store.EquitySnapshot
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -502,6 +503,34 @@ class Engine(
                 fresh.joinToString("\n") { "${it.area}: ${it.check}. ${it.detail}" }.take(900))
         }
         r
+    }
+
+    private var lastBalanceSnapAt: Instant = Instant.EPOCH
+
+    /**
+     * The live accounts' value into the equity history every [every], whatever the strategies'
+     * modes: the Home chart needs a reading every hour even when nothing trades live (strategies
+     * only record live equity while they run live). Kalshi: cash + portfolio_value; Polymarket:
+     * currentBalance, the same figures the Home header shows. Returns the venues recorded.
+     */
+    suspend fun recordLiveBalancesIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(15)): Int {
+        val now = clock.now()
+        if (java.time.Duration.between(lastBalanceSnapAt, now) < every) return 0
+        if (!(kalshi.hasCredentials || polymarket.hasCredentials)) return 0
+        lastBalanceSnapAt = now
+        return recordLiveBalances()
+    }
+
+    suspend fun recordLiveBalances(): Int {
+        val now = clock.now()
+        var n = 0
+        if (kalshi.hasCredentials) runCatching { kalshi.balance() }.getOrNull()?.let { b ->
+            stores.equity.record(EquitySnapshot(now, "kalshi", Mode.LIVE, b.cash, b.portfolioValue, b.equity)); n++
+        }
+        if (polymarket.hasCredentials) runCatching { polymarket.balance() }.getOrNull()?.let { b ->
+            stores.equity.record(EquitySnapshot(now, "polymarket", Mode.LIVE, b.currentBalance, null, b.currentBalance)); n++
+        }
+        return n
     }
 
     suspend fun reconcileOrdersIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(5)): OrderReconciliation? {

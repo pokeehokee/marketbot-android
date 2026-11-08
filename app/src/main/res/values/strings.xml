@@ -149,6 +149,11 @@
     <string name="live_p_l">Live P&amp;L (%1$s)</string>
     <string name="paper_p_l">Paper P&amp;L (%1$s)</string>
     <string name="realised_only_settled_positions_from_the">Realised only: settled positions, from the exchange\'s settlement figures (live) or the simulator (paper).</string>
+    <string name="live_portfolio_7_days">Live portfolio, last 7 days</string>
+    <string name="hourly_now">Now</string>
+    <string name="chart_low_high">Low %1$s · high %2$s</string>
+    <string name="hourly_coverage">One point an hour; %1$d of the last %2$d hours had a reading of their own (the others carry the previous value). Readings are taken while the engine runs.</string>
+    <string name="live_portfolio_none">No live account readings yet. Connect Kalshi or Polymarket under Accounts; the engine then records the balance every 15 minutes.</string>
     <string name="equity_30_days">Equity, 30 days</string>
     <string name="record_vs_evidence">Record vs evidence</string>
     <string name="live">Live</string>

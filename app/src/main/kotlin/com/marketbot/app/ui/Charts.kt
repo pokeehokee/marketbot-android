@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -24,6 +26,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.marketbot.core.strategy.money
 import java.time.Instant
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -129,5 +134,80 @@ fun VersusBar(expected: Double, expLow: Double?, expHigh: Double?, live: Double,
         drawCircle(exp, 5.dp.toPx(), Offset(x(expected), yE))
         drawLine(rec.copy(alpha = 0.45f), Offset(x(liveLow), yL), Offset(x(liveHigh), yL), strokeWidth = 8.dp.toPx(), cap = StrokeCap.Round)
         drawCircle(rec, 5.dp.toPx(), Offset(x(live), yL))
+    }
+}
+
+private val hourFmt = DateTimeFormatter.ofPattern("EEE MMM d, HH:00").withZone(ZoneId.systemDefault())
+
+/**
+ * One point per hour, each drawn as a dot on the line. Touch or drag to read any hour's value
+ * (the header then shows that hour instead of the latest).
+ */
+@Composable
+fun HourlyChart(pts: Series, modifier: Modifier = Modifier, height: Dp = 160.dp, label: String = "", format: (Double) -> String = { money(it) }) {
+    if (pts.size < 2) {
+        Text(stringResource(R.string.not_enough_points_for_a_chart_yet), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    var sel by androidx.compose.runtime.remember(pts) { androidx.compose.runtime.mutableStateOf<Int?>(null) }
+    val lo = pts.minOf { it.second }; val hi = pts.maxOf { it.second }
+    val span = (hi - lo).takeIf { it > 1e-9 } ?: 1.0
+    val t0 = pts.first().first; val t1 = pts.last().first
+    val tSpan = (t1 - t0).coerceAtLeast(1)
+    val change = pts.last().second - pts.first().second
+    val c = if (change >= 0) LocalDesk.current.gain else LocalDesk.current.loss
+    val guide = MaterialTheme.colorScheme.outline
+    val desc = "$label: ${pts.size} hourly points from ${format(pts.first().second)} to ${format(pts.last().second)}, low ${format(lo)}, high ${format(hi)}"
+    val shown = sel?.let { pts[it] } ?: pts.last()
+    Column(modifier.semantics { contentDescription = desc }) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
+            Column(Modifier.weight(1f)) {
+                Text(format(shown.second), style = Figures.copy(fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)),
+                    color = MaterialTheme.colorScheme.onSurface)
+                Text(if (sel == null) stringResource(R.string.hourly_now) else hourFmt.format(Instant.ofEpochMilli(shown.first)),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text((if (change >= 0) "+" else "") + format(change), style = Figures, color = c)
+        }
+        Canvas(Modifier.fillMaxWidth().height(height).padding(vertical = 8.dp)
+            .hourScrub(pts) { i -> sel = i }) {
+            fun x(t: Long) = (t - t0).toFloat() / tSpan * size.width
+            fun y(v: Double) = size.height - ((v - lo) / span).toFloat() * size.height
+            val line = Path().apply { pts.forEachIndexed { i, (t, v) -> if (i == 0) moveTo(x(t), y(v)) else lineTo(x(t), y(v)) } }
+            val fill = Path().apply { addPath(line); lineTo(x(t1), size.height); lineTo(x(t0), size.height); close() }
+            drawPath(fill, Brush.verticalGradient(listOf(c.copy(alpha = 0.18f), Color.Transparent)))
+            drawPath(line, c, style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round))
+            val r = 1.6.dp.toPx()
+            pts.forEach { (t, v) -> drawCircle(c, r, Offset(x(t), y(v))) }
+            sel?.let { i ->
+                val (t, v) = pts[i]
+                drawLine(guide, Offset(x(t), 0f), Offset(x(t), size.height), strokeWidth = 1.dp.toPx())
+                drawCircle(c, 4.dp.toPx(), Offset(x(t), y(v)))
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.chart_low_high, format(lo), format(hi)), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.date_range, dayFmt.format(Instant.ofEpochMilli(t0)), dayFmt.format(Instant.ofEpochMilli(t1))),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Touch and drag report the nearest point's index; lifting the finger clears it. */
+private fun Modifier.hourScrub(pts: Series, onSel: (Int?) -> Unit): Modifier = this.pointerInput(pts) {
+    val t0 = pts.first().first; val span = (pts.last().first - t0).coerceAtLeast(1)
+    fun idx(px: Float): Int {
+        val t = t0 + (px.coerceIn(0f, size.width.toFloat()) / size.width * span).toLong()
+        return pts.indices.minBy { kotlin.math.abs(pts[it].first - t) }
+    }
+    awaitEachGesture {
+        val down = awaitFirstDown()
+        onSel(idx(down.position.x))
+        do {
+            val e = awaitPointerEvent()
+            e.changes.firstOrNull()?.let { if (it.pressed) { onSel(idx(it.position.x)); it.consume() } }
+        } while (e.changes.any { it.pressed })
+        onSel(null)
     }
 }

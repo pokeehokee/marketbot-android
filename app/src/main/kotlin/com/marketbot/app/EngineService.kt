@@ -108,6 +108,7 @@ class EngineService : LifecycleService() {
             runCatching { app.engine.trackMarkoutsIfDue() }
             runCatching { app.engine.reconcileIfDue() }.getOrNull()?.let { app.recordCheck(it) }
             runCatching { app.engine.reconcileOrdersIfDue() }
+            if (Connectivity.online(this)) runCatching { app.engine.recordLiveBalancesIfDue() }
             // The daily API wording check runs beside the loop (about 50 reads), at most one at a time.
             if (System.currentTimeMillis() - lastContractTry > 30 * 60_000L && contractJob?.isActive != true && Connectivity.online(this)) {
                 lastContractTry = System.currentTimeMillis()

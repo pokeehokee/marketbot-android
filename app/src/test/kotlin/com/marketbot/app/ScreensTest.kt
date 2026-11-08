@@ -53,6 +53,18 @@ class ScreensTest {
         rule.onNodeWithText("Finish").performClick()
         rule.onNodeWithText("Kill switch").assertExists()
         shot("1_home")
+        // A week of hourly live readings: the chart at the top of Home.
+        val app = ApplicationProvider.getApplicationContext<MarketbotApp>()
+        val now = System.currentTimeMillis()
+        kotlinx.coroutines.runBlocking {
+            for (h in 0 until 7 * 24) {
+                val v = 400.0 + h * 0.12 + 6 * kotlin.math.sin(h / 9.0)
+                app.db.equity().insert(com.marketbot.app.data.EquityEntity(0, now - (7 * 24 - h) * 3_600_000L + 60_000, "kalshi", "LIVE",
+                    v, "KALSHI_API", "test", null, null, null, v, "KALSHI_API", "test"))
+            }
+        }
+        rule.waitUntil(5000) { rule.onAllNodesWithText("Now").fetchSemanticsNodes().isNotEmpty() }
+        shot("1b_home_live_week")
         rule.onNodeWithText("Strategies", useUnmergedTree = true).let { rule.onNodeWithText("Strategies").performClick() }
         rule.onNodeWithText("Weather longshot").assertExists()
         shot("2_strategies")

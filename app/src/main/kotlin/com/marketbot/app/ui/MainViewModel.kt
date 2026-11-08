@@ -101,6 +101,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    /** The live portfolio over the last 7 days, one point an hour (core HourlyEquity), refreshed each minute and on every new reading. */
+    val liveHourly: StateFlow<com.marketbot.core.strategy.HourlyEquity.Hourly?> = kotlinx.coroutines.flow.combine(
+        a.db.equity().watchSince(System.currentTimeMillis() - 8 * 86_400_000L),
+        kotlinx.coroutines.flow.flow { while (true) { emit(System.currentTimeMillis()); kotlinx.coroutines.delay(60_000) } },
+    ) { l, now ->
+        val r = l.filter { it.mode == Mode.LIVE.name }.map { com.marketbot.core.strategy.HourlyEquity.Reading(it.at, it.venue, it.total ?: it.cash) }
+        if (r.isEmpty()) null else com.marketbot.core.strategy.HourlyEquity.of(r, now - 7 * 86_400_000L, now)
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     fun strategyCurve(id: String, mode: Mode): Series = cumulative(settled.value.filter { it.strategyId == id && it.mode == mode }
         .map { it.resolvedAt!!.toEpochMilli() to it.pnl!! })
 
@@ -258,6 +267,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val pb = if (p.hasCredentials) runCatching { p.balance() } else null
         _accounts.value = AccountReading(kb?.getOrNull(), kb?.exceptionOrNull()?.message, pb?.getOrNull(), pb?.exceptionOrNull()?.message, java.time.Instant.now())
         kb?.getOrNull()?.let { engine.stores.audit.record("kalshi.cash", it.cash); it.portfolioValue?.let { v -> engine.stores.audit.record("kalshi.portfolio_value", v) } }
+        // Every reading also feeds the Home chart's hourly history.
+        val now = java.time.Instant.now()
+        kb?.getOrNull()?.let { engine.stores.equity.record(com.marketbot.core.store.EquitySnapshot(now, "kalshi", Mode.LIVE, it.cash, it.portfolioValue, it.equity)) }
+        pb?.getOrNull()?.let { engine.stores.equity.record(com.marketbot.core.store.EquitySnapshot(now, "polymarket", Mode.LIVE, it.currentBalance, null, it.currentBalance)) }
         pb?.getOrNull()?.let { engine.stores.audit.record("polymarket.current_balance", it.currentBalance); engine.stores.audit.record("polymarket.buying_power", it.buyingPower) }
     }
 
