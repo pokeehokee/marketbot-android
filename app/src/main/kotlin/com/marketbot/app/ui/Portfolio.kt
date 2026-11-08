@@ -94,6 +94,22 @@ private fun Stat(label: String, v: Double, src: Source, modifier: Modifier) {
     }
 }
 
+/** Home's first card: the live accounts' total over the last 7 days, a point an hour. */
+@Composable
+fun LivePortfolioWeek(vm: MainViewModel) {
+    val h by vm.liveHourly.collectAsState()
+    Section(stringResource(R.string.live_portfolio_7_days)) {
+        val hv = h
+        if (hv == null) {
+            Text(stringResource(R.string.live_portfolio_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            HourlyChart(hv.points, label = stringResource(R.string.live_portfolio_7_days))
+            Text(stringResource(R.string.hourly_coverage, hv.recordedHours, hv.hours),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 /** Equity over 30 days per venue and mode, from the snapshots each pass records. */
 @Composable
 fun EquitySection(vm: MainViewModel) {

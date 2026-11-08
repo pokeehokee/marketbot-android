@@ -80,6 +80,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
             IconButton({ if (running) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
         }
 
+        LivePortfolioWeek(vm)
         QuickActions(vm)
         PortfolioHeader(vm)
         EquitySection(vm)
