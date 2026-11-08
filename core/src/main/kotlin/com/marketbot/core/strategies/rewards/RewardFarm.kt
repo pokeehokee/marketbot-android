@@ -407,7 +407,7 @@ class RewardFarm(override val id: String = ID, override val baseId: String? = nu
     }
 
     private suspend fun accrue(ctx: StrategyContext, now: Instant, usd: Double, seconds: Double) {
-        val day = LocalDate.ofInstant(now, ZoneOffset.UTC).toString()
+        val day = now.atZone(ZoneOffset.UTC).toLocalDate().toString()
         val key = k(ctx, "estimates")
         val map = ctx.stores.state.get(key)?.let { runCatching { JSON.decodeFromString(EST, it) }.getOrNull() }?.toMutableMap() ?: mutableMapOf()
         map[day] = (map[day] ?: 0.0) + usd

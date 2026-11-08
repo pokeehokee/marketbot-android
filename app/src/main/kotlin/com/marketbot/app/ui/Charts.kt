@@ -144,7 +144,8 @@ private val hourFmt = DateTimeFormatter.ofPattern("EEE MMM d, HH:00").withZone(Z
  * (the header then shows that hour instead of the latest).
  */
 @Composable
-fun HourlyChart(pts: Series, modifier: Modifier = Modifier, height: Dp = 160.dp, label: String = "", format: (Double) -> String = { money(it) }) {
+fun HourlyChart(pts: Series, modifier: Modifier = Modifier, height: Dp = 160.dp, label: String = "", nowLabel: String? = null,
+                format: (Double) -> String = { money(it) }) {
     if (pts.size < 2) {
         Text(stringResource(R.string.not_enough_points_for_a_chart_yet), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
@@ -164,7 +165,7 @@ fun HourlyChart(pts: Series, modifier: Modifier = Modifier, height: Dp = 160.dp,
             Column(Modifier.weight(1f)) {
                 Text(format(shown.second), style = Figures.copy(fontSize = androidx.compose.ui.unit.TextUnit(22f, androidx.compose.ui.unit.TextUnitType.Sp)),
                     color = MaterialTheme.colorScheme.onSurface)
-                Text(if (sel == null) stringResource(R.string.hourly_now) else hourFmt.format(Instant.ofEpochMilli(shown.first)),
+                Text(if (sel == null) nowLabel ?: stringResource(R.string.hourly_now) else hourFmt.format(Instant.ofEpochMilli(shown.first)),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text((if (change >= 0) "+" else "") + format(change), style = Figures, color = c)
@@ -177,8 +178,7 @@ fun HourlyChart(pts: Series, modifier: Modifier = Modifier, height: Dp = 160.dp,
             val fill = Path().apply { addPath(line); lineTo(x(t1), size.height); lineTo(x(t0), size.height); close() }
             drawPath(fill, Brush.verticalGradient(listOf(c.copy(alpha = 0.18f), Color.Transparent)))
             drawPath(line, c, style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round))
-            val r = 1.6.dp.toPx()
-            pts.forEach { (t, v) -> drawCircle(c, r, Offset(x(t), y(v))) }
+            if (pts.size <= 200) { val r = 1.6.dp.toPx(); pts.forEach { (t, v) -> drawCircle(c, r, Offset(x(t), y(v))) } }
             sel?.let { i ->
                 val (t, v) = pts[i]
                 drawLine(guide, Offset(x(t), 0f), Offset(x(t), size.height), strokeWidth = 1.dp.toPx())
@@ -209,5 +209,22 @@ private fun Modifier.hourScrub(pts: Series, onSel: (Int?) -> Unit): Modifier = t
             e.changes.firstOrNull()?.let { if (it.pressed) { onSel(idx(it.position.x)); it.consume() } }
         } while (e.changes.any { it.pressed })
         onSel(null)
+    }
+}
+
+/** A small trend line with no labels, for list cards. */
+@Composable
+fun Sparkline(series: Series, modifier: Modifier = Modifier, height: Dp = 36.dp) {
+    if (series.size < 2) return
+    val pts = androidx.compose.runtime.remember(series) { thin(series.sortedBy { it.first }, 120) }
+    val lo = pts.minOf { it.second }; val hi = pts.maxOf { it.second }
+    val span = (hi - lo).takeIf { it > 1e-9 } ?: 1.0
+    val t0 = pts.first().first; val tSpan = (pts.last().first - t0).coerceAtLeast(1)
+    val c = if (pts.last().second >= pts.first().second) LocalDesk.current.gain else LocalDesk.current.loss
+    Canvas(modifier.fillMaxWidth().height(height)) {
+        val line = Path().apply { pts.forEachIndexed { i, (t, v) ->
+            val x = (t - t0).toFloat() / tSpan * size.width; val y = size.height - ((v - lo) / span).toFloat() * size.height
+            if (i == 0) moveTo(x, y) else lineTo(x, y) } }
+        drawPath(line, c, style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round))
     }
 }

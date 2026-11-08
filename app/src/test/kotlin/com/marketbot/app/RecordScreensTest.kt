@@ -61,8 +61,8 @@ class RecordScreensTest {
                 closeTime = Instant.now().plusSeconds(30 * 3600)))
         }
         ActivityScenario.launch(MainActivity::class.java).use { sc ->
-            waitFor("the portfolio to count 40 paper positions") { rule.onAllNodesWithText("Paper P&L (40)").fetchSemanticsNodes().isNotEmpty() }
-            rule.onNodeWithText("Paper P&L (40)").performClick()
+            waitFor("the portfolio to count 40 paper positions") { rule.onAllNodesWithText("Paper (40)").fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText("Paper (40)").performClick()
             shot(sc, "6_home_record")
             rule.onNodeWithText("Strategies").performClick()
             rule.onNodeWithText("Weather longshot").performClick()

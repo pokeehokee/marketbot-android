@@ -179,6 +179,23 @@ fun EvidenceBadge(level: EvidenceLevel) {
         modifier = Modifier.clip(Radius.chip).background(c.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
 }
 
+/** The app's own record against the evidence: green on track, amber below, red losing. */
+@Composable
+fun RecordBadge(h: com.marketbot.core.strategy.RecordHealth.Health?) {
+    if (h == null) return
+    val d = LocalDesk.current
+    val c = when (h.verdict) {
+        com.marketbot.core.strategy.RecordHealth.Verdict.ON_TRACK -> d.gain
+        com.marketbot.core.strategy.RecordHealth.Verdict.BELOW -> d.warn
+        com.marketbot.core.strategy.RecordHealth.Verdict.LOSING -> d.loss
+        com.marketbot.core.strategy.RecordHealth.Verdict.TOO_EARLY -> d.muted
+    }
+    val text = if (h.verdict == com.marketbot.core.strategy.RecordHealth.Verdict.TOO_EARLY) "${h.mode.name.lowercase().replaceFirstChar { it.uppercase() }}: too early (${h.settled} of ${com.marketbot.core.strategy.RecordHealth.MIN_SETTLED})"
+        else "${h.verdict.label} in ${h.mode.name.lowercase()}"
+    Text(text, style = MaterialTheme.typography.labelSmall, color = c,
+        modifier = Modifier.clip(Radius.chip).background(c.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
+}
+
 /**
  * The honest mode control: Off, Paper and Live all shown. Live opens the go-live
  * checklist instead of switching; leaving Live asks first and says what happens

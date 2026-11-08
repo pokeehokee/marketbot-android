@@ -106,5 +106,5 @@ object FarmLedger {
         return skipped
     }
 
-    fun day(at: Instant): String = LocalDate.ofInstant(at, ZoneOffset.UTC).toString()
+    fun day(at: Instant): String = at.atZone(ZoneOffset.UTC).toLocalDate().toString()
 }

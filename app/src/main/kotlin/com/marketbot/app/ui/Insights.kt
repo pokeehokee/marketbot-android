@@ -86,6 +86,38 @@ fun FunnelView(steps: List<FunnelStep>) {
     }
 }
 
+/** The record against the evidence, and in paper the gates to graduate to live money. */
+@Composable
+fun ScorecardSection(vm: MainViewModel, s: Strategy) {
+    val settled by vm.settled.collectAsState()
+    val c = loaded(s.id, settled.size, vm.modeOf(s.id)) { vm.scorecard(s) } ?: return
+    if (c.health == null && c.gates.isEmpty()) return
+    Section(stringResource(R.string.graduation)) {
+        c.health?.let { h ->
+            RecordBadge(h)
+            Text(h.line(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = Space.xs))
+        }
+        if (c.gates.isNotEmpty()) {
+            val (passed, total) = com.marketbot.core.strategy.Graduation.progress(c.gates)
+            androidx.compose.material3.LinearProgressIndicator({ passed.toFloat() / total }, Modifier.fillMaxWidth().padding(vertical = Space.s),
+                color = if (c.ready) LocalDesk.current.gain else MaterialTheme.colorScheme.primary)
+            c.gates.forEach { g ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+                    Text(g.verdict.name, style = MaterialTheme.typography.labelSmall, color = verdictColor(g.verdict),
+                        modifier = Modifier.width(92.dp).clip(Radius.chip).background(verdictColor(g.verdict).copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    Spacer(Modifier.width(Space.s))
+                    Column(Modifier.weight(1f)) {
+                        Text(g.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(g.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text(if (c.ready) stringResource(R.string.graduation_ready) else stringResource(R.string.graduation_progress, passed, total),
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 /** Kill criteria and stage gates on the live or paper record. */
 @Composable
 fun HealthSection(vm: MainViewModel, s: Strategy) {

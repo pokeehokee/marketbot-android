@@ -18,7 +18,12 @@ import java.time.Instant
  * when the user says so. Every proposal is checked again by [ProposalPolicy] at
  * the moment it is applied, against the settings and mode as they are then.
  */
-class SyncService(private val engine: Engine, private val mailbox: (repo: String, token: String) -> GitHubMailbox = { r, t -> GitHubMailbox(r, t) }) {
+class SyncService(
+    private val engine: Engine,
+    /** The cross-venue research rows (last 7 days, CSV), sent as exports/books-latest.csv when there are any. */
+    private val books: (() -> String?)? = null,
+    private val mailbox: (repo: String, token: String) -> GitHubMailbox = { r, t -> GitHubMailbox(r, t) },
+) {
 
     @Serializable
     data class Pending(val proposal: Proposal, val refused: String? = null, val strongConfirm: Boolean = false)
@@ -52,6 +57,7 @@ class SyncService(private val engine: Engine, private val mailbox: (repo: String
             box.write(GitHubMailbox.SNAPSHOT, SyncPayload.snapshot(now, appVersion, snaps), "app: snapshot $now")
             val rows = engine.strategies.flatMap { s -> engine.stores.ledger.all(s.id) }
             box.write(GitHubMailbox.ORDERS, SyncPayload.ordersCsv(rows.asSequence()), "app: orders $now")
+            books?.invoke()?.let { box.write(GitHubMailbox.BOOKS, it, "app: cross-venue books $now") }
             val out = outbox()
             box.recordOutcomes(out)
             st.put(OUTBOX, null)

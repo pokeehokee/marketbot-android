@@ -151,6 +151,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onOpenVariant: (String) -> 
                     stats.forEach { ValueRow(it.label, it.value.value, it.value.source, it.value.origin, it.value.note, it.value.at) } }
             }
         }
+        ScorecardSection(vm, s)
         RecordSection(vm, s)
         if (s.baseId == null) VariantsSection(vm, s, onOpenVariant)
         HealthSection(vm, s)

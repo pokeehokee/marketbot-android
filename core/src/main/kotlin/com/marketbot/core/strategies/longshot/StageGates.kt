@@ -53,7 +53,7 @@ object StageGates {
         val stage = rows.filter { !it.placedAt.isBefore(since) }
         val (n, fr) = fillRate(stage)
         val lr = lossRatio(stage)
-        val recentTrips = brakeTrips.count { !it.isBefore(LocalDate.ofInstant(now, ZoneOffset.UTC).minusDays(14)) }
+        val recentTrips = brakeTrips.count { !it.isBefore(now.atZone(ZoneOffset.UTC).toLocalDate().minusDays(14)) }
         fun pct(x: Double?) = x?.let { "%.0f%%".format(it * 100) } ?: "n/a"
         return listOf(
             Line("Fill rate >= 50% over 100+ quotes",

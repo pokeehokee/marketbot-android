@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BatteryAlert
+import androidx.compose.material.icons.outlined.Dangerous
+import androidx.compose.material3.AssistChip
 import androidx.compose.material.icons.outlined.PowerSettingsNew
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
@@ -77,13 +79,17 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
                 Text(if (running) "Engine running" else "Engine stopped", style = MaterialTheme.typography.bodyMedium,
                     color = if (running) LocalDesk.current.gain else MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // The kill switch, one tap from the top of Home; the confirmation follows.
+            if (killed) AssistChip({ confirm("Turn the kill switch off") { vm.kill(false) } }, { Text(stringResource(R.string.kill_on_short)) },
+                colors = androidx.compose.material3.AssistChipDefaults.assistChipColors(labelColor = LocalDesk.current.loss))
+            else IconButton({ confirmKill = true }, enabled = "kill" !in busy) {
+                Icon(Icons.Outlined.Dangerous, stringResource(R.string.kill_top_a11y), tint = LocalDesk.current.loss) }
             IconButton({ if (running) vm.stopService() else vm.ensureService() }) { Icon(Icons.Outlined.PowerSettingsNew, "Start or stop engine") }
         }
+        ScorecardAlerts(vm, onOpen)
 
-        LivePortfolioWeek(vm)
-        QuickActions(vm)
         PortfolioHeader(vm)
-        EquitySection(vm)
+        QuickActions(vm)
         ExposureSection(vm)
         PeriodsSection(vm)
         val resumed = rememberResumeCount()
@@ -175,4 +181,28 @@ fun ignoringBattery(ctx: Context): Boolean = (ctx.getSystemService(Context.POWER
 fun requestBatteryExemption(ctx: Context) {
     runCatching { ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}"))) }
         .onFailure { ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+}
+
+/** Strategies whose record has fallen below their evidence, and paper strategies that passed every gate. */
+@Composable
+fun ScorecardAlerts(vm: MainViewModel, onOpen: (String) -> Unit) {
+    val settled by vm.settled.collectAsState()
+    vm.modes.collectAsState().value
+    val running = vm.listed().filter { vm.modeOf(it.id) != Mode.OFF }
+    val cards = loaded(settled.size, running.map { it.id + vm.modeOf(it.id) }) { running.map { vm.scorecard(it) } }.orEmpty()
+    cards.filter { it.alarming || it.ready }.forEach { c ->
+        val bad = c.alarming
+        val tint = if (bad) LocalDesk.current.warn else LocalDesk.current.gain
+        Surface(shape = Radius.banner, color = tint.copy(alpha = 0.12f), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text(if (bad) "${c.name}: ${c.health!!.verdict.label.lowercase()}" else "${c.name} passed every paper gate", style = MaterialTheme.typography.titleSmall, color = tint)
+                Text(if (bad) c.health!!.line() else stringResource(R.string.graduation_ready), style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Pausing a paper strategy is safe in one tap; a live one is left to its own screen and confirmation.
+                    if (bad && c.mode == Mode.PAPER) TextButton({ vm.strategies.firstOrNull { it.id == c.strategyId }?.let { vm.setMode(it, Mode.OFF) } }) { Text(stringResource(R.string.pause_strategy)) }
+                    TextButton({ onOpen(c.strategyId) }) { Text(stringResource(R.string.open)) }
+                }
+            }
+        }
+    }
 }
