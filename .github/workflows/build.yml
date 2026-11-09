@@ -45,22 +45,34 @@ jobs:
           fi
           ./gradlew --no-daemon :app:assembleRelease
       - uses: actions/upload-artifact@v4
+        # A full artifact store (the private repo's quota) must not fail the build: the APK is also published as a release.
+        continue-on-error: true
         with:
           name: marketbot-release-apk
+          retention-days: 14
           path: app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
+        # A full artifact store (the private repo's quota) must not fail the build: the APK is also published as a release.
+        continue-on-error: true
         with:
           # Without this, a crash from a release build cannot be read (R8 renames every class).
           name: marketbot-release-mapping
+          retention-days: 30
           path: app/build/outputs/mapping/release/mapping.txt
       - uses: actions/upload-artifact@v4
+        # A full artifact store (the private repo's quota) must not fail the build: the APK is also published as a release.
+        continue-on-error: true
         with:
           name: marketbot-apk
+          retention-days: 7
           path: app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
+        # A full artifact store (the private repo's quota) must not fail the build: the APK is also published as a release.
+        continue-on-error: true
         if: always()
         with:
           name: screens-and-test-reports
+          retention-days: 5
           path: |
             app/build/screens
             core/build/reports/tests
