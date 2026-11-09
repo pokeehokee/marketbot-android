@@ -147,9 +147,15 @@ class KalshiClient(
         return out
     }
 
-    suspend fun fills(ticker: String? = null, maxPages: Int = 20): List<JsonObject> =
+    suspend fun fills(ticker: String? = null, maxPages: Int = 20, orderId: String? = null, exchangeIndex: Int? = null): List<JsonObject> =
         paginate("/portfolio/fills", "fills",
-            sub(listOfNotNull("limit" to "200", ticker?.let { "ticker" to it })), maxPages, signed = true)
+            sub(listOfNotNull("limit" to "200", ticker?.let { "ticker" to it }, orderId?.let { "order_id" to it },
+                exchangeIndex?.let { "exchange_index" to it.toString() })), maxPages, signed = true)
+
+    /** The settlement of one market, asked for by ticker so it never falls off the end of a paged listing. */
+    suspend fun settlementFor(ticker: String): JsonObject? =
+        http.get("/portfolio/settlements", sub(listOf("ticker" to ticker, "limit" to "100")), requireSigner())
+            .objects("settlements").firstOrNull { it.str("ticker") == ticker }
 
     /** The order carrying [clientOrderId], or null. Kalshi has no filter for it, so recent orders are walked. */
     suspend fun findByClientOrderId(clientOrderId: String): JsonObject? {

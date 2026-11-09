@@ -207,7 +207,9 @@ abstract class DeepItmStrategy(
     private suspend fun requote(ctx: StrategyContext, venue: LadderVenue, r: DeepItmRules, now: Instant, markets: List<LadderMarket>, spot: Double, sigma: Double) {
         val mode = bookMode(ctx)
         val open = ctx.stores.ledger.open(id, mode)
-        val held = open.filter { (it.filledContracts ?: 0.0) > 0 }.map { it.ticker }.toSet()
+        // Only positions in markets still trading count against max_open: a closed market waiting on
+        // its settlement holds no slot (eight such rows once stopped all quoting for two days).
+        val held = open.filter { (it.filledContracts ?: 0.0) > 0 && (it.closeTime == null || it.closeTime.isAfter(now)) }.map { it.ticker }.toSet()
         val standing = open.filter { it.resting }.associateBy { it.ticker }
         val cands = DeepItmRule.candidates(markets, spot, sigma, now, r)
         val chosen = DeepItmRule.select(cands, held + standing.keys, r.maxOpen).associateBy { it.ticker }
@@ -300,7 +302,19 @@ abstract class DeepItmStrategy(
                     pnlOrigin = "never filled (per ${q.fillSource})", hypothetical = true))
                 continue
             }
-            val pnl = runCatching { venue.livePnl(q, res.value) }.getOrNull() ?: continue   // wait for the exchange figure
+            val pnl = runCatching { venue.livePnl(q, res.value) }.getOrNull()
+            if (pnl == null) {
+                // No settlement. If the venue's fill record says the order never traded, the order
+                // read was wrong and there is nothing to settle; otherwise wait for the exchange figure.
+                if (java.time.Duration.between(q.closeTime, now) < SETTLE_GRACE) continue
+                val conf = runCatching { venue.confirmedFills(q) }.getOrNull() ?: continue
+                if (conf.value > 0) continue
+                ctx.stores.ledger.update(q.copy(filledContracts = 0.0, fillSource = conf.origin, fillCheckedAt = now, resolvedAt = now,
+                    result = res.value, pnl = 0.0, pnlSource = conf.source, pnlOrigin = "never filled: no fills at ${conf.origin}, no settlement", hypothetical = true))
+                ctx.warn("reconcile", "${com.marketbot.core.util.Tickers.describe(q.ticker)}: the order read said ${"%.0f".format(filled)} filled, " +
+                    "but the exchange has no fills and no settlement for it. Recorded as never filled.")
+                continue
+            }
             ctx.stores.ledger.update(q.copy(resolvedAt = now, result = res.value, pnl = pnl.value, pnlSource = pnl.source,
                 pnlOrigin = pnl.origin, hypothetical = false))
             ctx.trade("settled", "${com.marketbot.core.util.Tickers.describe(q.ticker)} settled ${res.value.uppercase()} (held ${side.uppercase()}): ${if (pnl.value >= 0) "made" else "lost"} ${money(kotlin.math.abs(pnl.value))} (${pnl.source.label})", mapOf("pnl" to pnl))
@@ -395,6 +409,9 @@ abstract class DeepItmStrategy(
         return out
     }
 }
+
+/** How long after close a filled live row waits for its settlement before the venue's fill record is checked. */
+internal val SETTLE_GRACE: java.time.Duration = java.time.Duration.ofHours(2)
 
 class KalshiBtcDeepItm(id: String = ID, baseId: String? = null) : DeepItmStrategy(
     id = id,

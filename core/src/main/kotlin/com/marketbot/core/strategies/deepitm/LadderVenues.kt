@@ -55,6 +55,13 @@ interface LadderVenue {
     suspend fun cancel(q: QuoteRow)
     suspend fun liveFill(q: QuoteRow): FillRead?
     suspend fun livePnl(q: QuoteRow, result: String): Sourced<Double>?
+
+    /**
+     * Contracts the venue's own fill record shows for this order, or null when the venue has no
+     * such record or it could not be read. Used to clear a row the order endpoint called filled
+     * but that never settled: zero here, from the venue, is the only thing that grades it unfilled.
+     */
+    suspend fun confirmedFills(q: QuoteRow): Sourced<Double>? = null
     suspend fun preflight(): List<Pair<String, Boolean>>
 }
 
@@ -139,7 +146,17 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
         if (java.time.Duration.between(settlementsAt, Instant.now()).seconds > 60) {
             settlements = k.settlementsByTicker(maxPages = 5); settlementsAt = Instant.now()
         }
-        return settlements[q.ticker]?.let { settlementPnl(it) }
+        settlements[q.ticker]?.let { return settlementPnl(it) }
+        // The paged listing is shared with every weather settlement; ask for this market by name.
+        return k.settlementFor(q.ticker)?.let { settlementPnl(it) }
+    }
+
+    override suspend fun confirmedFills(q: QuoteRow): Sourced<Double>? {
+        val id = q.orderId ?: return null
+        val shard = (q.extra["exchange_index"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+        val fills = k.fills(ticker = q.ticker, maxPages = 5, orderId = id, exchangeIndex = shard).filter { (it.str("order_id") ?: id) == id }
+        val n = fills.sumOf { it.num("count_fp") ?: it.num("count") ?: 0.0 }
+        return Sourced.kalshi(n, "GET /portfolio/fills?order_id=$id${shard?.let { "&exchange_index=$it" } ?: ""} (${fills.size} fills)", Instant.now())
     }
 
     override suspend fun preflight(): List<Pair<String, Boolean>> {

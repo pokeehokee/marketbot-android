@@ -31,6 +31,7 @@ class FakeKalshi : AutoCloseable {
     var orders: MutableMap<String, String> = mutableMapOf()
     var restingOrders = """{"orders":[],"cursor":""}"""
     var positions = """{"market_positions":[],"cursor":""}"""
+    var fills = """{"fills":[],"cursor":""}"""
     var seriesFeeType = "quadratic"
     var trades = """{"trades":[],"cursor":""}"""
     private var nextOrder = 1
@@ -99,6 +100,7 @@ class FakeKalshi : AutoCloseable {
                     path == "/portfolio/settlements" -> settlements?.let { ok(it) } ?: MockResponse().setResponseCode(503).setBody("""{"error":{"code":"unavailable"}}""")
                     path == "/portfolio/orders" -> ok(restingOrders)
                     path == "/portfolio/positions" -> ok(positions)
+                    path == "/portfolio/fills" -> ok(fills)
                     path.startsWith("/portfolio/orders/") -> orders[path.substringAfterLast('/')]?.let { ok(it) } ?: MockResponse().setResponseCode(404).setBody("{}")
                     path == "/exchange/status" -> ok("""{"exchange_active":true,"trading_active":true,"exchange_index_statuses":[{"exchange_index":2,"exchange_active":true,"trading_active":true}]}""")
                     else -> MockResponse().setResponseCode(404).setBody("{}")
