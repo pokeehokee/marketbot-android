@@ -622,4 +622,54 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         sb.toString()
     }
 
+    // ---------------------------------------------------------------- portfolio-level risk and research
+    /** Worst-case loss per city and day on the live book, every strategy together. */
+    suspend fun cityDayExposure(): Map<String, Double> = withContext(Dispatchers.IO) { engine.liveExposure() }
+    suspend fun exposureCap(): Double = withContext(Dispatchers.IO) {
+        engine.stores.state.get(com.marketbot.core.strategy.CorrelatedExposure.CAP_KEY)?.toDoubleOrNull() ?: com.marketbot.core.strategy.CorrelatedExposure.DEFAULT_CAP }
+    fun setExposureCap(v: Double) = viewModelScope.launch(Dispatchers.IO) {
+        engine.stores.state.put(com.marketbot.core.strategy.CorrelatedExposure.CAP_KEY, v.coerceAtLeast(0.0).toString()); _riskTick.value++ }
+    private val _riskTick = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val riskTick = _riskTick.asStateFlow()
+
+    /** Does a paper variant beat its main strategy? Only on markets both ran for, only when the difference is real. */
+    suspend fun variantVerdict(base: Strategy, v: Strategy): com.marketbot.core.strategy.VariantVerdict.Verdict = withContext(Dispatchers.IO) {
+        com.marketbot.core.strategy.VariantVerdict.compare(engine.stores.ledger.all(base.id, Mode.PAPER), engine.stores.ledger.all(v.id, Mode.PAPER),
+            "Main", "Variant " + v.id.substringAfterLast('@').uppercase())
+    }
+
+    /** Earned per dollar of collateral per day it was locked, per strategy (its live book if it has one, else paper). */
+    suspend fun capitalEfficiency(): List<Pair<Strategy, com.marketbot.core.strategy.CapitalEfficiency.Line>> = withContext(Dispatchers.IO) {
+        strategies.mapNotNull { s ->
+            val live = engine.stores.ledger.all(s.id, Mode.LIVE)
+            val rows = if (live.any { it.resolvedAt != null }) live else engine.stores.ledger.all(s.id, Mode.PAPER)
+            com.marketbot.core.strategy.CapitalEfficiency.of(s.id, rows)?.let { s to it }
+        }.sortedByDescending { it.second.centsPerDollarDay ?: -1e9 }
+    }
+
+    /** Realised live P&L for [year] as a CSV in app cache, for the share sheet. */
+    suspend fun taxCsvUri(year: Int): android.net.Uri = withContext(Dispatchers.IO) {
+        val rows = strategies.flatMap { engine.stores.ledger.all(it.id, Mode.LIVE) }
+        val dir = java.io.File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }
+        val f = java.io.File(dir, "marketbot-realised-$year.csv")
+        f.writeText(com.marketbot.core.strategy.TaxYear.csv(rows, year, java.time.ZoneId.systemDefault()))
+        androidx.core.content.FileProvider.getUriForFile(getApplication(), "${getApplication<Application>().packageName}.files", f)
+    }
+
+    // ---------------------------------------------------------------- watchlist
+    private val _watchTick = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val watchTick = _watchTick.asStateFlow()
+    suspend fun watchlist(): List<com.marketbot.core.strategy.WatchItem> = withContext(Dispatchers.IO) { com.marketbot.core.strategy.WatchItem.load(engine.stores.state) }
+    fun watch(venue: String, ticker: String, label: String, moveCents: Int = 5) = viewModelScope.launch(Dispatchers.IO) {
+        val l = com.marketbot.core.strategy.WatchItem.load(engine.stores.state).filter { it.ticker != ticker }
+        val ref = engine.mid(venue, ticker)
+        com.marketbot.core.strategy.WatchItem.save(engine.stores.state, l + com.marketbot.core.strategy.WatchItem(venue, ticker, ref, moveCents, label))
+        _watchTick.value++
+        say(if (ref != null) "Watching $label from ${"%.0f".format(ref * 100)}c; you hear when it moves $moveCents c." else "Watching $label; its price is read on the next check.")
+    }
+    fun unwatch(ticker: String) = viewModelScope.launch(Dispatchers.IO) {
+        com.marketbot.core.strategy.WatchItem.save(engine.stores.state, com.marketbot.core.strategy.WatchItem.load(engine.stores.state).filter { it.ticker != ticker })
+        _watchTick.value++
+    }
+
 }

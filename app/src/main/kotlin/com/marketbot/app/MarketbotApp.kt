@@ -22,7 +22,7 @@ class MarketbotApp : Application() {
     lateinit var engine: Engine
     /** The Claude sync (a private GitHub repository as a mailbox); idle until a repository and token are saved. */
     val research by lazy { com.marketbot.app.data.ResearchFiles(this) }
-    val sync by lazy { com.marketbot.core.sync.SyncService(engine, books = { research.latest() }) }
+    val sync by lazy { com.marketbot.core.sync.SyncService(engine, books = { research.latest() }, trades = { research.latestTrades() }) }
     /** Background work outside the engine. A failure here is logged, never allowed to crash the process. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
         android.util.Log.e("marketbot", "background task failed", e)
@@ -37,6 +37,7 @@ class MarketbotApp : Application() {
         engine = Engine(roomStores(db), notifier = { title, body -> post(this, "safety", title, body) }, online = { Connectivity.online(this) },
             tradeNotifier = { title, body -> post(this, "fills", title, body) }, kindedNotifier = { kind, title, body -> post(this, kind, title, body) })
         engine.bookSink = { rows -> research.append(rows) }
+        engine.tradeSink = { rows -> research.appendTrades(rows) }
         createChannels(this)
         appScope.launch {
             engine.setCredentials(vault.credentials())
@@ -78,7 +79,7 @@ class MarketbotApp : Application() {
             when (NotifyPrefs.get(ctx, kind)) {
                 NotifyPrefs.Level.OFF -> {}
                 NotifyPrefs.Level.SILENT -> quiet(ctx, title, body)
-                NotifyPrefs.Level.ON -> if (kind == "fills" || kind == "daily") trade(ctx, title, body) else alert(ctx, title, body)
+                NotifyPrefs.Level.ON -> if (kind == "fills" || kind == "daily" || kind == "watch") trade(ctx, title, body) else alert(ctx, title, body)
             }
         }
 
@@ -136,6 +137,7 @@ object NotifyPrefs {
         Triple("reconcile", "Reconciliation", "Orders or P&L that differ from the exchange"),
         Triple("fills", "Fills and settlements", "Live fills and settled positions"),
         Triple("daily", "Daily summary", "Yesterday's realised P&L, once each morning"),
+        Triple("watch", "Watchlist", "A market you watch moved by your threshold"),
     )
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("notify", Context.MODE_PRIVATE)
     fun get(ctx: Context, kind: String): Level = runCatching { Level.valueOf(prefs(ctx).getString(kind, null) ?: "ON") }.getOrDefault(Level.ON)

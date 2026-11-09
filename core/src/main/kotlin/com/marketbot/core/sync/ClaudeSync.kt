@@ -157,6 +157,7 @@ class GitHubMailbox(
         const val SNAPSHOT = "snapshot/latest.json"
         const val ORDERS = "exports/orders-latest.csv"
         const val BOOKS = "exports/books-latest.csv"
+        const val TRADES = "exports/trades-latest.csv"
         const val PENDING = "proposals/pending.json"
         const val RESULTS = "proposals/results.json"
     }

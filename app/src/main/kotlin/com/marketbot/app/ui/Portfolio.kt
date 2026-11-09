@@ -312,6 +312,7 @@ fun OrdersList(vm: MainViewModel, s: Strategy) {
                 OrderCard(rows.firstOrNull { it.id == q.id }?.toRow() ?: q, "cancel:${q.id}" in busy)
                 if (q.mode == Mode.LIVE && q.resting && q.orderId != null)
                     TextButton({ cancel = q; detail = null }, enabled = "cancel:${q.id}" !in busy) { Text(stringResource(R.string.cancel_order), color = LocalDesk.current.loss) }
+                if (q.resolvedAt == null) TextButton({ vm.watch(q.venue, q.ticker, Tickers.describe(q.ticker)); detail = null }) { Text(stringResource(R.string.watch_market)) }
             }
         }
     }

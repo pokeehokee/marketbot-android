@@ -1,0 +1,44 @@
+name: Daily new-series scan
+
+# Once a day: Kalshi series that did not exist yesterday, scored for the longshot trade
+# (cheap markets, short queues, tight spreads). Findings go to a tracking issue; the list of
+# known series is kept in the Actions cache between runs.
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: known_series.json
+          key: new-series-${{ github.run_id }}
+          restore-keys: new-series-
+      - id: scan
+        run: python3 tools/new_series_scan.py --state known_series.json --report report.md
+      - uses: actions/cache/save@v4
+        with:
+          path: known_series.json
+          key: new-series-${{ github.run_id }}
+      - name: Report to the tracking issue (only when something new appeared)
+        if: steps.scan.outputs.new != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          n=$(gh issue list --label new-series --state open --json number -q '.[0].number')
+          if [ -z "$n" ]; then
+            gh label create new-series --color 0e8a16 --description "Daily new-series scan" 2>/dev/null || true
+            gh issue create --title "New Kalshi series" --label new-series --body-file report.md
+          else
+            gh issue comment "$n" --body-file report.md
+          fi

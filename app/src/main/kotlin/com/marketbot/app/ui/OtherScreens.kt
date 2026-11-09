@@ -209,6 +209,8 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
         LocksSection(vm)
         ProtectionsSection(vm)
         NotificationsSection()
+        RiskCapSection(vm)
+        WatchlistSection(vm)
         ClaudeSyncSection(vm)
         BackupSection(vm)
         Section(stringResource(R.string.data)) {
@@ -222,6 +224,20 @@ fun SettingsScreen(vm: MainViewModel, onSources: () -> Unit) {
                     }
                 }) { Text(stringResource(R.string.export_orders_csv)) }
             }
+            Spacer(Modifier.size(6.dp))
+            val thisYear = java.time.LocalDate.now().year
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(thisYear - 1, thisYear).forEach { y ->
+                    OutlinedButton({
+                        scope.launch {
+                            val uri = vm.taxCsvUri(y)
+                            ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/csv").putExtra(Intent.EXTRA_STREAM, uri)
+                                .putExtra(Intent.EXTRA_SUBJECT, "Marketbot realised $y").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Export $y"))
+                        }
+                    }) { Text(stringResource(R.string.export_tax_year, y)) }
+                }
+            }
+            Text(stringResource(R.string.tax_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.size(6.dp))
             OutlinedButton({ vm.pruneLogs(30) }) { Text(stringResource(R.string.delete_activity_older_than_30_days)) }
             Text(stringResource(R.string.orders_fills_and_settlements_are_kept_fo), style = MaterialTheme.typography.labelSmall,
@@ -302,6 +318,42 @@ fun HelpScreen(vm: MainViewModel, id: String, onBack: () -> Unit) {
             EvidenceBadge(s.evidence.level)
             Text(s.evidence.headline, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
             Text(stringResource(R.string.source, (s.evidence.source).toString()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** The live cap on worst-case loss per city and day across every strategy. */
+@Composable
+fun RiskCapSection(vm: MainViewModel) {
+    val tick by vm.riskTick.collectAsState()
+    val cap = loaded(tick) { vm.exposureCap() } ?: return
+    var text by androidx.compose.runtime.saveable.rememberSaveable(cap) { androidx.compose.runtime.mutableStateOf("%.0f".format(cap)) }
+    Section(stringResource(R.string.city_day_cap_title)) {
+        Text(stringResource(R.string.city_day_cap_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.OutlinedTextField(text, { text = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.weight(1f), singleLine = true,
+                label = { Text(stringResource(R.string.dollars_zero_off)) })
+            OutlinedButton({ text.toDoubleOrNull()?.let { vm.setExposureCap(it) } }) { Text(stringResource(R.string.save)) }
+        }
+    }
+}
+
+/** Markets you asked to hear about when their price moves. */
+@Composable
+fun WatchlistSection(vm: MainViewModel) {
+    val tick by vm.watchTick.collectAsState()
+    val items = loaded(tick) { vm.watchlist() } ?: return
+    Section(stringResource(R.string.watchlist_title)) {
+        if (items.isEmpty()) Text(stringResource(R.string.watchlist_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        items.forEach { w ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(w.label.ifBlank { w.ticker }, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                    Text((w.ref?.let { "%.0fc".format(it * 100) } ?: "price not read yet") + " · alerts on a ${w.moveCents}c move",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.TextButton({ vm.unwatch(w.ticker) }) { Text(stringResource(R.string.remove)) }
+            }
         }
     }
 }

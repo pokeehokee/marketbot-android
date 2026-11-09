@@ -230,8 +230,25 @@ class Engine(
         gateFn = { ticker ->
             val book = if (mode == Mode.LIVE && armed && !killed) Mode.LIVE else Mode.PAPER
             if (killed && mode == Mode.LIVE) com.marketbot.core.strategy.Reason(com.marketbot.core.strategy.ReasonCode.KILL_SWITCH)
-            else locks.denies(s.id, book, ticker, clock.now())
+            else locks.denies(s.id, book, ticker, clock.now()) ?: if (book == Mode.LIVE) exposureDenies(ticker) else null
         })
+
+    /**
+     * The live book's worst-case loss on [ticker]'s city and day, summed over every strategy, against
+     * the cap in Settings. Paper is never capped: it would change what the paper record measures.
+     */
+    suspend fun exposureDenies(ticker: String): com.marketbot.core.strategy.Reason? {
+        val key = com.marketbot.core.strategy.CorrelatedExposure.key(ticker) ?: return null
+        val cap = stores.state.get(com.marketbot.core.strategy.CorrelatedExposure.CAP_KEY)?.toDoubleOrNull() ?: com.marketbot.core.strategy.CorrelatedExposure.DEFAULT_CAP
+        if (cap <= 0) return null
+        val at = liveExposure()[key] ?: 0.0
+        return if (at >= cap) com.marketbot.core.strategy.Reason(com.marketbot.core.strategy.ReasonCode.EXPOSURE_CAP,
+            "$key has ${com.marketbot.core.strategy.money(at)} at risk across strategies (cap ${com.marketbot.core.strategy.money(cap)})") else null
+    }
+
+    /** Worst-case loss per city and day on the live book, every strategy together. */
+    suspend fun liveExposure(): Map<String, Double> =
+        com.marketbot.core.strategy.CorrelatedExposure.byKey(strategies.flatMap { stores.ledger.open(it.id, Mode.LIVE) })
 
     /**
      * Notifications by kind ("safety", "reconcile", "fills", "daily"), so the app can
@@ -560,6 +577,8 @@ class Engine(
 
     /** Where the cross-venue research rows go (the app appends them to a file); null records nothing. */
     var bookSink: (suspend (List<com.marketbot.core.research.CrossVenueBooks.Row>) -> Unit)? = null
+    /** Where the recorded public trades go. */
+    var tradeSink: (suspend (List<com.marketbot.core.research.CrossVenueBooks.Trade>) -> Unit)? = null
     private var lastBooksAt: Instant = Instant.EPOCH
 
     /** Every [every], unless turned off in Settings: Kalshi and Polymarket temperature books read at one moment. */
@@ -568,10 +587,41 @@ class Engine(
         val now = clock.now()
         if (java.time.Duration.between(lastBooksAt, now) < every) return 0
         if (stores.state.get(BOOKS_SETTING) == "false") return 0
+        val since = if (lastBooksAt == Instant.EPOCH) now.minus(every) else lastBooksAt
         lastBooksAt = now
         val rows = com.marketbot.core.research.CrossVenueBooks.read(kalshi, polymarket, now)
         if (rows.isNotEmpty()) sink(rows)
+        tradeSink?.let { ts -> val t = com.marketbot.core.research.CrossVenueBooks.trades(kalshi, rows, since, now); if (t.isNotEmpty()) ts(t) }
         return rows.size
+    }
+
+    private var lastWatchAt: Instant = Instant.EPOCH
+
+    /** The YES mid of a market on either venue, or null when its book is empty or unreadable. */
+    suspend fun mid(venue: String, ticker: String): Double? = runCatching {
+        if (venue == "kalshi") kalshi.market(ticker).book?.mid
+        else polymarket.book(ticker).let { b -> val bid = b.bestBid; val ask = b.bestAsk; if (bid != null && ask != null) (bid + ask) / 2 else null }
+    }.getOrNull()
+
+    /** Every [every]: each watched market's mid against its reference; a move past its threshold notifies once and becomes the new reference. */
+    suspend fun watchlistIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(5)): List<String> {
+        val now = clock.now()
+        if (java.time.Duration.between(lastWatchAt, now) < every) return emptyList()
+        lastWatchAt = now
+        val items = com.marketbot.core.strategy.WatchItem.load(stores.state)
+        if (items.isEmpty()) return emptyList()
+        val sent = mutableListOf<String>()
+        val next = items.map { w ->
+            val m = mid(w.venue, w.ticker) ?: return@map w
+            val a = w.alert(m)
+            when {
+                w.ref == null -> w.copy(ref = m)
+                a != null -> { notify("watch", "Watchlist", a); sent += a; w.copy(ref = m) }
+                else -> w
+            }
+        }
+        if (next != items) com.marketbot.core.strategy.WatchItem.save(stores.state, next)
+        return sent
     }
 
     private var lastBalanceSnapAt: Instant = Instant.EPOCH
