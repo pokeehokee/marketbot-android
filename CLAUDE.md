@@ -45,6 +45,18 @@ says:
 - values outside a setting's range;
 - unknown settings.
 
+A proposal may instead carry a one-off **research bet** for the `research_bets` strategy (paper only):
+
+```json
+{"proposals": [{"id": "bet-2026-11-09-chi", "strategy": "research_bets", "reason": "why",
+  "bet": {"ticker": "KXHIGHCHI-26NOV10-T65", "side": "yes", "maxPrice": 0.47, "stakeUsd": 2.40,
+          "probability": 0.54, "thesis": "...", "against": "...", "source": "..."}}]}
+```
+
+The app takes only the exact ticker and side named, buys at the ask once it is at or under `maxPrice` (taker fee), holds to
+settlement, and writes every bet's price, outcome, `predictionCorrect`, Brier and paper P&L to `bets/results.json`. A bet
+must fit the strategy's paper wallet ($30 default); approving the first one turns the strategy on in paper (screen lock).
+
 Snapshots and exports never carry keys.
 
 ## Commands

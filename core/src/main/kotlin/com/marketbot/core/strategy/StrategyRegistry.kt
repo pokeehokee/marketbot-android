@@ -1,5 +1,6 @@
 package com.marketbot.core.strategy
 
+import com.marketbot.core.strategies.bets.ResearchBets
 import com.marketbot.core.strategies.deepitm.KalshiBtcDeepItm
 import com.marketbot.core.strategies.deepitm.PolymarketBtcDeepItm
 import com.marketbot.core.strategies.longshot.KalshiCommodityLongshot
@@ -22,6 +23,7 @@ object StrategyRegistry {
         PolymarketTemperatureLongshot(),
         KalshiCommodityLongshot(),
         RuleLab(),
+        ResearchBets(),
     ) + VARIANTS.flatMap { v -> listOf(
         WeatherLongshot(variantId(WeatherLongshot.ID, v), WeatherLongshot.ID),
         KalshiBtcDeepItm(variantId(KalshiBtcDeepItm.ID, v), KalshiBtcDeepItm.ID),
