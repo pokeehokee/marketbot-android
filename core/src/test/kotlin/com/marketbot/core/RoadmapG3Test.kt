@@ -58,7 +58,7 @@ class RoadmapG3Test {
 
     @Test fun `every strategy has two paper-only variants with their own ids and names`() {
         val bases = StrategyRegistry.all.filter { it.baseId == null }
-        assertEquals(6, bases.size, "four ported strategies and the two pool-search candidates")
+        assertEquals(7, bases.size, "four ported strategies, the two pool-search candidates and Rule Lab")
         assertEquals(StrategyRegistry.all.size, StrategyRegistry.all.map { it.id }.toSet().size, "ids are unique")
         for (b in bases) {
             val v = StrategyRegistry.variantsOf(b.id)

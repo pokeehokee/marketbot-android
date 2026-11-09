@@ -705,7 +705,8 @@ class Engine(
         }
         var recorded = 0; var touched = 0
         for (s in strategies) for (m in listOf(Mode.LIVE, Mode.PAPER)) {
-            val rows = stores.ledger.all(s.id, m, now.minus(java.time.Duration.ofHours(3)))
+            // Orders can rest for hours before filling: look back far enough to see the fill when it comes.
+            val rows = stores.ledger.all(s.id, m, now.minus(java.time.Duration.ofDays(2)))
                 .filter { com.marketbot.core.strategy.Outcomes.binary(it) && (it.filledContracts ?: 0.0) > 0 && it.resolvedAt == null }
                 .filter { com.marketbot.core.strategy.Markout.seenAt(it) == null || com.marketbot.core.strategy.Markout.due(it, now).isNotEmpty() }
             if (rows.isEmpty()) continue

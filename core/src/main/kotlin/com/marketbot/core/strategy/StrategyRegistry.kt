@@ -4,6 +4,7 @@ import com.marketbot.core.strategies.deepitm.KalshiBtcDeepItm
 import com.marketbot.core.strategies.deepitm.PolymarketBtcDeepItm
 import com.marketbot.core.strategies.longshot.KalshiCommodityLongshot
 import com.marketbot.core.strategies.longshot.PolymarketTemperatureLongshot
+import com.marketbot.core.strategies.longshot.RuleLab
 import com.marketbot.core.strategies.longshot.WeatherLongshot
 import com.marketbot.core.strategies.rewards.RewardFarm
 
@@ -20,6 +21,7 @@ object StrategyRegistry {
         RewardFarm(),
         PolymarketTemperatureLongshot(),
         KalshiCommodityLongshot(),
+        RuleLab(),
     ) + VARIANTS.flatMap { v -> listOf(
         WeatherLongshot(variantId(WeatherLongshot.ID, v), WeatherLongshot.ID),
         KalshiBtcDeepItm(variantId(KalshiBtcDeepItm.ID, v), KalshiBtcDeepItm.ID),
@@ -27,6 +29,7 @@ object StrategyRegistry {
         RewardFarm(variantId(RewardFarm.ID, v), RewardFarm.ID),
         PolymarketTemperatureLongshot(variantId(PolymarketTemperatureLongshot.ID, v), PolymarketTemperatureLongshot.ID),
         KalshiCommodityLongshot(variantId(KalshiCommodityLongshot.ID, v), KalshiCommodityLongshot.ID),
+        RuleLab(variantId(RuleLab.ID, v), RuleLab.ID),
     ) }
 
     fun byId(id: String): Strategy? = all.firstOrNull { it.id == id }

@@ -142,7 +142,7 @@ fun MarkoutSection(vm: MainViewModel, s: Strategy) {
         Text(stringResource(R.string.markout_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         lines.forEach { l ->
             Row(Modifier.padding(vertical = 3.dp)) {
-                Text("${l.minutes} min later", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.4f))
+                Text(if (l.minutes == 0) "At the fill" else "${l.minutes} min later", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.4f))
                 Text(l.meanCents?.let { "%+.2fc".format(it) } ?: "-", style = Figures, modifier = Modifier.weight(1f), textAlign = TextAlign.End,
                     color = l.meanCents?.let { if (it < -0.5) LocalDesk.current.loss else if (it > 0.5) LocalDesk.current.gain else null } ?: MaterialTheme.colorScheme.onSurface)
                 Text(l.shareNegative?.let { "%.0f%% against".format(it * 100) } ?: "", style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1.4f), textAlign = TextAlign.End,
@@ -385,4 +385,84 @@ private fun FarmVariantTable(vm: MainViewModel, all: List<com.marketbot.core.str
         }
     }
     Text(stringResource(R.string.variants_farm_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/**
+ * The fill log: fill rate, time to fill and the price at and after the fill, for markets that went
+ * the order's way against those that went against it, then by how far before close it was placed.
+ */
+@Composable
+fun FillLogSection(vm: MainViewModel, s: Strategy) {
+    val status by vm.status.collectAsState()
+    val data = loaded(s.id, status[s.id]?.lastRunAt) { val (m, rows) = vm.recordRows(s); m to com.marketbot.core.strategy.FillLog.report(rows) }
+    val (mode, r) = data ?: return
+    if (r == null) return
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    fun pct(x: Double?) = x?.let { "%.0f%%".format(it * 100) } ?: "-"
+    Section(stringResource(R.string.fill_log, mode.name.lowercase())) {
+        Text(stringResource(R.string.fill_log_help), style = MaterialTheme.typography.bodySmall, color = muted)
+        Row(Modifier.padding(top = 6.dp)) {
+            listOf("", "Quotes", "Filled", "Median wait", "At fill", "1 h later").forEachIndexed { i, h ->
+                Text(h, style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.weight(if (i == 0) 1.6f else 1f), textAlign = if (i == 0) TextAlign.Start else TextAlign.End) }
+        }
+        listOf(r.won, r.lost).forEach { sd ->
+            Row(Modifier.padding(vertical = 2.dp)) {
+                Text(sd.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.6f))
+                Text("${sd.quotes}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(pct(sd.fillRate), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(sd.medianMinutesToFill?.let { if (it < 90) "%.0f min".format(it) else "%.1f h".format(it / 60) } ?: "-", style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(sd.markoutAtFill?.let { "%+.1fc".format(it) } ?: "-", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(sd.markout60?.let { "%+.1fc".format(it) } ?: "-", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            }
+        }
+        r.penalty?.let { p ->
+            Text(stringResource(R.string.fill_penalty, "%.2f".format(p)), style = MaterialTheme.typography.bodySmall,
+                color = if (p > 1.15) LocalDesk.current.warn else muted, modifier = Modifier.padding(top = 4.dp))
+        }
+        Text(stringResource(R.string.by_hours_before_close), style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.padding(top = 8.dp))
+        r.byLead.forEach { l ->
+            Row(Modifier.padding(vertical = 2.dp)) {
+                Text(l.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.6f))
+                Text("${l.quotes} quotes", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.4f), textAlign = TextAlign.End)
+                Text("${pct(l.fillRate)} filled", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.4f), textAlign = TextAlign.End)
+                Text(l.ratio?.let { "lost %.2fx implied".format(it) } ?: "-", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(2f), textAlign = TextAlign.End,
+                    color = l.ratio?.let { if (it > 1.0) LocalDesk.current.loss else null } ?: MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+/** Where the money is made and lost: settled fills by series, city, lead, weekday or price band, worst first. */
+@Composable
+fun BreakdownSection(vm: MainViewModel, s: Strategy) {
+    val status by vm.status.collectAsState()
+    var dim by rememberSaveable { mutableStateOf(com.marketbot.core.strategy.Attribution.Dim.SERIES) }
+    val data = loaded(s.id, status[s.id]?.lastRunAt, dim) { val (m, rows) = vm.recordRows(s); m to com.marketbot.core.strategy.Attribution.by(rows, dim) }
+    val (mode, groups) = data ?: return
+    if (groups.isEmpty()) return
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Section(stringResource(R.string.breakdown, mode.name.lowercase())) {
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(com.marketbot.core.strategy.Attribution.Dim.entries.size) { i ->
+                val d = com.marketbot.core.strategy.Attribution.Dim.entries[i]
+                FilterChip(dim == d, { dim = d }, { Text(d.label) })
+            }
+        }
+        Row(Modifier.padding(top = 6.dp)) {
+            listOf(dim.label, "Settled", "Per contract", "Lost vs implied", "P&L").forEachIndexed { i, h ->
+                Text(h, style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.weight(if (i == 0) 1.4f else 1f), textAlign = if (i == 0) TextAlign.Start else TextAlign.End) }
+        }
+        groups.take(25).forEach { g ->
+            Row(Modifier.padding(vertical = 2.dp)) {
+                Text(g.key, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.4f), maxLines = 1)
+                Text("${g.n}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(g.perContract?.let { com.marketbot.core.strategy.cents(it) } ?: "-", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(g.ratio?.let { "${g.losses} / %.1f".format(g.implied) } ?: "-", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                Text(com.marketbot.core.strategy.money(g.pnl), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End,
+                    color = moneyColor(g.pnl) ?: MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        Text(stringResource(R.string.breakdown_caution), style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.padding(top = 6.dp))
+    }
 }

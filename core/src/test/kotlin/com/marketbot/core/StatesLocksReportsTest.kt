@@ -123,7 +123,8 @@ class StatesLocksReportsTest {
         assertTrue(e.trackMarkoutsIfDue() >= 2)
         val q = stores.ledger.byId(id)!!
         assertEquals(2.0, Markout.read(q, 5)!!, 1e-9); assertEquals(2.0, Markout.read(q, 30)!!, 1e-9); assertNull(Markout.read(q, 60))
-        assertEquals(2, Markout.summary(listOf(q)).count { it.n == 1 })
+        assertEquals(2.0, Markout.read(q, 0)!!, 1e-9, "the price at the fill itself, read when the fill was first seen")
+        assertEquals(3, Markout.summary(listOf(q)).count { it.n == 1 })
         Unit
     }
 

@@ -156,6 +156,13 @@
     <string name="graduation_ready">Every gate passed: this strategy has earned a look at live money. Going live still needs its checklist, a preflight and your confirmation.</string>
     <string name="graduation_progress">%1$d of %2$d gates passed. Gates: four weeks of paper, 100+ settled fills, 10+ losses, losses at most 0.90 of implied, and a positive record per contract.</string>
     <string name="kill_top_a11y">Kill switch: cancel every resting order and stop live trading</string>
+    <string name="fill_log">Fill log (%1$s)</string>
+    <string name="fill_log_help">How often orders filled, how long they waited, and where the price stood at the fill and an hour later (cents per contract in the order\'s favour), for markets that went its way against those that went against it.</string>
+    <string name="fill_penalty">Orders filled %1$sx as often on markets that went against them. Above 1 is adverse selection: the fills you get are the ones you did not want.</string>
+    <string name="by_hours_before_close">BY HOURS BEFORE CLOSE WHEN PLACED</string>
+    <string name="breakdown">Where it makes and loses money (%1$s)</string>
+    <string name="breakdown_caution">Worst first. A slice that looks bad is a hypothesis for a paper variant, not a filter: cut any record enough ways and one slice looks bad by chance.</string>
+    <string name="rule_title">The rule</string>
     <string name="pause_strategy">Pause</string>
     <string name="open">Open</string>
     <string name="portfolio_value">Value</string>

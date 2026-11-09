@@ -119,6 +119,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun researchBooksOn(): Boolean = modes.value.firstOrNull { it.key == com.marketbot.core.engine.Engine.BOOKS_SETTING }?.value != "false"
     fun setResearchBooks(on: Boolean) = viewModelScope.launch(Dispatchers.IO) { engine.stores.state.put(com.marketbot.core.engine.Engine.BOOKS_SETTING, on.toString()) }
 
+    suspend fun strategyConfig(s: Strategy) = withContext(Dispatchers.IO) { engine.config(s) }
+
     /** A strategy's settings as stored now (the left side of a proposal's before/after). */
     suspend fun currentSettings(s: Strategy): Map<String, String> = withContext(Dispatchers.IO) { engine.config(s).asMap }
 
