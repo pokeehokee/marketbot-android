@@ -114,4 +114,58 @@ class DeepItmEngineTest {
         assertEquals(Source.PAPER_MODEL, g.pnlSource)
         assertTrue(g.pnlOrigin!!.contains("GET /markets/"))
     }
+
+    /** A live row the order endpoint called filled, in a market that has closed. */
+    private suspend fun stuckLiveRow(ticker: String, orderId: String) = com.marketbot.core.store.QuoteRow(strategyId = s.id, mode = Mode.LIVE,
+        venue = "kalshi", ticker = ticker, action = "buy_yes", price = 0.94, contracts = 5.0, placedAt = clock.now().minusSeconds(7200),
+        closeTime = clock.now().minusSeconds(3600), orderId = orderId, filledContracts = 5.0, fillSource = "Kalshi API order#fill_count_fp",
+        extra = kotlinx.serialization.json.buildJsonObject { put("exchange_index", kotlinx.serialization.json.JsonPrimitive(2)) })
+        .let { it.copy(id = stores.ledger.insert(it)) }
+
+    @Test fun `closed positions awaiting settlement do not use up max_open`() = runTest {
+        val ix = warmIndex()
+        val (event, _) = DeepItmRule.nextHourEvent(clock.now())
+        ladder(event)
+        repeat(8) { stuckLiveRow("KXBTCD-26OCT2716-T7${it}000", "old-$it") }
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        assertEquals(3, fake.bodies.size, "eight closed, unsettled rows must not block new orders")
+    }
+
+    @Test fun `a row with no fills and no settlement at the exchange is graded never filled`() = runTest {
+        val ix = warmIndex()
+        val q = stuckLiveRow("KXBTCD-26OCT2716-T74000", "old-1")
+        clock.advanceSeconds(3 * 3600)
+        fake.marketByTicker[q.ticker] = """{"ticker":"${q.ticker}","status":"finalized","result":"yes"}"""
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        val g = stores.ledger.byId(q.id)!!
+        assertEquals(0.0, g.filledContracts)
+        assertEquals(0.0, g.pnl)
+        assertTrue(g.hypothetical == true)
+        assertEquals(Source.KALSHI_API, g.pnlSource)
+        val asked = fake.requests.first { it.requestUrl!!.encodedPath.endsWith("/portfolio/fills") }.requestUrl!!
+        assertEquals("old-1", asked.queryParameter("order_id"))
+        assertEquals("2", asked.queryParameter("exchange_index"))
+    }
+
+    @Test fun `a row the exchange shows filled keeps waiting for its settlement`() = runTest {
+        val ix = warmIndex()
+        val q = stuckLiveRow("KXBTCD-26OCT2716-T74000", "old-1")
+        clock.advanceSeconds(3 * 3600)
+        fake.marketByTicker[q.ticker] = """{"ticker":"${q.ticker}","status":"finalized","result":"yes"}"""
+        fake.fills = """{"fills":[{"order_id":"old-1","ticker":"${q.ticker}","count_fp":"5.00"}],"cursor":""}"""
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        assertEquals(null, stores.ledger.byId(q.id)!!.resolvedAt)
+    }
+
+    @Test fun `a settlement past the first pages is found by ticker`() = runTest {
+        val ix = warmIndex()
+        val q = stuckLiveRow("KXBTCD-26OCT2716-T74000", "old-1")
+        clock.advanceSeconds(3 * 3600)
+        fake.marketByTicker[q.ticker] = """{"ticker":"${q.ticker}","status":"finalized","result":"yes"}"""
+        fake.settlements = """{"settlements":[{"ticker":"${q.ticker}","market_result":"yes","yes_count_fp":"5.00","yes_total_cost_dollars":"4.70","no_count_fp":"0","no_total_cost_dollars":"0","revenue":500,"fee_cost":"0"}],"cursor":""}"""
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        val g = stores.ledger.byId(q.id)!!
+        assertEquals(0.30, g.pnl!!, 1e-9)
+        assertEquals(false, g.hypothetical)
+    }
 }
