@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # the cleanup step below deletes old artifacts
 
 jobs:
   build:
@@ -89,3 +90,15 @@ jobs:
           gh release create "build-$n" marketbot-$n.apk mapping-$n.txt \
             --prerelease --title "Marketbot build $n" \
             --notes "Build $n from ${{ github.sha }}. Install by opening the APK on your phone; the app also checks for this under Settings > About."
+      - name: Keep only the two newest builds (default branch only)
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Releases: the newest two build-N pre-releases stay (this one and the one before); older ones and their tags go.
+          gh release list --limit 500 --json tagName -q '.[].tagName' | grep -E '^build-[0-9]+$' | sort -t- -k2 -n -r | tail -n +3 \
+            | while read -r t; do echo "deleting release $t"; gh release delete "$t" --yes --cleanup-tag || true; done
+          # Actions artifacts count against the private repo's storage: keep only this run's.
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" -q ".artifacts[] | select(.workflow_run.id != ${{ github.run_id }}) | .id" \
+            | while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id" >/dev/null || true; done
