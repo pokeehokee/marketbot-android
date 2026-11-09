@@ -74,7 +74,8 @@ object Vocabulary {
         "Order" to mapOf("status" to KALSHI_ORDER_STATUSES),
         "Trade" to mapOf("taker_outcome_side" to KALSHI_SIDES, "taker_book_side" to KALSHI_BOOK_SIDES),
         "Fill" to mapOf("outcome_side" to KALSHI_SIDES, "book_side" to KALSHI_BOOK_SIDES),
-        "Settlement" to mapOf("market_result" to setOf("yes", "no", "scalar")),
+        // "" added to the spec in November 2026; P&L is read from revenue and cost, never from this word.
+        "Settlement" to mapOf("market_result" to setOf("yes", "no", "scalar", "")),
     )
 
     // ------------------------------------------------------------------ Polymarket US
@@ -83,6 +84,11 @@ object Vocabulary {
     val PM_ORDER_SIDES = setOf("ORDER_SIDE_BUY", "ORDER_SIDE_SELL")
     /** Reward period kinds the farm quotes; any other kind is skipped. */
     val PM_QUOTABLE_PERIODS: Set<String> get() = FarmScanner.QUOTABLE
+    /**
+     * Period kinds the farm knows and deliberately skips. "live" (seen 2026-11-04, 487 of 500 programs):
+     * in-play sports pools paying for quotes during the game, with target sizes around 50,000 contracts.
+     */
+    val PM_SKIPPED_PERIODS = setOf("live")
     const val PM_PROGRAM_TYPE = "liquidityProgram"
     const val PM_PROGRAM_ACTIVE = "active"
     /** The daily BTC ladder's event slug, and the prefix the strategy claims markets by. */

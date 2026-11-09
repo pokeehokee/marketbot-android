@@ -189,7 +189,7 @@ class WeatherLongshot(override val id: String = ID, override val baseId: String?
             val kill = StageGates.kills(ctx.stores.ledger.all(id, Mode.LIVE), ctx.clock.now()).firstOrNull { it.verdict == StageGates.Verdict.KILL }
             if (kill != null) {
                 ctx.error("kill", "Kill criterion: ${kill.name} failed (${kill.detail}). Live quoting is stopped; resting offers are left to fill or expire.")
-                val today = java.time.LocalDate.ofInstant(ctx.clock.now(), java.time.ZoneOffset.UTC).toString()
+                val today = ctx.clock.now().atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
                 if (ctx.stores.state.get(key(ctx, "kill_notified")) != today) {
                     ctx.stores.state.put(key(ctx, "kill_notified"), today)
                     ctx.notify("Weather longshot stopped", "Kill criterion: ${kill.name} (${kill.detail}).")
@@ -565,7 +565,7 @@ class WeatherLongshot(override val id: String = ID, override val baseId: String?
 
     private suspend fun recordBrakeTrip(ctx: StrategyContext) {
         val k = key(ctx, "brake_trips")
-        val today = java.time.LocalDate.ofInstant(ctx.clock.now(), java.time.ZoneOffset.UTC).toString()
+        val today = ctx.clock.now().atZone(java.time.ZoneOffset.UTC).toLocalDate().toString()
         val days = ctx.stores.state.get(k)?.split(',')?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
         if (days.add(today)) ctx.stores.state.put(k, days.sorted().takeLast(60).joinToString(","))
     }

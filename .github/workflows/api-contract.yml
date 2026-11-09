@@ -50,9 +50,12 @@ jobs:
           f=core/build/api-contract/report.md
           if [ -f "$f" ]; then cat "$f" >> "$GITHUB_STEP_SUMMARY"; else echo "No report: the check did not run (see the log)." >> "$GITHUB_STEP_SUMMARY"; fi
       - uses: actions/upload-artifact@v4
+        # A full artifact store (the private repo's quota) must not fail the build: the APK is also published as a release.
+        continue-on-error: true
         if: always()
         with:
           name: api-contract-report
+          retention-days: 5
           path: |
             core/build/api-contract/report.md
             core/build/reports/tests/contractTest

@@ -18,7 +18,8 @@ import java.time.temporal.TemporalAdjusters
  * tracks the same thing to widen its quotes).
  */
 object Markout {
-    val HORIZONS = listOf(5, 30, 60)
+    /** Minutes after the fill was first seen; 0 is the price at the fill itself. */
+    val HORIZONS = listOf(0, 5, 30, 60)
     const val SEEN = "fill_seen_at"
     fun key(minutes: Int) = "markout_$minutes"
 

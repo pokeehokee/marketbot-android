@@ -47,6 +47,15 @@ fun ClaudeSyncSection(vm: MainViewModel) {
             OutlinedButton({ vm.saveSync(repo, token); token = "" }) { Text("Save") }
             Button({ vm.syncNow() }, enabled = vm.syncRepo() != null && vm.hasSyncToken()) { Text("Sync now") }
         }
+        vm.modes.collectAsState().value
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Record cross-venue books", style = MaterialTheme.typography.bodyMedium)
+                Text("Every 30 minutes, the same temperature buckets on Kalshi and Polymarket at one moment (public data, no orders), " +
+                    "sent with the sync for research.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            androidx.compose.material3.Switch(vm.researchBooksOn(), { vm.setResearchBooks(it) })
+        }
         status?.let { Text(it.detail + " (" + it.at.take(16).replace('T', ' ') + " UTC)", style = MaterialTheme.typography.labelSmall,
             color = if (it.ok) MaterialTheme.colorScheme.onSurfaceVariant else LocalDesk.current.loss) }
         val list = pending.orEmpty()
@@ -55,8 +64,20 @@ fun ClaudeSyncSection(vm: MainViewModel) {
             val pr = p.proposal
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(names[pr.strategy] ?: pr.strategy, style = MaterialTheme.typography.bodyMedium)
-                val what = pr.set.entries.joinToString { "${it.key} → ${it.value}" } + (pr.mode?.let { (if (pr.set.isEmpty()) "" else "; ") + "mode → $it" } ?: "")
-                Text(what, style = Figures)
+                // Before and after, by the settings screen's own labels.
+                val strat = vm.strategies.firstOrNull { it.id == pr.strategy }
+                val now = loaded(tick, pr.id) { strat?.let { vm.currentSettings(it) } }
+                pr.set.forEach { (k, v) ->
+                    val label = strat?.params?.firstOrNull { it.key == k }?.label ?: k
+                    val was = now?.get(k)
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Text((was ?: "?") + "  →  " + v, style = Figures, color = if (was == v) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+                    }
+                }
+                pr.mode?.let { m -> Row(Modifier.fillMaxWidth()) {
+                    Text("Mode", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Text(vm.modeOf(pr.strategy).name + "  →  " + m.uppercase(), style = Figures, color = MaterialTheme.colorScheme.primary) } }
                 if (pr.reason.isNotBlank()) Text(pr.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (p.refused != null) Text("The app will not apply this: ${p.refused}", style = MaterialTheme.typography.bodySmall, color = LocalDesk.current.loss)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

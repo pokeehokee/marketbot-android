@@ -505,6 +505,75 @@ class Engine(
         r
     }
 
+    private var lastScorecardAt: Instant = Instant.EPOCH
+
+    /** One strategy's scorecard: its record against its evidence, and (in paper) its graduation gates. */
+    data class Scorecard(val strategyId: String, val name: String, val mode: Mode,
+                         val health: com.marketbot.core.strategy.RecordHealth.Health?,
+                         val gates: List<com.marketbot.core.strategy.Check>) {
+        val ready: Boolean get() = mode == Mode.PAPER && com.marketbot.core.strategy.Graduation.ready(gates)
+        val alarming: Boolean get() = health?.verdict == com.marketbot.core.strategy.RecordHealth.Verdict.LOSING ||
+            health?.verdict == com.marketbot.core.strategy.RecordHealth.Verdict.BELOW
+    }
+
+    suspend fun scorecard(s: Strategy): Scorecard {
+        val mode = mode(s.id)
+        val book = if (mode == Mode.LIVE) Mode.LIVE else Mode.PAPER
+        val rows = stores.ledger.all(s.id, book)
+        val health = com.marketbot.core.strategy.RecordHealth.of(book, rows, s.evidence.expectation)
+        val gates = if (book == Mode.PAPER) com.marketbot.core.strategy.Graduation.gates(rows, clock.now()) else emptyList()
+        return Scorecard(s.id, s.name, mode, health, gates)
+    }
+
+    /**
+     * Every few hours: a running strategy whose record has fallen below its evidence (or is
+     * losing outright), or a paper strategy that has passed every graduation gate, notifies
+     * once per change, never on every pass. Returns the notices sent.
+     */
+    suspend fun scorecardAlertsIfDue(every: java.time.Duration = java.time.Duration.ofHours(3)): List<String> {
+        val now = clock.now()
+        if (java.time.Duration.between(lastScorecardAt, now) < every) return emptyList()
+        lastScorecardAt = now
+        val sent = mutableListOf<String>()
+        for (s in strategies) {
+            if (mode(s.id) == Mode.OFF) continue
+            val c = scorecard(s)
+            val key = "scorecard.${s.id}"
+            val was = stores.state.get(key)
+            val now_ = "${c.health?.verdict ?: "NONE"}|${c.ready}"
+            if (was == now_) continue
+            stores.state.put(key, now_)
+            val wasVerdict = was?.substringBefore('|'); val wasReady = was?.substringAfter('|') == "true"
+            if (c.alarming && wasVerdict != c.health!!.verdict.name) {
+                val t = "${s.name}: ${c.health.verdict.label.lowercase()} in ${c.health.mode.name.lowercase()}"
+                notify("safety", t, c.health.line() + ". Open the strategy to pause it or compare settings.")
+                log(s.id, LogEvent.Level.WARN, "scorecard", t + ". " + c.health.line()); sent += t
+            }
+            if (c.ready && !wasReady) {
+                val t = "${s.name} passed every paper gate"
+                notify("safety", t, "Four weeks, 100+ fills and its loss ratio say it has earned a look at live money. Review it before going live.")
+                log(s.id, LogEvent.Level.INFO, "scorecard", t); sent += t
+            }
+        }
+        return sent
+    }
+
+    /** Where the cross-venue research rows go (the app appends them to a file); null records nothing. */
+    var bookSink: (suspend (List<com.marketbot.core.research.CrossVenueBooks.Row>) -> Unit)? = null
+    private var lastBooksAt: Instant = Instant.EPOCH
+
+    /** Every [every], unless turned off in Settings: Kalshi and Polymarket temperature books read at one moment. */
+    suspend fun recordBooksIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(30)): Int {
+        val sink = bookSink ?: return 0
+        val now = clock.now()
+        if (java.time.Duration.between(lastBooksAt, now) < every) return 0
+        if (stores.state.get(BOOKS_SETTING) == "false") return 0
+        lastBooksAt = now
+        val rows = com.marketbot.core.research.CrossVenueBooks.read(kalshi, polymarket, now)
+        if (rows.isNotEmpty()) sink(rows)
+        return rows.size
+    }
+
     private var lastBalanceSnapAt: Instant = Instant.EPOCH
 
     /**
@@ -636,7 +705,8 @@ class Engine(
         }
         var recorded = 0; var touched = 0
         for (s in strategies) for (m in listOf(Mode.LIVE, Mode.PAPER)) {
-            val rows = stores.ledger.all(s.id, m, now.minus(java.time.Duration.ofHours(3)))
+            // Orders can rest for hours before filling: look back far enough to see the fill when it comes.
+            val rows = stores.ledger.all(s.id, m, now.minus(java.time.Duration.ofDays(2)))
                 .filter { com.marketbot.core.strategy.Outcomes.binary(it) && (it.filledContracts ?: 0.0) > 0 && it.resolvedAt == null }
                 .filter { com.marketbot.core.strategy.Markout.seenAt(it) == null || com.marketbot.core.strategy.Markout.due(it, now).isNotEmpty() }
             if (rows.isEmpty()) continue
@@ -902,6 +972,7 @@ class Engine(
         stores.events.log(LogEvent(clock.now(), id, level, kind, msg, values))
 
     companion object {
+        const val BOOKS_SETTING = "research.cross_venue_books"
         private val CFG = MapSerializer(String.serializer(), String.serializer())
         const val FILL_LIMIT_KEY = "engine.fill_limit"
         const val CONTRACT_KEY = "engine.api_contract_last"

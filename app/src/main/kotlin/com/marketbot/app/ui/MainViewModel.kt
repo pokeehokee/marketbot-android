@@ -101,14 +101,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    /** The live portfolio over the last 7 days, one point an hour (core HourlyEquity), refreshed each minute and on every new reading. */
-    val liveHourly: StateFlow<com.marketbot.core.strategy.HourlyEquity.Hourly?> = kotlinx.coroutines.flow.combine(
-        a.db.equity().watchSince(System.currentTimeMillis() - 8 * 86_400_000L),
-        kotlinx.coroutines.flow.flow { while (true) { emit(System.currentTimeMillis()); kotlinx.coroutines.delay(60_000) } },
-    ) { l, now ->
-        val r = l.filter { it.mode == Mode.LIVE.name }.map { com.marketbot.core.strategy.HourlyEquity.Reading(it.at, it.venue, it.total ?: it.cash) }
-        if (r.isEmpty()) null else com.marketbot.core.strategy.HourlyEquity.of(r, now - 7 * 86_400_000L, now)
-    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    /** Live account readings for the last 31 days (the Home chart's ranges), and a minute clock so "now" moves. */
+    val liveReadings: StateFlow<List<com.marketbot.core.strategy.HourlyEquity.Reading>> =
+        a.db.equity().watchSince(System.currentTimeMillis() - 32 * 86_400_000L)
+            .map { l -> l.filter { it.mode == Mode.LIVE.name }.map { com.marketbot.core.strategy.HourlyEquity.Reading(it.at, it.venue, it.total ?: it.cash) } }
+            .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val minute: StateFlow<Long> = kotlinx.coroutines.flow.flow { while (true) { emit(System.currentTimeMillis()); kotlinx.coroutines.delay(60_000) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
+
+    /** The strategy's record against its evidence, from [rows] (pass [settled]'s value): the badge on every card. */
+    fun recordHealth(s: Strategy, rows: List<com.marketbot.core.store.QuoteRow>): com.marketbot.core.strategy.RecordHealth.Health? {
+        val book = if (modeOf(s.id) == Mode.LIVE) Mode.LIVE else Mode.PAPER
+        return com.marketbot.core.strategy.RecordHealth.of(book, rows.filter { it.strategyId == s.id }, s.evidence.expectation)
+    }
+
+    /** Whether the cross-venue research recorder runs (default on). */
+    fun researchBooksOn(): Boolean = modes.value.firstOrNull { it.key == com.marketbot.core.engine.Engine.BOOKS_SETTING }?.value != "false"
+    fun setResearchBooks(on: Boolean) = viewModelScope.launch(Dispatchers.IO) { engine.stores.state.put(com.marketbot.core.engine.Engine.BOOKS_SETTING, on.toString()) }
+
+    suspend fun strategyConfig(s: Strategy) = withContext(Dispatchers.IO) { engine.config(s) }
+
+    /** A strategy's settings as stored now (the left side of a proposal's before/after). */
+    suspend fun currentSettings(s: Strategy): Map<String, String> = withContext(Dispatchers.IO) { engine.config(s).asMap }
+
+    /** Graduation gates and the record verdict, from the full ledger. */
+    suspend fun scorecard(s: Strategy) = withContext(Dispatchers.IO) { engine.scorecard(s) }
+
+    /** Paper P&L per contract and counts for a strategy and its variants, side by side. */
+    fun variantRows(base: Strategy, rows: List<com.marketbot.core.store.QuoteRow>): List<Pair<Strategy, com.marketbot.core.strategy.MethodRecord?>> =
+        (listOf(base) + strategies.filter { it.baseId == base.id }).filter { s -> s.id == base.id || modeOf(s.id) != Mode.OFF || rows.any { it.strategyId == s.id } }
+            .map { s -> s to com.marketbot.core.strategy.MethodRecord.of(Mode.PAPER, rows.filter { it.strategyId == s.id }, com.marketbot.core.strategy.startOfLocalDay(java.time.Instant.now())) }
 
     fun strategyCurve(id: String, mode: Mode): Series = cumulative(settled.value.filter { it.strategyId == id && it.mode == mode }
         .map { it.resolvedAt!!.toEpochMilli() to it.pnl!! })

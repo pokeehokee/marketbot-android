@@ -41,10 +41,12 @@ data class RangeCandidate(
     val queueAtAsk: Double?,
     val queueAtBid: Double?,
     val kind: String?,
+    /** Kalshi's strike_type (between, greater, less...) where known. */
+    val strikeType: String? = null,
 )
 
-/** Which side is cheap, and the resting order that sells it. */
-data class CheapPick(val action: String, val price: Double, val cheapPrice: Double)
+/** Which side is cheap, and the order that trades it ([taker]: fills at once at [price] and pays the taker fee). */
+data class CheapPick(val action: String, val price: Double, val cheapPrice: Double, val taker: Boolean = false)
 
 /**
  * The trade the 2026-10-29 pool search measured ("rest on the favourite"): the cheap side of a
@@ -63,12 +65,13 @@ object CheapSide {
         return null
     }
 
-    /** Collateral per contract: selling YES at p locks 1 - p; buying YES at p locks p. */
+    /** Collateral per contract: selling YES at p locks 1 - p; buying YES or NO at p locks p. */
     fun lock(action: String, price: Double) = if (action == "sell_yes") 1.0 - price else price
 
     /** Paper P&L per contract at settlement, before fees. */
     fun pnl(action: String, price: Double, result: String) = when (action) {
         "sell_yes" -> price - if (result == "yes") 1.0 else 0.0
+        "buy_no" -> (if (result == "no") 1.0 else 0.0) - price
         else -> (if (result == "yes") 1.0 else 0.0) - price
     }
 }
@@ -95,6 +98,15 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
     /** Maker fee per contract at [price] for [contracts]. */
     open suspend fun makerFee(ctx: StrategyContext, ticker: String, price: Double, contracts: Int): Sourced<Double> =
         Sourced.derived(0.0, "0", "resting orders pay no fee on this venue")
+
+    /** Taker fee per contract, for rules that cross the spread. */
+    open suspend fun takerFee(ctx: StrategyContext, ticker: String, price: Double, contracts: Int): Sourced<Double> = makerFee(ctx, ticker, price, contracts)
+
+    /** The order this strategy places on [m], or null to pass. The pool-search trade by default. */
+    open fun pick(m: RangeCandidate, c: StrategyConfig): CheapPick? = CheapSide.pick(m.yesBid, m.yesAsk, c.num("min_cheap"), c.num("max_cheap"))
+
+    /** When an unfilled offer is withdrawn: its reference time by default. */
+    open fun withdrawAt(q: QuoteRow, c: StrategyConfig): Instant? = refOf(q) ?: q.closeTime
 
     final override val supportedModes: Set<Mode> get() = setOf(Mode.OFF, Mode.PAPER)
 
@@ -140,7 +152,7 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
 
     private fun lockOf(q: QuoteRow) = CheapSide.lock(q.action, q.price)
     private fun committed(open: List<QuoteRow>) = open.sumOf { lockOf(it) * if (it.cancelledAt != null) (it.filledContracts ?: 0.0) else it.contracts }
-    private fun refOf(q: QuoteRow): Instant? = (q.extra["ref"] as? JsonPrimitive)?.content?.let { runCatching { Instant.parse(it) }.getOrNull() }
+    protected fun refOf(q: QuoteRow): Instant? = (q.extra["ref"] as? JsonPrimitive)?.content?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
     override suspend fun runOnce(ctx: StrategyContext): RunReport {
         if (ctx.mode == Mode.OFF) return RunReport("off")
@@ -158,7 +170,7 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
             }
         }
         for (q in ctx.stores.ledger.open(id, Mode.PAPER)) {
-            val ref = refOf(q) ?: q.closeTime
+            val ref = withdrawAt(q, c)
             if (q.resting && ref != null && !now.isBefore(ref) && (q.filledContracts ?: 0.0) < q.contracts) {
                 ctx.stores.ledger.update(q.copy(cancelledAt = now))
             }
@@ -170,7 +182,8 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
             val res = runCatching { result(ctx, q.ticker) }.getOrNull() ?: continue
             val filled = q.filledContracts ?: 0.0
             val n = if (filled > 0) filled else q.contracts
-            val fee = makerFee(ctx, q.ticker, q.price, n.roundToInt())
+            val taker = (q.extra["taker"] as? JsonPrimitive)?.content == "true"
+            val fee = if (taker) takerFee(ctx, q.ticker, q.price, n.roundToInt()) else makerFee(ctx, q.ticker, q.price, n.roundToInt())
             val pnl = (CheapSide.pnl(q.action, q.price, res) - fee.value) * n
             ctx.stores.ledger.update(q.copy(resolvedAt = now, result = res, pnl = pnl, pnlSource = Source.PAPER_MODEL,
                 pnlOrigin = "paper: (payout - price - fee) x ${if (filled > 0) "simulated fills" else "full size (never filled)"}; fee: ${fee.origin}",
@@ -201,7 +214,7 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
             if (m.ticker in already) { quoted += m.ticker; continue }
             val leadMin = Duration.between(now, m.ref).toMinutes()
             if (leadMin < c.int("min_lead_min") || leadMin > c.int("max_lead_min")) { outWindow += "${m.ticker} (${leadMin} min)"; continue }
-            val p = CheapSide.pick(m.yesBid, m.yesAsk, c.num("min_cheap"), c.num("max_cheap"))
+            val p = pick(m, c)
             if (p == null) { noPick += "${m.ticker} (bid ${m.yesBid?.let { "%.2f".format(it) } ?: "-"}, ask ${m.yesAsk?.let { "%.2f".format(it) } ?: "-"})"; continue }
             val g = ctx.gate(m.ticker)
             if (g != null) { gated += "${m.ticker} (${g.text})"; continue }
@@ -210,13 +223,17 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
             if (n <= 0 || openMarkets >= c.int("max_markets")) continue
             ctx.stores.ledger.insert(QuoteRow(strategyId = id, mode = Mode.PAPER, venue = venueKey, ticker = m.ticker, action = p.action,
                 price = p.price, contracts = n.toDouble(), placedAt = now, closeTime = m.settlesAt ?: m.ref, marketKind = m.kind,
-                queueAhead = if (p.action == "sell_yes") m.queueAtAsk else m.queueAtBid,
+                queueAhead = if (p.taker) null else if (p.action == "sell_yes") m.queueAtAsk else m.queueAtBid,
+                filledContracts = if (p.taker) n.toDouble() else null, fillCheckedAt = if (p.taker) now else null,
+                fillSource = if (p.taker) "paper: taker, filled at the quoted price" else null,
                 extra = buildJsonObject {
                     m.yesBid?.let { put("yes_bid", it) }; m.yesAsk?.let { put("yes_ask", it) }
                     put("ref", m.ref.toString()); put("cheap_price", p.cheapPrice)
+                    if (p.taker) put("taker", true)
                 }))
             budget -= per * n; locked += per * n; placed++; openMarkets++
-            ctx.trade("paper_quote", "Paper: ${if (p.action == "sell_yes") "offered to sell $n YES at ${(p.price * 100).roundToInt()}c" else "bid for $n YES at ${(p.price * 100).roundToInt()}c (selling the ${(p.cheapPrice * 100).roundToInt()}c NO)"} on ${m.ticker}",
+            val verb = when (p.action) { "sell_yes" -> "sell $n YES"; "buy_no" -> "buy $n NO"; else -> "buy $n YES" }
+            ctx.trade("paper_quote", "Paper: ${if (p.taker) "took" else "offered to"} $verb at ${(p.price * 100).roundToInt()}c on ${m.ticker}",
                 mapOf("yes_bid" to Sourced(m.yesBid, apiSource, "top of book ${m.ticker}"), "yes_ask" to Sourced(m.yesAsk, apiSource, "top of book ${m.ticker}")))
             if (budget <= 0) break
         }

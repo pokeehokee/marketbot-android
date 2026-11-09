@@ -119,7 +119,7 @@ class PolymarketTemperatureLongshot(id: String = ID, baseId: String? = null) : P
  * silver, copper) priced one hour before close. Thin evidence (7 losses against ~21 implied), so
  * paper only, and the price paid for being wrong is the paper account's.
  */
-class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : PaperRangeLongshot(id, baseId) {
+class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : KalshiPaperRange(id, baseId) {
     override val name = variantName("Commodity range longshot", id, baseId)
     override val venue = Venue.KALSHI
     override val venueKey = "kalshi"
@@ -150,44 +150,8 @@ class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : PaperRa
     override val defaultMaxLeadMin = 90
     override val defaultEveryMin = 10
 
-    override val extraParams: List<Param> get() = listOf(
-        Param.Text("series", "Series", "Kalshi series to trade, comma-separated. These twelve are the ones the search measured.", SERIES.joinToString(",")))
-
-    private fun series(ctx: StrategyContext) = ctx.config.text("series").split(',', ' ').map { it.trim().uppercase() }.filter { it.isNotEmpty() }
-
-    override suspend fun candidates(ctx: StrategyContext): List<RangeCandidate> {
-        val out = mutableListOf<RangeCandidate>()
-        for (s in series(ctx)) {
-            val ms = runCatching { ctx.kalshi.openMarkets(s) }.onFailure { ctx.warn("listing", "$s listing failed: ${it.message}") }.getOrNull() ?: continue
-            for (m in ms) {
-                val close = m.closeTime ?: continue
-                val book = m.book
-                out += RangeCandidate(m.ticker, book?.yesBid?.value, book?.yesAsk?.value, close, close, m.num("yes_ask_size_fp"), m.num("yes_bid_size_fp"), s)
-            }
-        }
-        return out
-    }
-
-    override suspend fun paperFill(ctx: StrategyContext, q: QuoteRow): Double? {
-        val trades = runCatching { ctx.kalshi.trades(q.ticker, q.placedAt.epochSecond) }.getOrNull() ?: return null
-        // Selling YES at p is buying NO at 1 - p; buying YES rests on the YES side.
-        val f = if (q.action == "sell_yes") TapeFillModel.fill(q.placedAt, q.cancelledAt, "no", 1.0 - q.price, q.contracts, q.queueAhead ?: 0.0, trades)
-        else TapeFillModel.fill(q.placedAt, q.cancelledAt, "yes", q.price, q.contracts, q.queueAhead ?: 0.0, trades)
-        return f.filled
-    }
-
-    override suspend fun result(ctx: StrategyContext, ticker: String): String? {
-        val m = ctx.kalshi.market(ticker)
-        val st = m.status?.lowercase() ?: return null
-        return if (st in Vocabulary.KALSHI_SETTLED && (m.result == "yes" || m.result == "no")) m.result else null
-    }
-
-    private val fees = mutableMapOf<String, Sourced<String>?>()
-    override suspend fun makerFee(ctx: StrategyContext, ticker: String, price: Double, contracts: Int): Sourced<Double> {
-        val s = ticker.substringBefore('-')
-        val ft = fees.getOrPut(s) { runCatching { ctx.kalshi.seriesFeeType(s) }.getOrNull() }
-        return makerFeeEstimate(ft, price, maxOf(1, contracts))
-    }
+    override val defaultSeries get() = SERIES.joinToString(",")
+    override val seriesHelp get() = "Kalshi series to trade, comma-separated. These twelve are the ones the search measured."
 
     override fun ownsMarket(venue: String, ticker: String) = venue == "kalshi" && ticker.substringBefore('-') in SERIES
 
@@ -207,4 +171,60 @@ class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : PaperRa
         const val ID = "kalshi_commodity_longshot"
         val SERIES = listOf("KXBRENTD", "KXBRENTW", "KXWTI", "KXWTIW", "KXNATGASD", "KXNATGASW", "KXGOLDD", "KXGOLDW", "KXSILVERD", "KXSILVERW", "KXCOPPERD", "KXCOPPERW")
     }
+}
+
+/** The Kalshi side of a paper range strategy: series from settings, the public tape for fills, the market for results. */
+abstract class KalshiPaperRange(id: String, baseId: String?) : PaperRangeLongshot(id, baseId) {
+    override val venue = Venue.KALSHI
+    override val venueKey = "kalshi"
+    override val apiSource = Source.KALSHI_API
+    open val defaultSeries: String = ""
+    open val seriesHelp: String = "Kalshi series to trade, comma-separated (for example KXHIGHNY,KXGOLDD)."
+
+    override val extraParams: List<Param> get() = listOf(Param.Text("series", "Series", seriesHelp, defaultSeries)) + moreParams
+    open val moreParams: List<Param> get() = emptyList()
+
+    protected fun series(ctx: StrategyContext) = series(ctx.config)
+    protected fun series(c: com.marketbot.core.strategy.StrategyConfig) = c.text("series").split(',', ' ').map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+
+    override suspend fun candidates(ctx: StrategyContext): List<RangeCandidate> {
+        val out = mutableListOf<RangeCandidate>()
+        for (s in series(ctx)) {
+            val ms = runCatching { ctx.kalshi.openMarkets(s) }.onFailure { ctx.warn("listing", "$s listing failed: ${it.message}") }.getOrNull() ?: continue
+            for (m in ms) {
+                val close = m.closeTime ?: continue
+                val book = m.book
+                out += RangeCandidate(m.ticker, book?.yesBid?.value, book?.yesAsk?.value, close, close, m.num("yes_ask_size_fp"), m.num("yes_bid_size_fp"), s,
+                    m.strikeType)
+            }
+        }
+        return out
+    }
+
+    override suspend fun paperFill(ctx: StrategyContext, q: QuoteRow): Double? {
+        val trades = runCatching { ctx.kalshi.trades(q.ticker, q.placedAt.epochSecond) }.getOrNull() ?: return null
+        // Selling YES at p is buying NO at 1 - p; buying YES or NO rests on that side at p.
+        val f = when (q.action) {
+            "sell_yes" -> TapeFillModel.fill(q.placedAt, q.cancelledAt, "no", 1.0 - q.price, q.contracts, q.queueAhead ?: 0.0, trades)
+            "buy_no" -> TapeFillModel.fill(q.placedAt, q.cancelledAt, "no", q.price, q.contracts, q.queueAhead ?: 0.0, trades)
+            else -> TapeFillModel.fill(q.placedAt, q.cancelledAt, "yes", q.price, q.contracts, q.queueAhead ?: 0.0, trades)
+        }
+        return f.filled
+    }
+
+    override suspend fun result(ctx: StrategyContext, ticker: String): String? {
+        val m = ctx.kalshi.market(ticker)
+        val st = m.status?.lowercase() ?: return null
+        return if (st in Vocabulary.KALSHI_SETTLED && (m.result == "yes" || m.result == "no")) m.result else null
+    }
+
+    private val fees = mutableMapOf<String, Sourced<String>?>()
+    override suspend fun makerFee(ctx: StrategyContext, ticker: String, price: Double, contracts: Int): Sourced<Double> {
+        val s = ticker.substringBefore('-')
+        val ft = fees.getOrPut(s) { runCatching { ctx.kalshi.seriesFeeType(s) }.getOrNull() }
+        return makerFeeEstimate(ft, price, maxOf(1, contracts))
+    }
+
+    override suspend fun takerFee(ctx: StrategyContext, ticker: String, price: Double, contracts: Int): Sourced<Double> =
+        Sourced.derived(com.marketbot.core.kalshi.kalshiFee(price, maxOf(1, contracts)), "ceil(0.07*C*P*(1-P))/C", "Kalshi's taker fee, rounded up per order")
 }

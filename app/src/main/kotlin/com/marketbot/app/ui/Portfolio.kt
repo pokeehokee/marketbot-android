@@ -46,12 +46,22 @@ import com.marketbot.core.util.Tickers
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-/** Home's top: what the accounts hold, what was made today and in total (live and paper apart), and the curve. */
+/**
+ * Home's top card: what the live accounts hold now, today's and total realised P&L (live and
+ * paper apart), and one chart that switches between the live accounts' value (a point an hour),
+ * live realised P&L and paper realised P&L, over 24 hours, 7 days or 30 days.
+ */
 @Composable
 fun PortfolioHeader(vm: MainViewModel) {
     val p by vm.portfolio.collectAsState()
     val acc by vm.accounts.collectAsState()
-    var showPaper by rememberSaveable { mutableStateOf(false) }
+    val readings by vm.liveReadings.collectAsState()
+    val now by vm.minute.collectAsState()
+    var view by rememberSaveable { mutableStateOf(0) }       // 0 live value, 1 live P&L, 2 paper P&L
+    var days by rememberSaveable { mutableStateOf(7) }
+    var exclFlows by rememberSaveable { mutableStateOf(false) }
+    val changed by vm.flowsChanged.collectAsState()
+    val flows = loaded(changed) { vm.cashFlows() }.orEmpty()
     val liveEquity = listOfNotNull(acc.kalshi?.let { it.equity ?: it.cash }, acc.polymarket?.currentBalance)
     Section(stringResource(R.string.portfolio)) {
         if (liveEquity.isNotEmpty()) {
@@ -72,12 +82,38 @@ fun PortfolioHeader(vm: MainViewModel) {
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(!showPaper, { showPaper = false }, { Text(stringResource(R.string.live_p_l, (p.liveN).toString())) })
-            FilterChip(showPaper, { showPaper = true }, { Text(stringResource(R.string.paper_p_l, (p.paperN).toString())) })
+            FilterChip(view == 0, { view = 0 }, { Text(stringResource(R.string.portfolio_value)) })
+            FilterChip(view == 1, { view = 1 }, { Text(stringResource(R.string.chart_live_n, p.liveN.toString())) })
+            FilterChip(view == 2, { view = 2 }, { Text(stringResource(R.string.chart_paper_n, p.paperN.toString())) })
         }
-        LineChart(if (showPaper) p.paperCurve else p.liveCurve, label = if (showPaper) "Paper cumulative P&L" else "Live cumulative P&L")
-        Text(stringResource(R.string.realised_only_settled_positions_from_the),
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(1 to R.string.range_24h, 7 to R.string.range_7d, 30 to R.string.range_30d).forEach { (d, label) ->
+                FilterChip(days == d, { days = d }, { Text(stringResource(label)) }) }
+            if (view == 0 && flows.isNotEmpty()) FilterChip(exclFlows, { exclFlows = !exclFlows }, { Text(stringResource(R.string.excl_deposits)) })
+        }
+        val from = now - days * 86_400_000L
+        when (view) {
+            0 -> {
+                val h = androidx.compose.runtime.remember(readings, now, days) {
+                    if (readings.isEmpty()) null else com.marketbot.core.strategy.HourlyEquity.of(readings, from, now) }
+                if (h == null) Text(stringResource(R.string.live_portfolio_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else {
+                    val pts = if (exclFlows) com.marketbot.core.strategy.CashFlows.performance(h.points, flows) else h.points
+                    HourlyChart(pts, label = stringResource(R.string.portfolio_value))
+                    Text(stringResource(R.string.hourly_coverage, h.recordedHours, h.hours),
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            else -> {
+                val curve = if (view == 1) p.liveCurve else p.paperCurve
+                val pts = androidx.compose.runtime.remember(curve, now, days) {
+                    val before = curve.lastOrNull { it.first < from }?.second ?: 0.0
+                    listOf(from to before) + curve.filter { it.first >= from } + listOf(now to (curve.lastOrNull()?.second ?: 0.0)) }
+                HourlyChart(pts, label = stringResource(if (view == 1) R.string.live_pl else R.string.paper_pl), nowLabel = stringResource(R.string.realised_so_far))
+                Text(stringResource(R.string.realised_only_settled_positions_from_the),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -91,22 +127,6 @@ private fun Stat(label: String, v: Double, src: Source, modifier: Modifier) {
             SourceChip(src)
         }
         MoneyTicker(v, Figures, moneyColor(v) ?: MaterialTheme.colorScheme.onSurface, announce = label.endsWith("today"))
-    }
-}
-
-/** Home's first card: the live accounts' total over the last 7 days, a point an hour. */
-@Composable
-fun LivePortfolioWeek(vm: MainViewModel) {
-    val h by vm.liveHourly.collectAsState()
-    Section(stringResource(R.string.live_portfolio_7_days)) {
-        val hv = h
-        if (hv == null) {
-            Text(stringResource(R.string.live_portfolio_none), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            HourlyChart(hv.points, label = stringResource(R.string.live_portfolio_7_days))
-            Text(stringResource(R.string.hourly_coverage, hv.recordedHours, hv.hours),
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 
@@ -315,7 +335,7 @@ private fun OrderRow(q: QuoteRow, cancelling: Boolean = false, onOpen: () -> Uni
         q.cancelledAt != null -> "Withdrawn" + (q.filledContracts?.takeIf { it > 0 }?.let { ", %.0f filled".format(it) } ?: "")
         (q.filledContracts ?: 0.0) >= q.contracts -> "Filled"
         (q.filledContracts ?: 0.0) > 0 -> "%.0f of %.0f filled".format(q.filledContracts, q.contracts)
-        else -> "Resting"
+        else -> "Resting" + restingDetail(q, java.time.Instant.now())
     }
     Surface(onClick = onOpen, shape = Radius.banner, color = Elevation.section(),
         border = androidx.compose.foundation.BorderStroke(1.dp, if (q.mode == Mode.LIVE) LocalDesk.current.live.copy(alpha = 0.35f) else MaterialTheme.colorScheme.outlineVariant),
@@ -333,6 +353,20 @@ private fun OrderRow(q: QuoteRow, cancelling: Boolean = false, onOpen: () -> Uni
             Text(if (q.mode == Mode.LIVE) "LIVE" else "PAPER", style = MaterialTheme.typography.labelSmall,
                 color = if (q.mode == Mode.LIVE) LocalDesk.current.live else LocalDesk.current.paper)
         }
+    }
+}
+
+/** " 3h 12m · 45 ahead · closes in 18h" for a resting order: how long it has waited, its queue, its clock. */
+internal fun restingDetail(q: QuoteRow, now: java.time.Instant): String {
+    fun dur(d: java.time.Duration) = when {
+        d.toMinutes() < 60 -> "${d.toMinutes()}m"
+        d.toHours() < 48 -> "${d.toHours()}h ${d.toMinutes() % 60}m"
+        else -> "${d.toDays()}d"
+    }
+    return buildString {
+        append(" ").append(dur(java.time.Duration.between(q.placedAt, now).coerceAtLeast(java.time.Duration.ZERO)))
+        q.queueAhead?.let { append(" · %.0f ahead".format(it)) }
+        q.closeTime?.let { c -> val left = java.time.Duration.between(now, c); if (!left.isNegative) append(" · closes in ").append(dur(left)) }
     }
 }
 
