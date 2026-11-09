@@ -12,17 +12,27 @@ class ResearchFiles(context: Context) {
 
     @Synchronized fun append(rows: List<CrossVenueBooks.Row>) {
         if (rows.isEmpty()) return
-        val day = rows.first().at.atZone(ZoneOffset.UTC).toLocalDate()
-        val f = File(dir, "books-$day.csv")
-        f.appendText(rows.joinToString("\n", postfix = "\n") { it.csv() })
-        dir.listFiles()?.filter { it.name < "books-${day.minusDays(14)}.csv" }?.forEach { it.delete() }
+        write("books", rows.first().at.atZone(ZoneOffset.UTC).toLocalDate(), rows.joinToString("\n", postfix = "\n") { it.csv() })
+    }
+
+    @Synchronized fun appendTrades(rows: List<CrossVenueBooks.Trade>) {
+        if (rows.isEmpty()) return
+        write("trades", rows.first().at.atZone(ZoneOffset.UTC).toLocalDate(), rows.joinToString("\n", postfix = "\n") { it.csv() })
+    }
+
+    private fun write(prefix: String, day: LocalDate, text: String) {
+        File(dir, "$prefix-$day.csv").appendText(text)
+        dir.listFiles()?.filter { it.name.startsWith("$prefix-") && it.name < "$prefix-${day.minusDays(14)}.csv" }?.forEach { it.delete() }
     }
 
     /** The last [days] days in one CSV with its header, or null when nothing was recorded. */
-    @Synchronized fun latest(days: Long = 7): String? {
+    @Synchronized fun latest(days: Long = 1): String? = latest("books", CrossVenueBooks.HEADER, days)
+    @Synchronized fun latestTrades(days: Long = 3): String? = latest("trades", CrossVenueBooks.TRADES_HEADER, days)
+
+    private fun latest(prefix: String, header: String, days: Long): String? {
         val today = LocalDate.now(ZoneOffset.UTC)
-        val files = (0..days).map { File(dir, "books-${today.minusDays(it)}.csv") }.filter { it.exists() }.reversed()
+        val files = (0..days).map { File(dir, "$prefix-${today.minusDays(it)}.csv") }.filter { it.exists() }.reversed()
         if (files.isEmpty()) return null
-        return CrossVenueBooks.HEADER + "\n" + files.joinToString("") { it.readText() }
+        return header + "\n" + files.joinToString("") { it.readText() }
     }
 }

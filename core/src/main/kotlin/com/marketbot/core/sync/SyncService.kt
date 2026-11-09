@@ -22,6 +22,8 @@ class SyncService(
     private val engine: Engine,
     /** The cross-venue research rows (last 7 days, CSV), sent as exports/books-latest.csv when there are any. */
     private val books: (() -> String?)? = null,
+    /** The recorded public trades on the quoted markets (last 3 days, CSV), sent as exports/trades-latest.csv. */
+    private val trades: (() -> String?)? = null,
     private val mailbox: (repo: String, token: String) -> GitHubMailbox = { r, t -> GitHubMailbox(r, t) },
 ) {
 
@@ -58,6 +60,7 @@ class SyncService(
             val rows = engine.strategies.flatMap { s -> engine.stores.ledger.all(s.id) }
             box.write(GitHubMailbox.ORDERS, SyncPayload.ordersCsv(rows.asSequence()), "app: orders $now")
             books?.invoke()?.let { box.write(GitHubMailbox.BOOKS, it, "app: cross-venue books $now") }
+            trades?.invoke()?.let { box.write(GitHubMailbox.TRADES, it, "app: trade tape $now") }
             val out = outbox()
             box.recordOutcomes(out)
             st.put(OUTBOX, null)

@@ -287,7 +287,36 @@ fun ExposureSection(vm: MainViewModel) {
             ValueRow("Realised today", money(e.realisedToday), if (e.venue == "kalshi") com.marketbot.core.provenance.Source.KALSHI_API else com.marketbot.core.provenance.Source.POLYMARKET_API,
                 "settled live positions today", valueColor = moneyColor(e.realisedToday))
         }
+        val tick by vm.riskTick.collectAsState()
+        val byDay = loaded(settled.size, tick) { vm.cityDayExposure() to vm.exposureCap() }
+        byDay?.let { (m, cap) -> if (m.isNotEmpty()) {
+            Text(stringResource(R.string.city_day_title), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = Space.s))
+            m.entries.sortedByDescending { it.value }.take(8).forEach { (k, v) ->
+                ValueRow(k, money(v) + if (cap > 0) " of ${money(cap)}" else "", com.marketbot.core.provenance.Source.DERIVED,
+                    "worst-case loss of every live order and position on this city and day, all strategies together",
+                    valueColor = if (cap > 0 && v >= cap) LocalDesk.current.warn else null)
+            }
+        } }
         Text(stringResource(R.string.exposure_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Earned per dollar of collateral per day it was locked: strategies that tie money up for different lengths of time, compared fairly. */
+@Composable
+fun CapitalSection(vm: MainViewModel) {
+    val settled by vm.settled.collectAsState()
+    val lines = loaded(settled.size) { vm.capitalEfficiency() }.orEmpty().filter { it.second.settled >= 10 }
+    if (lines.isEmpty()) return
+    Section(stringResource(R.string.capital_title)) {
+        lines.forEach { (s, l) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                Text(s.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(2f), maxLines = 1)
+                Text("${l.settled}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.7f), textAlign = TextAlign.End)
+                Text(l.centsPerDollarDay?.let { "%+.2fc".format(it) } ?: "-", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), textAlign = TextAlign.End,
+                    color = l.centsPerDollarDay?.let { if (it < 0) LocalDesk.current.loss else LocalDesk.current.gain } ?: MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        Text(stringResource(R.string.capital_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -332,6 +361,11 @@ fun VariantsSection(vm: MainViewModel, s: com.marketbot.core.strategy.Strategy, 
         Text(stringResource(R.string.variants_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (s is com.marketbot.core.strategies.rewards.RewardFarm) FarmVariantTable(vm, listOf(s) + variants)
         else LedgerVariantTable(vm, listOf(s) + variants, settled)
+        if (s !is com.marketbot.core.strategies.rewards.RewardFarm) variants.forEach { v ->
+            val verdict = loaded(v.id, settled.size) { vm.variantVerdict(s, v) }
+            verdict?.let { Text(it.text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = Space.xs),
+                color = if (it.decided) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         variants.forEach { v ->
             val mode = vm.modeOf(v.id)
             Row(Modifier.fillMaxWidth().padding(top = Space.s), verticalAlignment = Alignment.CenterVertically) {

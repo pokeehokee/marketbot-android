@@ -111,6 +111,7 @@ class EngineService : LifecycleService() {
             runCatching { app.engine.reconcileOrdersIfDue() }
             if (Connectivity.online(this)) runCatching { app.engine.recordLiveBalancesIfDue() }
             runCatching { app.engine.scorecardAlertsIfDue() }
+            if (Connectivity.online(this)) runCatching { app.engine.watchlistIfDue() }
             // About 90 public reads: beside the loop, at most one at a time.
             if (booksJob?.isActive != true && Connectivity.online(this)) booksJob = lifecycleScope.launch(Dispatchers.IO) { runCatching { app.engine.recordBooksIfDue() } }
             // The daily API wording check runs beside the loop (about 50 reads), at most one at a time.

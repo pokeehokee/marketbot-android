@@ -35,6 +35,7 @@ enum class ReasonCode(val state: TradingState, val label: String) {
     EXCHANGE_CLOSED(TradingState.REDUCING, "Exchange closed or paused"),
     MAINTENANCE(TradingState.REDUCING, "Exchange maintenance"),
     BUDGET_SPENT(TradingState.REDUCING, "Budget spent"),
+    EXPOSURE_CAP(TradingState.REDUCING, "City and day at its risk cap"),
     EXCHANGE_STATE_UNAVAILABLE(TradingState.REDUCING, "Exchange state unavailable"),
     // ---- active but degraded: the last pass failed; the next one tries again
     LISTING_FAILED(TradingState.ACTIVE, "Market list unavailable"),

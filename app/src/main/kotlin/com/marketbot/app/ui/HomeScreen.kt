@@ -92,6 +92,7 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         QuickActions(vm)
         ExposureSection(vm)
         PeriodsSection(vm)
+        CapitalSection(vm)
         val resumed = rememberResumeCount()
         val batteryOk = remember(resumed) { ignoringBattery(ctx) }
         if (!batteryOk) Surface(shape = Radius.banner, color = LocalDesk.current.warn.copy(alpha = 0.12f),

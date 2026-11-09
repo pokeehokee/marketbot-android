@@ -163,6 +163,17 @@
     <string name="breakdown">Where it makes and loses money (%1$s)</string>
     <string name="breakdown_caution">Worst first. A slice that looks bad is a hypothesis for a paper variant, not a filter: cut any record enough ways and one slice looks bad by chance.</string>
     <string name="rule_title">The rule</string>
+    <string name="city_day_title">Same city and day, all strategies</string>
+    <string name="capital_title">Earned per dollar per day locked</string>
+    <string name="capital_note">Settled positions, live book where a strategy has one, else paper. Compares strategies that lock money for different lengths of time; the app does not move money between them.</string>
+    <string name="export_tax_year">Realised %1$d</string>
+    <string name="tax_note">Live positions settled in that year, with the exchange\'s own P&amp;L. Not tax advice: check against each venue\'s tax documents.</string>
+    <string name="city_day_cap_title">Cap per city and day (live)</string>
+    <string name="city_day_cap_help">The most every live strategy together may stand to lose on one city\'s weather on one day. New live orders on a city and day at the cap are held back. Paper is never capped.</string>
+    <string name="dollars_zero_off">Dollars (0 turns it off)</string>
+    <string name="watchlist_title">Watchlist</string>
+    <string name="watchlist_empty">Open an order and tap Watch this market to hear when its price moves.</string>
+    <string name="watch_market">Watch this market</string>
     <string name="pause_strategy">Pause</string>
     <string name="open">Open</string>
     <string name="portfolio_value">Value</string>
