@@ -101,6 +101,10 @@ class KalshiClient(
     /** The first page of a series' events, for sampling. */
     suspend fun eventsSample(query: List<Pair<String, String>>): List<JsonObject> = http.get("/events", query).objects("events")
 
+    /** The first page of a market's public trades, for sampling (the daily API check). */
+    suspend fun tradesSample(ticker: String, minTs: Long): List<JsonObject> =
+        http.get("/markets/trades", listOf("ticker" to ticker, "min_ts" to minTs.toString(), "limit" to "200")).objects("trades")
+
     suspend fun trades(ticker: String, minTs: Long, maxPages: Int = 20): List<JsonObject> =
         paginate("/markets/trades", "trades",
             listOf("ticker" to ticker, "min_ts" to minTs.toString(), "limit" to "1000"), maxPages, signed = false)

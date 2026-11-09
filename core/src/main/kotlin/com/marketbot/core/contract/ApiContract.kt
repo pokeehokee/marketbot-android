@@ -194,7 +194,8 @@ object ApiContract {
 
         out += probe("Kalshi", "public trade tape", "$LONGSHOT and $KDEEP (paper fills)") {
             val t = tradeTicker ?: return@probe skip("no open weather market to read trades from")
-            val trades = k.trades(t, now.minus(Duration.ofDays(2)).epochSecond, maxPages = 1)
+            // One page is a sample; the full reader (trades) refuses a truncated listing, which made this a daily SKIP.
+            val trades = k.tradesSample(t, now.minus(Duration.ofDays(2)).epochSecond)
             if (trades.isEmpty()) return@probe warn("no trades on $t in two days")
             val sides = unknown(trades.map { Vocabulary.kalshiTakerSide(it) }, Vocabulary.KALSHI_SIDES)
             val noSide = trades.count { Vocabulary.kalshiTakerSide(it) == null }
@@ -269,7 +270,7 @@ object ApiContract {
             if (s.isEmpty()) return@probe skip("no settlements on this account yet")
             val need = Vocabulary.KALSHI_FIELDS.getValue("Settlement")
             val missing = need.filter { f -> s.all { it[f] == null } }
-            val results = unknown(s.map { it.str("market_result") }, setOf("yes", "no", "scalar"))
+            val results = unknown(s.map { it.str("market_result") }, Vocabulary.KALSHI_ENUMS.getValue("Settlement").getValue("market_result"))
             when {
                 missing.isNotEmpty() -> fail("settlement rows lack ${missing.joinToString()}: realised P&L cannot be read")
                 results.isNotEmpty() -> fail("market_result values the app does not know: ${results.joinToString()}")
@@ -303,7 +304,7 @@ object ApiContract {
             val ps = pm.liquidityPrograms(maxPages = 1)
             if (ps.isEmpty()) return@probe warn("no active liquidity programs listed")
             val periods = ps.flatMap { it.objects("timePeriods") }
-            val kinds = unknown(periods.map { it.str("period") }, Vocabulary.PM_QUOTABLE_PERIODS)
+            val kinds = unknown(periods.map { it.str("period") }, Vocabulary.PM_QUOTABLE_PERIODS + Vocabulary.PM_SKIPPED_PERIODS)
             val types = unknown(periods.map { it.str("programType") }, setOf(Vocabulary.PM_PROGRAM_TYPE))
             val cands = ps.mapNotNull { FarmScanner.activePeriods(it, now, FarmRules()) }
             slug = cands.firstOrNull()?.slug ?: ps.firstNotNullOfOrNull { it.str("marketSlug") }
@@ -366,8 +367,14 @@ object ApiContract {
             }
         }
         out += probe("Polymarket", "settlement endpoint", "$PDEEP and $FARM (grading)") {
-            val (event, _) = PolymarketBtcLadder(pm).eventSlug(now.minus(Duration.ofDays(2)))
-            val m = pm.event(event).objects("markets").firstOrNull()?.str("slug") ?: return@probe skip("no past BTC market to read")
+            // Polymarket does not list every day (no btc-above-day-2026-11-06 was ever created): walk back to the latest past event.
+            var m: String? = null
+            for (d in 2L..8L) {
+                val (event, _) = PolymarketBtcLadder(pm).eventSlug(now.minus(Duration.ofDays(d)))
+                m = runCatching { pm.event(event).objects("markets").firstOrNull()?.str("slug") }.getOrNull()
+                if (m != null) break
+            }
+            if (m == null) return@probe fail("no past daily BTC event found in the last eight days")
             val v = pm.settlement(m)
             if (v == null) warn("no settlement for $m two days after its close") else pass("$m settled at ${v.value}")
         }
