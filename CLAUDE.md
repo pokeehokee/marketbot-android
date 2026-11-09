@@ -57,6 +57,10 @@ The app takes only the exact ticker and side named, buys at the ask once it is a
 settlement, and writes every bet's price, outcome, `predictionCorrect`, Brier and paper P&L to `bets/results.json`. A bet
 must fit the strategy's paper wallet ($30 default); approving the first one turns the strategy on in paper (screen lock).
 
+To find and research such bets, use the `kalshi-prediction` skill (`.claude/skills/kalshi-prediction/`): `scan.py` lists
+live Kalshi markets that pass the liquidity and runway filters, and the skill writes each target up in a fixed format that
+ends in a research-bet proposal. Bets go into `proposals/held-bets.json` until the user says to send them.
+
 Snapshots and exports never carry keys.
 
 ## Commands
