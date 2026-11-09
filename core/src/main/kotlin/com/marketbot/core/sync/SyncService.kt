@@ -61,6 +61,9 @@ class SyncService(
             box.write(GitHubMailbox.ORDERS, SyncPayload.ordersCsv(rows.asSequence()), "app: orders $now")
             books?.invoke()?.let { box.write(GitHubMailbox.BOOKS, it, "app: cross-venue books $now") }
             trades?.invoke()?.let { box.write(GitHubMailbox.TRADES, it, "app: trade tape $now") }
+            com.marketbot.core.strategies.bets.ResearchBets.report(engine.stores).takeIf { it.isNotEmpty() }?.let {
+                box.write(GitHubMailbox.BET_RESULTS, com.marketbot.core.strategies.bets.ResearchBets.resultsJson(it), "app: ${it.size} research bet(s) $now")
+            }
             val out = outbox()
             box.recordOutcomes(out)
             st.put(OUTBOX, null)
@@ -92,9 +95,11 @@ class SyncService(
             is ProposalPolicy.Verdict.Ok -> {
                 s!!
                 if (v.changes.isNotEmpty()) engine.saveConfig(s, engine.config(s).asMap + v.changes)
+                v.bet?.let { com.marketbot.core.strategies.bets.ResearchBets.add(engine.stores.state, p.id, it, engine.now()) }
                 v.mode?.let { engine.setMode(s, it) }
                 ProposalOutcome("applied", engine.now().toString(),
-                    (v.changes.entries.joinToString { "${it.key}=${it.value}" } + (v.mode?.let { " mode=$it" } ?: "")).trim())
+                    (v.changes.entries.joinToString { "${it.key}=${it.value}" } + (v.bet?.let { " bet ${it.side.uppercase()} ${it.ticker}" } ?: "") +
+                        (v.mode?.let { " mode=$it" } ?: "")).trim())
             }
         }
         finish(p, outcome)

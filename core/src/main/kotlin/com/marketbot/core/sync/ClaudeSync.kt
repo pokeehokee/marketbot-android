@@ -37,6 +37,8 @@ data class Proposal(
     /** OFF or PAPER. LIVE is never accepted. */
     val mode: String? = null,
     val reason: String = "",
+    /** A one-off research bet, for the Research bets strategy only. */
+    val bet: com.marketbot.core.strategies.bets.BetSpec? = null,
 )
 
 @Serializable
@@ -67,13 +69,21 @@ object ProposalPolicy {
 
     sealed interface Verdict {
         /** [needsStrongConfirm]: the change turns a strategy on or off, so it takes a fingerprint, not just a tap. */
-        data class Ok(val changes: Map<String, String>, val mode: Mode?, val needsStrongConfirm: Boolean) : Verdict
+        data class Ok(val changes: Map<String, String>, val mode: Mode?, val needsStrongConfirm: Boolean,
+            val bet: com.marketbot.core.strategies.bets.BetSpec? = null) : Verdict
         data class Refused(val why: String) : Verdict
     }
 
     fun check(p: Proposal, s: Strategy?, current: StrategyConfig?, currentMode: Mode): Verdict {
         if (s == null || current == null) return Verdict.Refused("no strategy ${p.strategy}")
         if (currentMode == Mode.LIVE) return Verdict.Refused("${s.name} is live; proposals may only change paper strategies")
+        p.bet?.let { b ->
+            if (s.id != com.marketbot.core.strategies.bets.ResearchBets.ID) return Verdict.Refused("a bet can only go to Research bets")
+            if (p.set.isNotEmpty() || p.mode != null) return Verdict.Refused("a bet proposal cannot also change settings or modes")
+            com.marketbot.core.strategies.bets.ResearchBets.problem(b, current.num("paper_cash"))?.let { return Verdict.Refused(it) }
+            // Approving a bet turns the (paper-only) strategy on when it is off, which takes the screen lock.
+            return Verdict.Ok(emptyMap(), if (currentMode == Mode.OFF) Mode.PAPER else null, needsStrongConfirm = currentMode == Mode.OFF, bet = b)
+        }
         val mode = p.mode?.let { m -> runCatching { Mode.valueOf(m.uppercase()) }.getOrNull() ?: return Verdict.Refused("unknown mode $m") }
         if (mode == Mode.LIVE) return Verdict.Refused("a proposal can never switch anything to live")
         if (mode != null && mode !in s.supportedModes) return Verdict.Refused("${s.name} does not support $mode")
@@ -160,6 +170,7 @@ class GitHubMailbox(
         const val TRADES = "exports/trades-latest.csv"
         const val PENDING = "proposals/pending.json"
         const val RESULTS = "proposals/results.json"
+        const val BET_RESULTS = "bets/results.json"
     }
 }
 

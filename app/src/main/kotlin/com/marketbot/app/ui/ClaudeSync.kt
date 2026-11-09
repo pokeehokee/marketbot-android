@@ -75,6 +75,13 @@ fun ClaudeSyncSection(vm: MainViewModel) {
                         Text((was ?: "?") + "  →  " + v, style = Figures, color = if (was == v) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
                     }
                 }
+                pr.bet?.let { b ->
+                    Text("Bet: ${b.side.uppercase()} on ${com.marketbot.core.util.Tickers.describe(b.ticker)}", style = MaterialTheme.typography.bodySmall)
+                    Text("${b.ticker} · up to ${"%.0f".format(b.maxPrice * 100)}c · ${"$%.2f".format(b.stakeUsd)} stake" +
+                        (b.probability?.let { " · research says ${"%.0f".format(it * 100)}%" } ?: ""), style = Figures)
+                    if (b.thesis.isNotBlank()) Text("For: ${b.thesis}", style = MaterialTheme.typography.bodySmall)
+                    if (b.against.isNotBlank()) Text("Against: ${b.against}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 pr.mode?.let { m -> Row(Modifier.fillMaxWidth()) {
                     Text("Mode", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                     Text(vm.modeOf(pr.strategy).name + "  →  " + m.uppercase(), style = Figures, color = MaterialTheme.colorScheme.primary) } }

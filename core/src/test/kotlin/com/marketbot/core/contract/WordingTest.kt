@@ -75,7 +75,7 @@ class WordingTest {
      * to a reason code, or be one of the summaries that mean "working normally".
      */
     @Test fun `every pass summary a strategy can return maps to a reason code or means working`() {
-        val normal = setOf("quote", "tick", "off")
+        val normal = setOf("quote", "tick", "off", "no bets")
         val src = File("src/main/kotlin/com/marketbot/core/strategies").walkTopDown().filter { it.extension == "kt" }.toList()
         assertTrue(src.isNotEmpty(), "run from the core module")
         val said = mutableSetOf<String>()

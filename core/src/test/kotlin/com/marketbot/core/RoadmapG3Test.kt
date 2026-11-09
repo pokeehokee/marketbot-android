@@ -58,9 +58,11 @@ class RoadmapG3Test {
 
     @Test fun `every strategy has two paper-only variants with their own ids and names`() {
         val bases = StrategyRegistry.all.filter { it.baseId == null }
-        assertEquals(7, bases.size, "four ported strategies, the two pool-search candidates and Rule Lab")
+        assertEquals(8, bases.size, "four ported strategies, the two pool-search candidates, Rule Lab and Research bets")
         assertEquals(StrategyRegistry.all.size, StrategyRegistry.all.map { it.id }.toSet().size, "ids are unique")
-        for (b in bases) {
+        // Research bets has no variants: each bet is already its own experiment.
+        assertTrue(StrategyRegistry.variantsOf(com.marketbot.core.strategies.bets.ResearchBets.ID).isEmpty())
+        for (b in bases.filter { it.id != com.marketbot.core.strategies.bets.ResearchBets.ID }) {
             val v = StrategyRegistry.variantsOf(b.id)
             assertEquals(listOf("${b.id}@b", "${b.id}@c"), v.map { it.id })
             assertTrue(v.all { Mode.LIVE !in it.supportedModes && Mode.PAPER in it.supportedModes }, "variants never trade live")
