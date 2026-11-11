@@ -57,9 +57,22 @@ The app takes only the exact ticker and side named, buys at the ask once it is a
 settlement, and writes every bet's price, outcome, `predictionCorrect`, Brier and paper P&L to `bets/results.json`. A bet
 must fit the strategy's paper wallet ($30 default); approving the first one turns the strategy on in paper (screen lock).
 
+A proposal may instead carry a **watch** item for the app's watchlist (`"strategy": "watchlist"`), which alerts
+when a market's mid moves by `moveCents`:
+
+```json
+{"proposals": [{"id": "watch-2026-11-09-gas", "strategy": "watchlist", "reason": "re-check after Thursday's AAA print",
+  "watch": {"venue": "kalshi", "ticker": "KXAAAGASM-26NOV30-3.70", "moveCents": 4, "label": "gas above 3.70"}}]}
+```
+
+It reads public prices and trades nothing, so it needs only a tap; the reference price is whatever the app reads
+first, never the file's. `MAX_WATCH` caps the list at 50.
+
 To find and research such bets, use the `kalshi-prediction` skill (`.claude/skills/kalshi-prediction/`): `scan.py` lists
-live Kalshi markets that pass the liquidity and runway filters, and the skill writes each target up in a fixed format that
-ends in a research-bet proposal. Bets go into `proposals/held-bets.json` until the user says to send them.
+live Kalshi markets that pass the liquidity, probability-band and runway filters (with breakeven prices and volume
+anomalies), `estimates.py` records every verdict and grades it against the market's own price at settlement, and the
+skill writes each target up in a fixed format ending in a bet or watch proposal. Both go into
+`proposals/held-bets.json` until the user says to send them.
 
 Snapshots and exports never carry keys.
 

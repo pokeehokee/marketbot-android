@@ -92,7 +92,12 @@ class SyncService(
         val s = engine.strategies.firstOrNull { it.id == p.strategy }
         val outcome = when (val v = ProposalPolicy.check(p, s, s?.let { engine.config(it) }, engine.mode(p.strategy))) {
             is ProposalPolicy.Verdict.Refused -> ProposalOutcome("refused", engine.now().toString(), v.why)
-            is ProposalPolicy.Verdict.Ok -> {
+            is ProposalPolicy.Verdict.Ok -> if (v.watch != null) {
+                val w = v.watch
+                val list = com.marketbot.core.strategy.WatchItem.load(engine.stores.state).filter { it.ticker != w.ticker }
+                com.marketbot.core.strategy.WatchItem.save(engine.stores.state, (list + w).takeLast(MAX_WATCH))
+                ProposalOutcome("applied", engine.now().toString(), "watch ${w.venue} ${w.ticker} (${w.moveCents}c move)")
+            } else {
                 s!!
                 if (v.changes.isNotEmpty()) engine.saveConfig(s, engine.config(s).asMap + v.changes)
                 v.bet?.let { com.marketbot.core.strategies.bets.ResearchBets.add(engine.stores.state, p.id, it, engine.now()) }
@@ -103,7 +108,7 @@ class SyncService(
             }
         }
         finish(p, outcome)
-        return if (outcome.status == "applied") "Applied to ${s?.name}: ${outcome.detail}." else "Not applied: ${outcome.detail}."
+        return if (outcome.status == "applied") "Applied${s?.name?.let { " to $it" } ?: ""}: ${outcome.detail}." else "Not applied: ${outcome.detail}."
     }
 
     suspend fun reject(id: String): String {
@@ -125,5 +130,7 @@ class SyncService(
         const val STATUS = "sync.status"
         const val DECIDED = "sync.decided"
         const val OUTBOX = "sync.outbox"
+        /** The watchlist keeps at most this many markets; the oldest go first. */
+        const val MAX_WATCH = 50
     }
 }

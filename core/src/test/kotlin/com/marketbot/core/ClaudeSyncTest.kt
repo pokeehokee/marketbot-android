@@ -142,4 +142,28 @@ class ClaudeSyncTest {
             assertEquals(0.25, engine.config(main).num("max_mid_high"))
         }
     }
+
+    @Test fun `a watch proposal adds a market to the watchlist on a tap, and bad ones are refused`() = runTest {
+        val gh = FakeGitHub(); server.dispatcher = gh; server.start()
+        val base = server.url("").toString().trimEnd('/')
+        FakeKalshi().use { fake ->
+            val engine = Engine(inMemoryStores(), MutableClock(Instant.parse("2026-11-09T21:00:00Z")), clientFactory = { _ -> fake.client(false) to PolymarketClient(null) })
+            gh.files[GitHubMailbox.PENDING] = """{"proposals":[
+                {"id":"w1","strategy":"watchlist","reason":"re-check after AAA Thursday",
+                 "watch":{"venue":"kalshi","ticker":"KXAAAGASM-26NOV30-3.70","ref":0.10,"moveCents":4,"label":"gas above 3.70 on Nov 30"}},
+                {"id":"w2","strategy":"kalshi_weather_longshot","watch":{"venue":"kalshi","ticker":"KXAAAGASM-26NOV30-3.70"}},
+                {"id":"w3","strategy":"watchlist","watch":{"venue":"kalshi","ticker":"X","moveCents":4}},
+                {"id":"w4","strategy":"watchlist","watch":{"venue":"kalshi","ticker":"KXFED-26DEC-T4.00","moveCents":0}},
+                {"id":"w5","strategy":"watchlist"}]}"""
+            val sync = SyncService(engine) { r, t -> GitHubMailbox(r, t, base) }
+            sync.sync("me/sync", "tok", "t")
+            val pend = sync.pending().associateBy { it.proposal.id }
+            assertEquals(null, pend.getValue("w1").refused); assertFalse(pend.getValue("w1").strongConfirm, "a watch only reads prices: a tap")
+            listOf("w2", "w3", "w4", "w5").forEach { assertTrue(pend.getValue(it).refused != null, it) }
+            assertTrue(sync.approve("w1").startsWith("Applied"))
+            val w = com.marketbot.core.strategy.WatchItem.load(engine.stores.state).single()
+            assertEquals("KXAAAGASM-26NOV30-3.70", w.ticker); assertEquals(4, w.moveCents)
+            assertEquals(null, w.ref, "the reference is the price when the app first reads it, never the file's")
+        }
+    }
 }
