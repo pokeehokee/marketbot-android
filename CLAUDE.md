@@ -42,6 +42,31 @@ changing any Kalshi call. The rule it exists for:
 - Crypto and commodities trade on exchange shard 2 and **API orders do not fund a shard
   automatically**; `balance_breakdown` is the per-shard view.
 
+## BTC deep-ITM: the band floor is the risk control
+
+Measured 2026-11-12 on the paper book (356 settled fills, 13 losses, 11 days, **no live row has ever
+been graded**), split by the price paid, against what that price implied:
+
+| bid joined | fills | lost | implied | ratio | per contract | fill rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.89-0.92 | 20 | 2 | 1.9 | 1.05 | -0.50c | 7.0% |
+| 0.92-0.94 | 53 | 5 | 3.9 | 1.27 | -2.02c | 7.0% |
+| 0.94-0.955 | 131 | 3 | 7.1 | 0.42 | +3.09c | 7.1% |
+| 0.955-1.00 | 152 | 3 | 6.1 | 0.49 | +2.03c | 8.1% |
+
+At or under 0.94 the ratio is **1.01**: the price was right, there is no edge, and the band is net
+negative. Above it the ratio is 0.40. Nine of the thirteen losses sit in the band with no edge,
+which is only 22% of the pool, and fill rates are flat across bands, so raising `band_lo` costs no
+volume: the slots (binding in 127 of 135 hours, pool 20-170) fill from the better bucket instead.
+
+**`slot_order` is a setting, not a fixed rule.** The pool exceeds `max_open` almost every hour, so
+the order decides which markets get capital. `cheapest` is the original runner's rule and is right
+*while the floor is right*: inside a 0.94-0.96 band the cheaper half is the best bucket. It only
+hurt because the floor let it reach into the no-edge band. Fix the floor, not the order.
+
+Nothing was changed in the main book on this. The evidence is 13 losses over 11 days with a
+bootstrap interval that includes zero, so it runs as a paper variant and `VariantVerdict` decides.
+
 ## Perps: recorded, never traded
 
 Kalshi's perps (the "Invest" product) are leveraged perpetual futures on the separate `/margin`
