@@ -25,6 +25,23 @@ and `pokeehokee/polymarket` on the phone.
   `.github/workflows/api-contract.yml`, and once a day in the app) compares live answers and Kalshi's OpenAPI spec against it.
   A refusal the app recognises only by its words must fail safe when the words change.
 
+## Kalshi API
+
+`.claude/skills/kalshi-api/` holds the API as the official docs define it, reviewed in full on
+2026-11-11 (the OpenAPI spec plus all 287 doc pages and the changelog). Read it before writing or
+changing any Kalshi call. The rule it exists for:
+
+- **A missing settlement is not a missing position.** Kalshi partitions portfolio data into a live
+  and a historical tier. `GET /portfolio/settlements` returns only records still in the live set, so
+  grading a settled position takes up to three calls in order: that endpoint, then
+  `GET /portfolio/positions?settlement_status=settled` (the endpoint defaults to `unsettled`, so a
+  settled position is otherwise invisible), then `GET /historical/positions`. Reading only the first
+  left every filled live row of the BTC ladder ungraded.
+- `determined` is not `finalized`: `result` is set before any payout, with a settlement timer still
+  running, so a readable result does not imply a settlement record exists.
+- Crypto and commodities trade on exchange shard 2 and **API orders do not fund a shard
+  automatically**; `balance_breakdown` is the per-shard view.
+
 ## Claude sync
 
 Settings > Claude sync links the app to a private GitHub repository (`core/sync`). The app writes

@@ -32,6 +32,10 @@ class FakeKalshi : AutoCloseable {
     var restingOrders = """{"orders":[],"cursor":""}"""
     var positions = """{"market_positions":[],"cursor":""}"""
     var fills = """{"fills":[],"cursor":""}"""
+    /** settlement_status -> body, for /portfolio/positions; "" is the no-filter default (unsettled at the exchange). */
+    val positionsByStatus = java.util.concurrent.ConcurrentHashMap<String, String>()
+    var historicalPositions = """{"market_positions":[],"cursor":""}"""
+    var cutoff = """{"market_settled_ts":"2026-09-12T00:00:00Z","market_positions_last_updated_ts":"2026-09-12T00:00:00Z"}"""
     var seriesFeeType = "quadratic"
     var trades = """{"trades":[],"cursor":""}"""
     private var nextOrder = 1
@@ -99,7 +103,10 @@ class FakeKalshi : AutoCloseable {
                     path == "/portfolio/balance" -> ok(balance)
                     path == "/portfolio/settlements" -> settlements?.let { ok(it) } ?: MockResponse().setResponseCode(503).setBody("""{"error":{"code":"unavailable"}}""")
                     path == "/portfolio/orders" -> ok(restingOrders)
-                    path == "/portfolio/positions" -> ok(positions)
+                    path == "/portfolio/positions" ->
+                        ok(positionsByStatus[q.queryParameter("settlement_status") ?: ""] ?: positions)
+                    path == "/historical/positions" -> ok(historicalPositions)
+                    path == "/historical/cutoff" -> ok(cutoff)
                     path == "/portfolio/fills" -> ok(fills)
                     path.startsWith("/portfolio/orders/") -> orders[path.substringAfterLast('/')]?.let { ok(it) } ?: MockResponse().setResponseCode(404).setBody("{}")
                     path == "/exchange/status" -> ok("""{"exchange_active":true,"trading_active":true,"exchange_index_statuses":[{"exchange_index":2,"exchange_active":true,"trading_active":true}]}""")

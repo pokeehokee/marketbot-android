@@ -12,6 +12,7 @@ import com.marketbot.core.util.objects
 import com.marketbot.core.util.str
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import java.time.Instant
 import kotlinx.serialization.json.put
 import java.io.IOException
 import java.util.UUID
@@ -130,8 +131,32 @@ class KalshiClient(
     suspend fun accountSample(path: String, key: String, query: List<Pair<String, String>> = emptyList()): List<JsonObject> =
         http.get(path, sub(query + ("limit" to "100")), requireSigner()).objects(key)
 
-    suspend fun positions(): List<JsonObject> =
-        paginate("/portfolio/positions", "market_positions", sub(listOf("limit" to "200", "count_filter" to "position")), 20, signed = true)
+    /**
+     * Market positions. [settlementStatus] is Kalshi's own filter and **defaults to `unsettled` at
+     * the exchange**, so a settled position is invisible unless this asks for `settled` or `all`.
+     */
+    suspend fun positions(settlementStatus: String? = null, ticker: String? = null): List<JsonObject> =
+        paginate("/portfolio/positions", "market_positions",
+            sub(listOfNotNull("limit" to "200", "count_filter" to "position",
+                settlementStatus?.let { "settlement_status" to it }, ticker?.let { "ticker" to it })), 20, signed = true)
+
+    /**
+     * Positions archived out of the live data set. A settled position moves here only after its whole
+     * event completes the live-to-historical handoff, so both this and
+     * `positions(settlementStatus = "settled")` have to be read before concluding a position is absent.
+     * Defaults to subaccount 0 at the exchange, unlike /portfolio/positions.
+     */
+    suspend fun historicalPositions(ticker: String? = null): List<JsonObject> =
+        paginate("/historical/positions", "market_positions",
+            sub(listOfNotNull("limit" to "200", ticker?.let { "ticker" to it })), 20, signed = true)
+
+    /** The archive's cutoff timestamps, for routing a query to the live or historical endpoint. No auth. */
+    suspend fun historicalCutoff(): JsonObject = http.get("/historical/cutoff")
+
+    /** When the exchange last validated balance, orders, fills and positions: the API lags the exchange. */
+    suspend fun userDataTimestamp(): Instant? = runCatching {
+        http.get("/exchange/user_data_timestamp").str("as_of_time")?.let { Instant.parse(it) }
+    }.getOrNull()
 
     suspend fun queuePosition(orderId: String): Sourced<Double>? =
         http.get("/portfolio/orders/$orderId/queue_position", signer = requireSigner()).num("queue_position_fp")
