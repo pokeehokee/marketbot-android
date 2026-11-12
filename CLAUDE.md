@@ -42,30 +42,65 @@ changing any Kalshi call. The rule it exists for:
 - Crypto and commodities trade on exchange shard 2 and **API orders do not fund a shard
   automatically**; `balance_breakdown` is the per-shard view.
 
-## BTC deep-ITM: the band floor is the risk control
+## BTC deep-ITM: the band is not the risk control, the slot order is
 
-Measured 2026-11-12 on the paper book (356 settled fills, 13 losses, 11 days, **no live row has ever
-been graded**), split by the price paid, against what that price implied:
+**Corrected 2026-11-12.** An earlier version of this section said bids at or under 0.94 had "no
+edge" and were "net negative", and recommended raising `band_lo`. That rested on the paper book:
+356 settled fills, 13 losses, 11 days. It is wrong, and the correction came from finding a much
+larger live sample of the same strategy.
 
-| bid joined | fills | lost | implied | ratio | per contract | fill rate |
-| --- | --- | --- | --- | --- | --- | --- |
-| 0.89-0.92 | 20 | 2 | 1.9 | 1.05 | -0.50c | 7.0% |
-| 0.92-0.94 | 53 | 5 | 3.9 | 1.27 | -2.02c | 7.0% |
-| 0.94-0.955 | 131 | 3 | 7.1 | 0.42 | +3.09c | 7.1% |
-| 0.955-1.00 | 152 | 3 | 6.1 | 0.49 | +2.03c | 8.1% |
+**The original desktop run was recovered from the exchange**, not from any local record: every
+`KXBTCD` fill on the account whose `order_id` the app never placed, joined to its settlement
+payload (`/portfolio/fills` + `/portfolio/settlements`). 1,612 fills, 1,535 positions,
+2026-09-21 to 10-04. Its parameters, recovered from the fills alone, are **identical to this
+strategy's**:
 
-At or under 0.94 the ratio is **1.01**: the price was right, there is no edge, and the band is net
-negative. Above it the ratio is 0.40. Nine of the thirteen losses sit in the band with no edge,
-which is only 22% of the pool, and fill rates are flat across bands, so raising `band_lo` costs no
-volume: the slots (binding in 127 of 135 hours, pool 20-170) fill from the better bucket instead.
+| parameter | recovered from fills | shipped setting |
+| --- | --- | --- |
+| lot | 5 (1,396 of 1,612; rest partials) | `lot: 5` |
+| price band | 0.90-0.96 | `band_lo: 0.90`, `band_hi: 0.96` |
+| concurrent strikes per event-hour | 8, a hard ceiling | `max_open: 8` |
+| seconds to close at fill | min 342, max 2999, **100% inside [300,3000]** | `ttc_min: 300`, `ttc_max: 3000` |
+| market close hours skipped (ET) | 03 and 10 exactly zero; 21 and 23 near-zero | `skip_hours_et: 3,10,21,23` |
+| execution | 0 of 1,612 taker | post-only |
+| sides | 794 yes / 818 no | both |
 
-**`slot_order` is a setting, not a fixed rule.** The pool exceeds `max_open` almost every hour, so
-the order decides which markets get capital. `cheapest` is the original runner's rule and is right
-*while the floor is right*: inside a 0.94-0.96 band the cheaper half is the best bucket. It only
-hurt because the floor let it reach into the no-edge band. Fix the floor, not the order.
+So the app is a faithful port, and that run is 1,535 live positions and **73 real losses** of
+exactly this configuration against the paper book's 13.
 
-Nothing was changed in the main book on this. The evidence is 13 losses over 11 days with a
-bootstrap interval that includes zero, so it runs as a paper variant and `VariantVerdict` decides.
+**On it, the sub-0.94 band is profitable.** Clustered by day:
+
+| band | n | lost | ratio | per contract |
+| --- | --- | --- | --- | --- |
+| 0.90-0.92 | 387 | 31 | 0.89 | +1.60c |
+| 0.92-0.94 | 554 | 30 | 0.77 | +1.33c |
+| 0.94-0.955 | 236 | 5 | 0.40 | +3.21c |
+| 0.955+ | 358 | 7 | 0.71 | +1.99c |
+
+Below 0.94: **+1.45c/contract, 95% CI [+0.65, +2.27]** on 941 positions. Pooled with the app's own
+130 graded live fills: +1.31c on 971 positions and 64 losses. A floor at 0.94 would discard a
+positive-expectancy trade. The paper book's "ratio 1.01" was 13 losses of noise.
+
+**What survives is the ordering argument, and it is stronger than the floor one ever was.** The
+pool (20-170) exceeds `max_open` in 127 of 135 hours, so order decides which markets get capital.
+`>=0.94` beats `<0.94` by **+1.4c/contract, CI [-0.13, +3.00], P(better) 97%** pooled live. That is
+an argument for spending scarce slots on the dearer band, not for refusing the cheaper one -- and
+`slot_order: dearest` does exactly that while still filling the lower band when the better one is
+empty, which a hard floor cannot. It runs as a paper variant; `VariantVerdict` decides.
+
+Limits to keep attached to these numbers: the advantage CI touches zero; only 39% of the original
+run's fills were >=0.94, so `dearest` may not fill all 8 slots in thin hours; the desktop window is
+14 days in one regime and its own second half was weaker (+0.84c, CI [-0.61, +2.07]).
+
+**The app's live book is graded and it agrees.** 130 filled live rows, matched to exchange fills on
+`order_id` with **zero fill-count disagreements**, graded from settlement payloads: **+$17.05,
+127 wins / 3 losses, +2.62c/contract, $0.00 in fees** (maker fills pay nothing, 130 of 130). All
+three losses were bought below 0.94 -- which is what made the small sample look like a dead band.
+
+> **Why the paper book misled.** 13 losses cannot resolve a trade whose result is dominated by rare
+> losses; five of them fell on one day. The repo already records this failure mode for the KXLOW
+> six-date sample and the first Polymarket pull. The rule it implies: before acting on a band split,
+> count the LOSSES, not the fills.
 
 ## Perps: recorded, never traded
 
