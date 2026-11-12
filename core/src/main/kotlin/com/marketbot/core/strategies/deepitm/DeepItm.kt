@@ -74,6 +74,11 @@ abstract class DeepItmStrategy(
         Param.Int_("max_open", "Max strikes at once", "Strikes held or quoted at the same time.", 8, 1, 20),
         Param.Num("band_lo", "Lowest bid joined", "Bottom of the price band.", 0.90, 0.50, 0.99),
         Param.Num("band_hi", "Highest bid joined", "Top of the price band.", 0.96, 0.50, 0.99),
+        Param.Text("slot_order", "Which bids take the free slots",
+            "cheapest, dearest or middle (of the joined band). The pool exceeds the slot count almost every hour, so this " +
+            "decides which markets get capital. cheapest is the original rule and is right while the band's floor is right: " +
+            "in the paper record bids at or under 0.94 lost at 1.01 times the rate their price implied (no edge), while bids " +
+            "above it lost at 0.40 times. Raise the floor rather than reaching past a bad one.", SlotOrder.CHEAPEST),
         Param.Num("fair_min", "Minimum model probability", "Random-walk P(our side wins) required.", 0.97, 0.80, 0.999, decimals = 3),
         Param.Int_("ttc_min", "Earliest, seconds before close", "Stop joining this close to settlement.", 300, 30, 3600, "s"),
         Param.Int_("ttc_max", "Latest, seconds before close", "Start joining this long before settlement.", 3000, 60, 7200, "s"),
@@ -90,6 +95,7 @@ abstract class DeepItmStrategy(
         fairMin = c.num("fair_min"), ttcMinS = c.int("ttc_min").toDouble(), ttcMaxS = c.int("ttc_max").toDouble(),
         skipCloseHoursEt = c.text("skip_hours_et").split(',', ' ').mapNotNull { it.trim().toIntOrNull() }.toSet(),
         dailyStop = -c.num("daily_stop"), totalKill = -c.num("total_kill"),
+        slotOrder = c.text("slot_order"),
     )
 
     override fun effects(config: StrategyConfig): List<String> {
@@ -103,6 +109,7 @@ abstract class DeepItmStrategy(
 
     override fun validate(config: StrategyConfig): List<String> {
         val r = rules(config); val out = mutableListOf<String>()
+        if (config.text("slot_order") !in SlotOrder.ALL) out += "Slot order must be one of ${SlotOrder.ALL.joinToString()}."
         if (r.bandLo >= r.bandHi) out += "The lowest bid must be below the highest bid."
         if (r.ttcMinS >= r.ttcMaxS) out += "The earliest time must be closer to the close than the latest."
         if (r.fairMin <= r.bandHi) out += "Minimum model probability must exceed the highest bid, or the rule buys with no modelled edge."
@@ -215,7 +222,8 @@ abstract class DeepItmStrategy(
         val held = open.filter { (it.filledContracts ?: 0.0) > 0 && (it.closeTime == null || it.closeTime.isAfter(now)) }.map { it.ticker }.toSet()
         val standing = open.filter { it.resting }.associateBy { it.ticker }
         val cands = DeepItmRule.candidates(markets, spot, sigma, now, r)
-        val chosen = DeepItmRule.select(cands, held + standing.keys, r.maxOpen).associateBy { it.ticker }
+        val chosen = DeepItmRule.select(cands, held + standing.keys, r.maxOpen, r.slotOrder, r.bandLo, r.bandHi)
+            .associateBy { it.ticker }
         rt(mode).funnel = listOf(FunnelStep("Strikes on the ladder near the money's tails", markets.size),
             FunnelStep("Deep enough, priced inside the rule", cands.size), FunnelStep("Chosen (one side per strike, up to ${r.maxOpen})", chosen.size))
         val deadMan = java.time.Duration.ofSeconds(ctx.config.int("dead_man_s").toLong())

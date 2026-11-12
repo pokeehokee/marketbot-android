@@ -36,7 +36,27 @@ data class DeepItmRules(
     val skipCloseHoursEt: Set<Int> = setOf(3, 10, 21, 23),
     val dailyStop: Double = -15.0,
     val totalKill: Double = -60.0,
+    /** Which qualifying bids take the free slots when more qualify than there are slots: see [SlotOrder]. */
+    val slotOrder: String = SlotOrder.CHEAPEST,
 )
+
+/**
+ * How [DeepItmRule.select] spends the free slots. The pool exceeds [DeepItmRules.maxOpen] in almost
+ * every hour (127 of 135 in the paper record, with 20-170 candidates), so this decides which markets
+ * get capital at all, exactly as the ask-band ordering does for the weather longshot.
+ *
+ * It is a setting rather than a fixed rule so a change can be run as a paper variant beside the
+ * main book and judged on the record, instead of being argued from a handful of losses.
+ */
+object SlotOrder {
+    /** Lowest bid first: the original runner's rule, and correct while the band's floor is right. */
+    const val CHEAPEST = "cheapest"
+    /** Highest bid first: the safest contracts, which also pay the least per contract. */
+    const val DEAREST = "dearest"
+    /** Nearest the middle of the joined band, which is where the weather longshot's edge sits. */
+    const val MIDDLE = "middle"
+    val ALL = listOf(CHEAPEST, DEAREST, MIDDLE)
+}
 
 /**
  * The entry rule recorded for the original `DeepItmNoOpens` runner (port of
@@ -76,11 +96,18 @@ object DeepItmRule {
     }
 
     /** Keep tickers already held or quoted, then fill free slots with the LOWEST favoured bids. One side per ticker. */
-    fun select(cands: List<Intent>, openTickers: Set<String>, maxOpen: Int = 8): List<Intent> {
+    fun select(cands: List<Intent>, openTickers: Set<String>, maxOpen: Int = 8,
+               order: String = SlotOrder.CHEAPEST, bandLo: Double = 0.90, bandHi: Double = 0.96): List<Intent> {
         val chosen = mutableListOf<Intent>(); val seen = mutableSetOf<String>()
         for (c in cands) if (c.ticker in openTickers && seen.add(c.ticker)) chosen += c
         var slots = maxOf(0, maxOpen - openTickers.size)
-        for (c in cands.filter { it.ticker !in openTickers }.sortedWith(compareBy({ it.price }, { it.ticker }))) {
+        val mid = (bandLo + bandHi) / 2
+        val rank: (Intent) -> Double = when (order) {
+            SlotOrder.DEAREST -> { c -> -c.price }
+            SlotOrder.MIDDLE -> { c -> kotlin.math.abs(c.price - mid) }
+            else -> { c -> c.price }
+        }
+        for (c in cands.filter { it.ticker !in openTickers }.sortedWith(compareBy({ rank(it) }, { it.ticker }))) {
             if (slots <= 0) break
             if (seen.add(c.ticker)) { chosen += c; slots-- }
         }

@@ -229,4 +229,39 @@ class DeepItmEngineTest {
         assertEquals(com.marketbot.core.store.LogEvent.Level.ERROR,
             stores.events.recent(50).first { it.kind == "settlement" }.level, "an old one is an alarm")
     }
+
+    @Test fun `slot order decides which qualifying bids take the free slots`() {
+        // Four candidates across the 0.90-0.96 band; two free slots.
+        val c = listOf(0.905, 0.93, 0.95, 0.958).map {
+            com.marketbot.core.strategies.deepitm.Intent("T${(it * 1000).toInt()}", "yes", it, 5, 0.99, 2.0, 10.0)
+        }
+        fun pick(order: String) = com.marketbot.core.strategies.deepitm.DeepItmRule
+            .select(c, emptySet(), maxOpen = 2, order = order, bandLo = 0.90, bandHi = 0.96).map { it.price }
+        assertEquals(listOf(0.905, 0.93), pick(com.marketbot.core.strategies.deepitm.SlotOrder.CHEAPEST))
+        assertEquals(listOf(0.958, 0.95), pick(com.marketbot.core.strategies.deepitm.SlotOrder.DEAREST))
+        assertEquals(listOf(0.93, 0.95), pick(com.marketbot.core.strategies.deepitm.SlotOrder.MIDDLE), "nearest 0.93, the band's middle")
+        // The default is unchanged, so an existing book keeps behaving exactly as before.
+        assertEquals(pick(com.marketbot.core.strategies.deepitm.SlotOrder.CHEAPEST),
+            com.marketbot.core.strategies.deepitm.DeepItmRule.select(c, emptySet(), maxOpen = 2).map { it.price })
+        assertEquals(com.marketbot.core.strategies.deepitm.SlotOrder.CHEAPEST,
+            com.marketbot.core.strategies.deepitm.DeepItmRules().slotOrder)
+    }
+
+    @Test fun `raising the band floor is what removes the no-edge bids, whatever the order`() {
+        val c = listOf(0.92, 0.945, 0.95, 0.955).map {
+            com.marketbot.core.strategies.deepitm.Intent("T${(it * 1000).toInt()}", "yes", it, 5, 0.99, 2.0, 10.0)
+        }
+        // With a 0.94 floor the selector never sees the band that lost at the rate its price implied,
+        // so cheapest-first then picks the best measured bucket rather than reaching past it.
+        val kept = c.filter { it.price > 0.94 }
+        assertEquals(listOf(0.945, 0.95), com.marketbot.core.strategies.deepitm.DeepItmRule
+            .select(kept, emptySet(), maxOpen = 2, order = com.marketbot.core.strategies.deepitm.SlotOrder.CHEAPEST,
+                bandLo = 0.94, bandHi = 0.96).map { it.price })
+    }
+
+    @Test fun `an unknown slot order is refused rather than silently ignored`() {
+        val s = KalshiBtcDeepItm()
+        assertTrue(s.validate(StrategyConfig(s.params, mapOf("slot_order" to "sideways"))).any { "Slot order" in it })
+        assertTrue(s.validate(StrategyConfig(s.params, mapOf("slot_order" to "middle"))).isEmpty())
+    }
 }
