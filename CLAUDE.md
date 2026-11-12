@@ -25,6 +25,23 @@ and `pokeehokee/polymarket` on the phone.
   `.github/workflows/api-contract.yml`, and once a day in the app) compares live answers and Kalshi's OpenAPI spec against it.
   A refusal the app recognises only by its words must fail safe when the words change.
 
+## Kalshi API
+
+`.claude/skills/kalshi-api/` holds the API as the official docs define it, reviewed in full on
+2026-11-11 (the OpenAPI spec plus all 287 doc pages and the changelog). Read it before writing or
+changing any Kalshi call. The rule it exists for:
+
+- **A missing settlement is not a missing position.** Kalshi partitions portfolio data into a live
+  and a historical tier. `GET /portfolio/settlements` returns only records still in the live set, so
+  grading a settled position takes up to three calls in order: that endpoint, then
+  `GET /portfolio/positions?settlement_status=settled` (the endpoint defaults to `unsettled`, so a
+  settled position is otherwise invisible), then `GET /historical/positions`. Reading only the first
+  left every filled live row of the BTC ladder ungraded.
+- `determined` is not `finalized`: `result` is set before any payout, with a settlement timer still
+  running, so a readable result does not imply a settlement record exists.
+- Crypto and commodities trade on exchange shard 2 and **API orders do not fund a shard
+  automatically**; `balance_breakdown` is the per-shard view.
+
 ## Claude sync
 
 Settings > Claude sync links the app to a private GitHub repository (`core/sync`). The app writes
@@ -57,9 +74,22 @@ The app takes only the exact ticker and side named, buys at the ask once it is a
 settlement, and writes every bet's price, outcome, `predictionCorrect`, Brier and paper P&L to `bets/results.json`. A bet
 must fit the strategy's paper wallet ($30 default); approving the first one turns the strategy on in paper (screen lock).
 
+A proposal may instead carry a **watch** item for the app's watchlist (`"strategy": "watchlist"`), which alerts
+when a market's mid moves by `moveCents`:
+
+```json
+{"proposals": [{"id": "watch-2026-11-09-gas", "strategy": "watchlist", "reason": "re-check after Thursday's AAA print",
+  "watch": {"venue": "kalshi", "ticker": "KXAAAGASM-26NOV30-3.70", "moveCents": 4, "label": "gas above 3.70"}}]}
+```
+
+It reads public prices and trades nothing, so it needs only a tap; the reference price is whatever the app reads
+first, never the file's. `MAX_WATCH` caps the list at 50.
+
 To find and research such bets, use the `kalshi-prediction` skill (`.claude/skills/kalshi-prediction/`): `scan.py` lists
-live Kalshi markets that pass the liquidity and runway filters, and the skill writes each target up in a fixed format that
-ends in a research-bet proposal. Bets go into `proposals/held-bets.json` until the user says to send them.
+live Kalshi markets that pass the liquidity, probability-band and runway filters (with breakeven prices and volume
+anomalies), `estimates.py` records every verdict and grades it against the market's own price at settlement, and the
+skill writes each target up in a fixed format ending in a bet or watch proposal. Both go into
+`proposals/held-bets.json` until the user says to send them.
 
 Snapshots and exports never carry keys.
 

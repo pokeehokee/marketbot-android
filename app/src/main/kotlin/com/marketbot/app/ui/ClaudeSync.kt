@@ -63,7 +63,7 @@ fun ClaudeSyncSection(vm: MainViewModel) {
         list.forEach { p ->
             val pr = p.proposal
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(names[pr.strategy] ?: pr.strategy, style = MaterialTheme.typography.bodyMedium)
+                Text(if (pr.watch != null) "Watchlist" else names[pr.strategy] ?: pr.strategy, style = MaterialTheme.typography.bodyMedium)
                 // Before and after, by the settings screen's own labels.
                 val strat = vm.strategies.firstOrNull { it.id == pr.strategy }
                 val now = loaded(tick, pr.id) { strat?.let { vm.currentSettings(it) } }
@@ -74,6 +74,11 @@ fun ClaudeSyncSection(vm: MainViewModel) {
                         Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                         Text((was ?: "?") + "  →  " + v, style = Figures, color = if (was == v) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
                     }
+                }
+                pr.watch?.let { w ->
+                    Text("Watch: ${com.marketbot.core.util.Tickers.describe(w.ticker)}", style = MaterialTheme.typography.bodySmall)
+                    Text("${w.venue} ${w.ticker} · alert on a ${w.moveCents}c move", style = Figures)
+                    if (w.label.isNotBlank()) Text(w.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 pr.bet?.let { b ->
                     Text("Bet: ${b.side.uppercase()} on ${com.marketbot.core.util.Tickers.describe(b.ticker)}", style = MaterialTheme.typography.bodySmall)

@@ -3,6 +3,7 @@ package com.marketbot.core.strategies.deepitm
 import com.marketbot.core.kalshi.FillState
 import com.marketbot.core.kalshi.KalshiClient
 import com.marketbot.core.kalshi.KalshiMarket
+import com.marketbot.core.kalshi.positionPnl
 import com.marketbot.core.kalshi.priceRanges
 import com.marketbot.core.kalshi.settlementPnl
 import com.marketbot.core.kalshi.tickSize
@@ -62,6 +63,13 @@ interface LadderVenue {
      * but that never settled: zero here, from the venue, is the only thing that grades it unfilled.
      */
     suspend fun confirmedFills(q: QuoteRow): Sourced<Double>? = null
+
+    /**
+     * Why [livePnl] found nothing: which sources were asked and what each said. Shown to the
+     * operator and stored on the row, so a position that cannot be graded says so instead of
+     * sitting silent.
+     */
+    open suspend fun pnlMissingReason(q: QuoteRow, result: String): String = "no settlement record at the venue"
     suspend fun preflight(): List<Pair<String, Boolean>>
 }
 
@@ -142,13 +150,47 @@ class KalshiBtcLadder(private val k: KalshiClient, private val series: String = 
         return FillRead(n, "Kalshi API ${f.origin}")
     }
 
+    /**
+     * The exchange's own realised figure, from whichever of its three stores still holds this
+     * market. Kalshi partitions portfolio data into a live and a historical tier, and
+     * `/portfolio/settlements` returns **only records still in the live set** (docs: "Historical
+     * Data"), so a settled position that has been archived is absent there and present elsewhere.
+     * An event archives after its whole-event handoff, which for an hourly KXBTCD event is quick:
+     * reading settlements alone left every filled live row of this strategy ungraded.
+     */
     override suspend fun livePnl(q: QuoteRow, result: String): Sourced<Double>? {
         if (java.time.Duration.between(settlementsAt, Instant.now()).seconds > 60) {
-            settlements = k.settlementsByTicker(maxPages = 5); settlementsAt = Instant.now()
+            settlements = runCatching { k.settlementsByTicker(maxPages = 5) }.getOrElse { settlements }
+            settlementsAt = Instant.now()
         }
         settlements[q.ticker]?.let { return settlementPnl(it) }
-        // The paged listing is shared with every weather settlement; ask for this market by name.
-        return k.settlementFor(q.ticker)?.let { settlementPnl(it) }
+        // 1. the settlement record, asked for by name so it cannot fall off the end of a page
+        runCatching { k.settlementFor(q.ticker) }.getOrNull()?.let { return settlementPnl(it) }
+        // 2. settled but not yet archived: /portfolio/positions defaults to unsettled at the exchange
+        runCatching { k.positions(settlementStatus = "settled", ticker = q.ticker) }.getOrNull()
+            ?.firstOrNull { it.str("ticker") == q.ticker }
+            ?.let { positionPnl(it, "/portfolio/positions?settlement_status=settled") }?.let { return it }
+        // 3. archived out of the live set altogether
+        return runCatching { k.historicalPositions(ticker = q.ticker) }.getOrNull()
+            ?.firstOrNull { it.str("ticker") == q.ticker }
+            ?.let { positionPnl(it, "/historical/positions") }
+    }
+
+    override suspend fun pnlMissingReason(q: QuoteRow, result: String): String {
+        suspend fun probe(name: String, call: suspend () -> Int?): String {
+            val r = runCatching { call() }
+            return name + ": " + (r.exceptionOrNull()?.let { "failed (${it.message})" }
+                ?: r.getOrNull()?.let { "$it row(s)" } ?: "not asked")
+        }
+        val parts = listOf(
+            probe("settlements?ticker") { if (k.settlementFor(q.ticker) != null) 1 else 0 },
+            probe("positions?settlement_status=settled") { k.positions(settlementStatus = "settled", ticker = q.ticker).size },
+            probe("historical/positions") { k.historicalPositions(ticker = q.ticker).size },
+            probe("fills?order_id") { q.orderId?.let { id -> k.fills(ticker = q.ticker, maxPages = 5, orderId = id).size } },
+        )
+        val cutoff = runCatching { k.historicalCutoff() }.getOrNull()
+            ?.get("market_positions_last_updated_ts")?.toString()?.trim('"')
+        return parts.joinToString("; ") + (cutoff?.let { "; positions backfill horizon $it" } ?: "")
     }
 
     override suspend fun confirmedFills(q: QuoteRow): Sourced<Double>? {

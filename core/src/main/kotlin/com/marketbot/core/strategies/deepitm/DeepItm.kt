@@ -125,7 +125,10 @@ abstract class DeepItmStrategy(
 
     /** The generic criterion: losses against what the bid prices implied, over 60 days. */
     override suspend fun healthChecks(ctx: StrategyContext, mode: Mode) =
-        listOf(com.marketbot.core.strategy.KillCriteria.lossRatio(ctx.stores.ledger.all(id, mode), ctx.clock.now()))
+        ctx.stores.ledger.all(id, mode).let { rows ->
+            listOf(com.marketbot.core.strategy.KillCriteria.lossRatio(rows, ctx.clock.now())) +
+                (if (mode == Mode.LIVE) listOf(com.marketbot.core.strategy.KillCriteria.ungradedPositions(rows, ctx.clock.now())) else emptyList())
+        }
     private fun rt(m: Mode) = runtimes.getOrPut(m) { Runtime() }
     private fun bookMode(ctx: StrategyContext) = if (ctx.live) Mode.LIVE else Mode.PAPER
     private fun k(ctx: StrategyContext, s: String) = "$id.${bookMode(ctx).name.lowercase()}.$s"
@@ -304,11 +307,15 @@ abstract class DeepItmStrategy(
             }
             val pnl = runCatching { venue.livePnl(q, res.value) }.getOrNull()
             if (pnl == null) {
-                // No settlement. If the venue's fill record says the order never traded, the order
-                // read was wrong and there is nothing to settle; otherwise wait for the exchange figure.
+                // No figure from any of the venue's stores. If its fill record says the order never
+                // traded, the order read was wrong and there is nothing to settle; otherwise the
+                // position is real and ungraded, which is reported rather than waited out in silence.
                 if (java.time.Duration.between(q.closeTime, now) < SETTLE_GRACE) continue
-                val conf = runCatching { venue.confirmedFills(q) }.getOrNull() ?: continue
-                if (conf.value > 0) continue
+                val conf = runCatching { venue.confirmedFills(q) }.getOrNull()
+                if (conf == null || conf.value > 0) {
+                    noteUngraded(ctx, venue, q, res.value, now, conf?.value)
+                    continue
+                }
                 ctx.stores.ledger.update(q.copy(filledContracts = 0.0, fillSource = conf.origin, fillCheckedAt = now, resolvedAt = now,
                     result = res.value, pnl = 0.0, pnlSource = conf.source, pnlOrigin = "never filled: no fills at ${conf.origin}, no settlement", hypothetical = true))
                 ctx.warn("reconcile", "${com.marketbot.core.util.Tickers.describe(q.ticker)}: the order read said ${"%.0f".format(filled)} filled, " +
@@ -319,6 +326,28 @@ abstract class DeepItmStrategy(
                 pnlOrigin = pnl.origin, hypothetical = false))
             ctx.trade("settled", "${com.marketbot.core.util.Tickers.describe(q.ticker)} settled ${res.value.uppercase()} (held ${side.uppercase()}): ${if (pnl.value >= 0) "made" else "lost"} ${money(kotlin.math.abs(pnl.value))} (${pnl.source.label})", mapOf("pnl" to pnl))
         }
+    }
+
+    /**
+     * A filled live position the venue will not put a figure on. The reason (which store was asked
+     * and what it said) goes on the row and into the log, and once [SETTLE_ALARM] has passed it is
+     * raised to the operator: a position whose result cannot be read is the one thing this strategy
+     * must never hide. Re-probed at most once an hour per row.
+     */
+    private suspend fun noteUngraded(ctx: StrategyContext, venue: LadderVenue, q: QuoteRow, result: String, now: Instant, filled: Double?) {
+        val last = (q.extra["grade_checked_at"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        if (last != null && java.time.Duration.between(last, now) < java.time.Duration.ofHours(1)) return
+        val why = runCatching { venue.pnlMissingReason(q, result) }.getOrElse { "could not be probed: ${it.message}" }
+        val age = java.time.Duration.between(q.closeTime, now)
+        ctx.stores.ledger.update(q.copy(fillCheckedAt = now, extra = kotlinx.serialization.json.JsonObject(q.extra +
+            ("grade_checked_at" to kotlinx.serialization.json.JsonPrimitive(now.toString())) +
+            ("grade_blocked" to kotlinx.serialization.json.JsonPrimitive(why)))))
+        val line = "${com.marketbot.core.util.Tickers.describe(q.ticker)} settled ${result.uppercase()} " +
+            "${age.toHours()}h ago and the exchange gives no realised figure for it" +
+            (filled?.let { ", though it reports ${"%.0f".format(it)} filled" } ?: "") + ". Asked: $why"
+        if (age >= SETTLE_ALARM) ctx.error("settlement", "Position cannot be graded: $line")
+        else ctx.warn("settlement", "Waiting on a realised figure: $line")
     }
 
     /** Quotes left standing by a crash must not keep collecting paper fills: close them at the last heartbeat. */
@@ -412,6 +441,9 @@ abstract class DeepItmStrategy(
 
 /** How long after close a filled live row waits for its settlement before the venue's fill record is checked. */
 internal val SETTLE_GRACE: java.time.Duration = java.time.Duration.ofHours(2)
+
+/** Past this much time after close, a filled live position with no realised figure is an operator alarm, not a wait. */
+internal val SETTLE_ALARM: java.time.Duration = java.time.Duration.ofHours(12)
 
 class KalshiBtcDeepItm(id: String = ID, baseId: String? = null) : DeepItmStrategy(
     id = id,

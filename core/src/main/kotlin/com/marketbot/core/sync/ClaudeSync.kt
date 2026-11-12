@@ -39,6 +39,8 @@ data class Proposal(
     val reason: String = "",
     /** A one-off research bet, for the Research bets strategy only. */
     val bet: com.marketbot.core.strategies.bets.BetSpec? = null,
+    /** A market to add to the watchlist (strategy "watchlist"); alerts when its mid moves moveCents. */
+    val watch: com.marketbot.core.strategy.WatchItem? = null,
 )
 
 @Serializable
@@ -70,11 +72,28 @@ object ProposalPolicy {
     sealed interface Verdict {
         /** [needsStrongConfirm]: the change turns a strategy on or off, so it takes a fingerprint, not just a tap. */
         data class Ok(val changes: Map<String, String>, val mode: Mode?, val needsStrongConfirm: Boolean,
-            val bet: com.marketbot.core.strategies.bets.BetSpec? = null) : Verdict
+            val bet: com.marketbot.core.strategies.bets.BetSpec? = null,
+            val watch: com.marketbot.core.strategy.WatchItem? = null) : Verdict
         data class Refused(val why: String) : Verdict
     }
 
+    const val WATCHLIST = "watchlist"
+    private val WATCH_TICKER = Regex("^[A-Za-z0-9][A-Za-z0-9._\\-]{2,119}$")
+
+    /** A watchlist addition: only reads public prices, so a tap approves it. */
+    fun checkWatch(p: Proposal, w: com.marketbot.core.strategy.WatchItem): Verdict = when {
+        p.strategy != WATCHLIST -> Verdict.Refused("a watch item goes to \"$WATCHLIST\", not ${p.strategy}")
+        p.set.isNotEmpty() || p.mode != null || p.bet != null -> Verdict.Refused("a watch proposal cannot also change settings, modes or bets")
+        w.venue !in setOf("kalshi", "polymarket") -> Verdict.Refused("venue must be kalshi or polymarket")
+        !WATCH_TICKER.matches(w.ticker) -> Verdict.Refused("\"${w.ticker}\" is not a market ticker")
+        w.moveCents !in 1..50 -> Verdict.Refused("the alert move must be 1-50 cents")
+        w.label.length > 120 -> Verdict.Refused("the label is too long")
+        else -> Verdict.Ok(emptyMap(), null, needsStrongConfirm = false, watch = w.copy(ref = null))
+    }
+
     fun check(p: Proposal, s: Strategy?, current: StrategyConfig?, currentMode: Mode): Verdict {
+        p.watch?.let { return checkWatch(p, it) }
+        if (p.strategy == WATCHLIST) return Verdict.Refused("a watchlist proposal needs a watch item")
         if (s == null || current == null) return Verdict.Refused("no strategy ${p.strategy}")
         if (currentMode == Mode.LIVE) return Verdict.Refused("${s.name} is live; proposals may only change paper strategies")
         p.bet?.let { b ->

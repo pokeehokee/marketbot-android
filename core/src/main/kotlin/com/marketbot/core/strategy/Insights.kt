@@ -50,6 +50,24 @@ object KillCriteria {
      * Needs [minLosses] real losses before it can say so, because a handful of
      * losses is noise in either direction.
      */
+    /**
+     * Filled live positions whose market has closed but which carry no realised figure. A strategy
+     * whose results cannot be read has no record at all, so this is reported on the strategy screen
+     * rather than left to the log. [alarmHours] past close it fails.
+     */
+    fun ungradedPositions(rows: List<QuoteRow>, now: Instant, alarmHours: Long = 12): Check {
+        val stuck = rows.filter {
+            it.mode == Mode.LIVE && it.resolvedAt == null && (it.filledContracts ?: 0.0) > 0 &&
+                it.closeTime != null && !it.closeTime.isAfter(now)
+        }
+        if (stuck.isEmpty()) return Check("Every filled position graded", Check.Verdict.PASS, "nothing is waiting on a realised figure")
+        val oldest = stuck.minOf { Duration.between(it.closeTime, now).toHours() }
+        val why = stuck.mapNotNull { (it.extra["grade_blocked"] as? kotlinx.serialization.json.JsonPrimitive)?.content }.firstOrNull()
+        val detail = "${stuck.size} filled position(s) closed with no realised figure, oldest ${oldest}h ago" +
+            (why?.let { "; $it" } ?: "")
+        return Check("Every filled position graded", if (oldest >= alarmHours) Check.Verdict.FAIL else Check.Verdict.INSUFFICIENT, detail)
+    }
+
     fun lossRatio(rows: List<QuoteRow>, now: Instant, days: Long = 60, minLosses: Int = 30): Check {
         val settled = rows.filter { Outcomes.binary(it) && it.resolvedAt != null && it.hypothetical == false &&
             !it.resolvedAt.isBefore(now.minus(Duration.ofDays(days))) && Outcomes.lost(it) != null }

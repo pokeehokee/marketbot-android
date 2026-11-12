@@ -168,4 +168,65 @@ class DeepItmEngineTest {
         assertEquals(0.30, g.pnl!!, 1e-9)
         assertEquals(false, g.hypothetical)
     }
+
+    private fun finalized(t: String) { fake.marketByTicker[t] = """{"ticker":"$t","status":"finalized","result":"yes"}""" }
+
+    @Test fun `a settled position is graded from positions when the settlement record has been archived`() = runTest {
+        val ix = warmIndex()
+        val q = stuckLiveRow("KXBTCD-26OCT2716-T74000", "old-1")
+        clock.advanceSeconds(3 * 3600)
+        finalized(q.ticker)
+        fake.fills = """{"fills":[{"order_id":"old-1","ticker":"${q.ticker}","count_fp":"5.00"}],"cursor":""}"""
+        // /portfolio/settlements has archived it, but it is settled-and-still-live in positions.
+        fake.positionsByStatus["settled"] = """{"market_positions":[{"ticker":"${q.ticker}",
+            "realized_pnl_dollars":"0.3000","fees_paid_dollars":"0.0200","position_fp":"0.00"}],"cursor":""}"""
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        val g = stores.ledger.byId(q.id)!!
+        assertEquals(0.30, g.pnl!!, 1e-9, "the exchange's own realised figure, with no fee deducted twice")
+        assertEquals(false, g.hypothetical)
+        assertEquals(Source.KALSHI_API, g.pnlSource)
+        assertTrue(g.pnlOrigin!!.contains("settlement_status=settled"), g.pnlOrigin!!)
+    }
+
+    @Test fun `a position archived out of the live set is graded from historical positions`() = runTest {
+        val ix = warmIndex()
+        val q = stuckLiveRow("KXBTCD-26OCT2716-T74000", "old-1")
+        clock.advanceSeconds(3 * 3600)
+        finalized(q.ticker)
+        fake.fills = """{"fills":[{"order_id":"old-1","ticker":"${q.ticker}","count_fp":"5.00"}],"cursor":""}"""
+        fake.historicalPositions = """{"market_positions":[{"ticker":"${q.ticker}","realized_pnl_dollars":"-4.7000"}],"cursor":""}"""
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        val g = stores.ledger.byId(q.id)!!
+        assertEquals(-4.70, g.pnl!!, 1e-9)
+        assertTrue(g.pnlOrigin!!.contains("/historical/positions"), g.pnlOrigin!!)
+    }
+
+    @Test fun `a filled position no store can price is reported, alarmed and surfaced, never left silent`() = runTest {
+        val ix = warmIndex()
+        val q = stuckLiveRow("KXBTCD-26OCT2716-T74000", "old-1")
+        clock.advanceSeconds(3 * 3600)                     // past the grace, inside the alarm window
+        finalized(q.ticker)
+        fake.fills = """{"fills":[{"order_id":"old-1","ticker":"${q.ticker}","count_fp":"5.00"}],"cursor":""}"""
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        val g = stores.ledger.byId(q.id)!!
+        assertEquals(null, g.resolvedAt, "a real position is never written off as never-filled")
+        val why = (g.extra["grade_blocked"] as kotlinx.serialization.json.JsonPrimitive).content
+        assertTrue("settlements?ticker" in why && "historical/positions" in why && "fills?order_id: 1 row" in why, why)
+        val warned = stores.events.recent(50).filter { it.kind == "settlement" }
+        assertEquals(1, warned.size, "one line per row per hour")
+        assertEquals(com.marketbot.core.store.LogEvent.Level.WARN, warned.single().level)
+        // The strategy screen says so too, and it fails once it is old enough.
+        val mid = com.marketbot.core.strategy.KillCriteria.ungradedPositions(stores.ledger.all(s.id, Mode.LIVE), clock.now())
+        assertEquals(com.marketbot.core.strategy.Check.Verdict.INSUFFICIENT, mid.verdict)
+        assertTrue(mid.detail.contains("1 filled position"), mid.detail)
+        clock.advanceSeconds(12 * 3600)
+        val late = com.marketbot.core.strategy.KillCriteria.ungradedPositions(stores.ledger.all(s.id, Mode.LIVE), clock.now())
+        assertEquals(com.marketbot.core.strategy.Check.Verdict.FAIL, late.verdict)
+        val s2 = KalshiBtcDeepItm()          // a fresh instance forces the grade timer
+        s2.runOnce(StrategyContext(s2.id, Mode.LIVE, StrategyConfig(s2.params), stores, clock, fake.client(true),
+            PolymarketClient(null), ix, liveArmed = true))
+        // recent() is newest first.
+        assertEquals(com.marketbot.core.store.LogEvent.Level.ERROR,
+            stores.events.recent(50).first { it.kind == "settlement" }.level, "an old one is an alarm")
+    }
 }

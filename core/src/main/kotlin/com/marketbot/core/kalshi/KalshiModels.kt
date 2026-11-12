@@ -123,6 +123,20 @@ data class FillState(val filled: Boolean?, val contracts: Double?, val origin: S
 }
 
 /**
+ * Realised P&L of a settled market position, as the exchange reports it. `realized_pnl_dollars` is
+ * the exchange's own locked-in figure, so it is taken as given: no fee is subtracted on top of it,
+ * because `fees_paid_dollars` is reported separately and double-counting it would understate every
+ * settled position. Used only when no settlement record is readable (the live set has archived it);
+ * [settlementPnl] is preferred because it states the fee explicitly.
+ */
+fun positionPnl(p: JsonObject, from: String): Sourced<Double>? {
+    val v = p.num("realized_pnl_dollars") ?: return null
+    val t = p.str("ticker") ?: "?"
+    return Sourced(v, Source.KALSHI_API, "GET $from[$t]#realized_pnl_dollars (fees_paid_dollars " +
+        "${p.num("fees_paid_dollars")?.let { "%.4f".format(it) } ?: "absent"} reported separately, not deducted again)")
+}
+
+/**
  * Realised P&L of a settlement exactly as the exchange computes it:
  * revenue (cents) - yes/no total cost - fee_cost + 1.00 x closed pairs.
  * Port of weatherbot `_pnl_from_payload`, including the closed-pair term it
