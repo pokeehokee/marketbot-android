@@ -22,7 +22,10 @@ class MarketbotApp : Application() {
     lateinit var engine: Engine
     /** The Claude sync (a private GitHub repository as a mailbox); idle until a repository and token are saved. */
     val research by lazy { com.marketbot.app.data.ResearchFiles(this) }
-    val sync by lazy { com.marketbot.core.sync.SyncService(engine, books = { research.latest() }, trades = { research.latestTrades() }) }
+    val sync by lazy {
+        com.marketbot.core.sync.SyncService(engine, books = { research.latest() }, trades = { research.latestTrades() },
+            perps = { research.latestPerps() }, perpFunding = { research.latestPerpFunding() })
+    }
     /** Background work outside the engine. A failure here is logged, never allowed to crash the process. */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
         android.util.Log.e("marketbot", "background task failed", e)
@@ -38,6 +41,8 @@ class MarketbotApp : Application() {
             tradeNotifier = { title, body -> post(this, "fills", title, body) }, kindedNotifier = { kind, title, body -> post(this, kind, title, body) })
         engine.bookSink = { rows -> research.append(rows) }
         engine.tradeSink = { rows -> research.appendTrades(rows) }
+        engine.perpSampleSink = { rows -> research.appendPerpSamples(rows) }
+        engine.perpFundingSink = { rows -> research.appendPerpFunding(rows) }
         createChannels(this)
         appScope.launch {
             engine.setCredentials(vault.credentials())

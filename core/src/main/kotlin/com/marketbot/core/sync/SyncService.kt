@@ -24,6 +24,9 @@ class SyncService(
     private val books: (() -> String?)? = null,
     /** The recorded public trades on the quoted markets (last 3 days, CSV), sent as exports/trades-latest.csv. */
     private val trades: (() -> String?)? = null,
+    /** Perps research: the point-in-time samples and the finalized funding series. */
+    private val perps: (() -> String?)? = null,
+    private val perpFunding: (() -> String?)? = null,
     private val mailbox: (repo: String, token: String) -> GitHubMailbox = { r, t -> GitHubMailbox(r, t) },
 ) {
 
@@ -61,6 +64,8 @@ class SyncService(
             box.write(GitHubMailbox.ORDERS, SyncPayload.ordersCsv(rows.asSequence()), "app: orders $now")
             books?.invoke()?.let { box.write(GitHubMailbox.BOOKS, it, "app: cross-venue books $now") }
             trades?.invoke()?.let { box.write(GitHubMailbox.TRADES, it, "app: trade tape $now") }
+            perps?.invoke()?.let { box.write(GitHubMailbox.PERPS, it, "app: perps samples $now") }
+            perpFunding?.invoke()?.let { box.write(GitHubMailbox.PERP_FUNDING, it, "app: perps funding history $now") }
             com.marketbot.core.strategies.bets.ResearchBets.report(engine.stores).takeIf { it.isNotEmpty() }?.let {
                 box.write(GitHubMailbox.BET_RESULTS, com.marketbot.core.strategies.bets.ResearchBets.resultsJson(it), "app: ${it.size} research bet(s) $now")
             }
