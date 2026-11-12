@@ -56,6 +56,16 @@ fun ClaudeSyncSection(vm: MainViewModel) {
             }
             androidx.compose.material3.Switch(vm.researchBooksOn(), { vm.setResearchBooks(it) })
         }
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Record perps funding", style = MaterialTheme.typography.bodyMedium)
+                Text("Every 15 minutes, funding, premium and top of book for Kalshi's busiest perpetual futures " +
+                    "(public data, no keys, no orders). The app never trades perps: this collects the series needed to " +
+                    "judge whether funding carry is real, because the exchange only publishes about 60 periods.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            androidx.compose.material3.Switch(vm.researchPerpsOn(), { vm.setResearchPerps(it) })
+        }
         status?.let { Text(it.detail + " (" + it.at.take(16).replace('T', ' ') + " UTC)", style = MaterialTheme.typography.labelSmall,
             color = if (it.ok) MaterialTheme.colorScheme.onSurfaceVariant else LocalDesk.current.loss) }
         val list = pending.orEmpty()

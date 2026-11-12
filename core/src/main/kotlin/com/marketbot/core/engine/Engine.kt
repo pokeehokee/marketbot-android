@@ -595,6 +595,52 @@ class Engine(
         return rows.size
     }
 
+    /** Where the perps research rows go; null records nothing. */
+    var perpSampleSink: (suspend (List<com.marketbot.core.research.PerpsFunding.Sample>) -> Unit)? = null
+    var perpFundingSink: (suspend (List<com.marketbot.core.research.PerpsFunding.Funding>) -> Unit)? = null
+    private var lastPerpsAt: Instant = Instant.EPOCH
+    /** Read-only: perps market data needs no key, and this client holds no signer, so it cannot trade. */
+    private val margin by lazy { com.marketbot.core.margin.MarginClient() }
+
+    /**
+     * Every [every], when switched on in Settings: funding, premium and top of book for the busiest
+     * perps. Public data, no keys, no orders, and nothing in the app trades perps — this records the
+     * series the carry question needs, because the exchange publishes only ~60 funding periods and
+     * that is one regime. Finalized periods are appended past a per-ticker watermark, so repeated
+     * passes cannot duplicate them.
+     */
+    suspend fun recordPerpsIfDue(every: java.time.Duration = java.time.Duration.ofMinutes(15)): Int {
+        val sink = perpSampleSink ?: return 0
+        val now = clock.now()
+        if (java.time.Duration.between(lastPerpsAt, now) < every) return 0
+        if (stores.state.get(PERPS_SETTING) != "true") return 0      // off unless asked for
+        lastPerpsAt = now
+        val seen = perpWatermarks()
+        val pass = runCatching { com.marketbot.core.research.PerpsFunding.read(margin, now, seen) }
+            .onFailure { stores.events.log(LogEvent(now, null, LogEvent.Level.WARN, "perps", "Perps recorder failed: ${it.message}")) }
+            .getOrNull() ?: return 0
+        if (pass.samples.isNotEmpty()) sink(pass.samples)
+        if (pass.funding.isNotEmpty()) {
+            perpFundingSink?.invoke(pass.funding)
+            savePerpWatermarks(seen + com.marketbot.core.research.PerpsFunding.watermarks(pass.funding))
+        }
+        return pass.samples.size
+    }
+
+    private val perpMapSer = kotlinx.serialization.builtins.MapSerializer(
+        kotlinx.serialization.serializer<String>(), kotlinx.serialization.serializer<String>())
+
+    private suspend fun perpWatermarks(): Map<String, Instant> =
+        stores.state.get(PERPS_WATERMARKS)?.let { raw ->
+            runCatching {
+                com.marketbot.core.util.JSON.decodeFromString(perpMapSer, raw).mapValues { Instant.parse(it.value) }
+            }.getOrNull()
+        } ?: emptyMap()
+
+    private suspend fun savePerpWatermarks(m: Map<String, Instant>) =
+        stores.state.put(PERPS_WATERMARKS,
+            com.marketbot.core.util.JSON.encodeToString(perpMapSer, m.mapValues { it.value.toString() }))
+
     private var lastWatchAt: Instant = Instant.EPOCH
 
     /** The YES mid of a market on either venue, or null when its book is empty or unreadable. */
@@ -1023,6 +1069,8 @@ class Engine(
 
     companion object {
         const val BOOKS_SETTING = "research.cross_venue_books"
+        const val PERPS_SETTING = "research.perps_funding"
+        const val PERPS_WATERMARKS = "research.perps_watermarks"
         private val CFG = MapSerializer(String.serializer(), String.serializer())
         const val FILL_LIMIT_KEY = "engine.fill_limit"
         const val CONTRACT_KEY = "engine.api_contract_last"

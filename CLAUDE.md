@@ -42,6 +42,28 @@ changing any Kalshi call. The rule it exists for:
 - Crypto and commodities trade on exchange shard 2 and **API orders do not fund a shard
   automatically**; `balance_breakdown` is the per-shard view.
 
+## Perps: recorded, never traded
+
+Kalshi's perps (the "Invest" product) are leveraged perpetual futures on the separate `/margin`
+exchange. **The app does not trade them**, and `core/margin/MarginClient.kt` holds no signer and
+makes no write calls, which `PerpsFundingTest` asserts. Two reasons, both measured on 2026-11-12
+(`docs/perps-research.md`):
+
+- A leveraged position can be liquidated for more than it cost, which breaks the invariant the risk
+  controls and the daily brake rest on: collateral locked is the most a position can lose.
+- The obvious strategy, funding carry, is not measurable from what the exchange publishes. Funding
+  supplied 0.2-22% of an unhedged short's return and the price move supplied the rest; the carry is
+  0.8-2% of the 8-hour price standard deviation; the two halves of the window disagree (WTI
+  -672%/yr then +1361%/yr). Gold and silver read +180-400%/yr only because both fell through the one
+  20-day window on record. A hedged carry is impossible inside Kalshi: no spot, and no perp and
+  dated future on the same underlying.
+
+`core/research/PerpsFunding.kt` records the inputs forward instead (off by default, switched on in
+Settings > Claude sync): funding, premium and top of book every 15 minutes, plus every finalized
+8-hour funding period past a per-ticker watermark. Out through the sync as
+`exports/perps-latest.csv` and `exports/perps-funding.csv`; the funding file is kept for 400 days
+because the long series is the whole point.
+
 ## Claude sync
 
 Settings > Claude sync links the app to a private GitHub repository (`core/sync`). The app writes

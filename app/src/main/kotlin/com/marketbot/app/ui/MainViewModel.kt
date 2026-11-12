@@ -118,6 +118,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether the cross-venue research recorder runs (default on). */
     fun researchBooksOn(): Boolean = modes.value.firstOrNull { it.key == com.marketbot.core.engine.Engine.BOOKS_SETTING }?.value != "false"
     fun setResearchBooks(on: Boolean) = viewModelScope.launch(Dispatchers.IO) { engine.stores.state.put(com.marketbot.core.engine.Engine.BOOKS_SETTING, on.toString()) }
+    /** Perps recording is off until asked for: it is research, and the app never trades perps. */
+    fun researchPerpsOn(): Boolean = modes.value.firstOrNull { it.key == com.marketbot.core.engine.Engine.PERPS_SETTING }?.value == "true"
+    fun setResearchPerps(on: Boolean) = viewModelScope.launch(Dispatchers.IO) { engine.stores.state.put(com.marketbot.core.engine.Engine.PERPS_SETTING, on.toString()) }
 
     suspend fun strategyConfig(s: Strategy) = withContext(Dispatchers.IO) { engine.config(s) }
 

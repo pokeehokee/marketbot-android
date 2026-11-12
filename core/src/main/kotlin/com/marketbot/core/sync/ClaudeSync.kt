@@ -190,6 +190,8 @@ class GitHubMailbox(
         const val PENDING = "proposals/pending.json"
         const val RESULTS = "proposals/results.json"
         const val BET_RESULTS = "bets/results.json"
+        const val PERPS = "exports/perps-latest.csv"
+        const val PERP_FUNDING = "exports/perps-funding.csv"
     }
 }
 
