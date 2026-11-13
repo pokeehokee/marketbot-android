@@ -102,6 +102,100 @@ three losses were bought below 0.94 -- which is what made the small sample look 
 > six-date sample and the first Polymarket pull. The rule it implies: before acting on a band split,
 > count the LOSSES, not the fills.
 
+## Commodity range longshot: the edge is at 60 minutes, and the book is under-deployed
+
+Measured 2026-11-13 against settled history, because the paper book could not answer the question:
+101 settled fills looked like ratio 0.81 and +2.14c/contract, but they spanned only **7 close-dates**
+and every band split inside them rested on 0-3 losses. A commodity range settles off one price move,
+so a day's strikes win or lose together and 101 fills are not 101 observations.
+
+`research/commodity/commodity_sample.py` prices **every settled market** of the traded series at two leads
+with zero lookahead -- the candle used is the last whose period ENDS at or before `close - lead`, and
+the request window itself ends there -- and `score_commodity.py` scores selling the cheap side at the
+resting price, spread gate <= 5c, CIs bootstrapped **clustered by close-date**. Resting fills pay no
+fee on these series; both scripts are committed under `research/commodity/` with the two
+pricing rules they depend on. 8 of 12 series complete (Brent, WTI, nat gas, gold -- daily and weekly); silver
+and copper still sampling.
+
+| lead | markets | close-dates | losses / implied | ratio | EV/contract | 95% CI |
+| --- | --- | --- | --- | --- | --- | --- |
+| **60m (the shipped 40-90 min window)** | 2,002 | 47 | **22 / 102.6** | **0.21** | **+4.03c** | **[+3.57, +4.43]** |
+| 720m (variant B's 660-780 min) | 1,835 | 46 | 123 / 149.1 | 0.82 | +1.42c | [-0.86, +3.64] |
+
+22 realised losses where 102.6 were implied is the mispricing, and it holds across halves (0.21 then
+0.22) with **46 of 47 days positive** and a worst day of -3.6c/contract.
+
+**The edge decays with lead, and variant B sits on the wrong side of it.** Out to 12 hours the ratio
+runs to 0.82, the CI contains zero, the two halves disagree (0.67 then 0.92), 14 of 46 days are
+negative with a worst day of -53.2c, and **two series read ABOVE fair** -- KXWTI 1.12 and KXGOLDD 1.10,
+i.e. a seller loses. That is the sign flip weatherbot's CLAUDE.md records for the five liquid daily
+financial ranges at a 24h lead (ratios 1.2-3.1, "-5 to -15c per contract to a seller") against the
+favourable reading in the last hours. Variant B's 11-13h window is in the decay region. It is paper
+and disarmed so it costs nothing, but its record will take hundreds of settlements to distinguish
+from the main book and the question it was asked is already answered. **This strategy is structurally
+the BTC deep-ITM trade, not the weather longshot: residual premium on an almost-decided contract.
+The two respond OPPOSITELY to a lead change -- weather's bias GROWS with lead.**
+
+**The edge lives where the volume is.** At 60m, all 22 losses fall in the markets with 1,000+
+contracts of total volume, where the ratio is 0.29 and EV +4.07c [+3.44, +4.64]. The quiet buckets
+have zero losses because they were never contested -- certainty with a few cents of premium that
+nobody has reason to lift. Restricting to volume >= 50 changes nothing (ratio 0.24, +4.04c). This is
+the opposite of the sports and Polymarket-US failure mode, where the edge sat behind an unfillable
+queue.
+
+**Fills are NOT adversely selected here.** 269 paper quotes carry a fill verdict, and realised
+per-contract P&L lands on the population figure in three of four bands:
+
+| cheap band | quotes | filled | fill rate | paper realised | population @60m |
+| --- | --- | --- | --- | --- | --- |
+| 0.02-0.05 | 96 | 33 | **34%** | +3.05c | +3.06c |
+| 0.05-0.10 | 38 | 19 | 50% | +7.16c | +5.91c |
+| 0.10-0.15 | 26 | 11 | 42% | -17.20c | +8.17c |
+| 0.15-0.25 | 54 | 39 | **72%** | +3.90c | +4.72c |
+
++3.05c against +3.06c is as close as that comparison gets. Unlike the weather book, whose fills
+carried ratio 0.96 against a population 0.73 (a x1.3 selection penalty), these fills look like the
+population. So the +2.14c-vs-+4.03c gap is **not** a structural leak: it is the 0.10-0.15 band's
+-$8.60 on 3 losses over 50 contracts, plus mix (63% of quotes go to the cheap half, which earns
+least). Fill rate rises monotonically with price, which is worth knowing and currently has no lever
+attached.
+
+> **A band priority was drafted and withdrawn, and the reason is the point.** Cheap quotes fill least
+> (34% vs 72%) and lock the most collateral (96.5c vs 80c), so per dollar of collateral per quote the
+> cheap band yields 1.09c against the dear band's 4.26c -- a 4x gap, and the same shape as weatherbot's
+> band-priority finding. **But a priority rule only matters when capital is scarce, and here it is
+> not.** Across 8 paper days the book locked $41-$262 of a $300 budget (median $122, 41%), with one
+> day near the cap, and the tradeable pool is ~35 markets a day against ~63 the budget funds.
+> Deprioritising a band promotes no better market into a book that already funds everything it
+> qualifies; it would delete 33 fills worth +$4.99, **46% of the strategy's realised P&L**, and leave
+> the collateral idle. I had imported weatherbot's constraint ("the selector accepts ~80-90 markets a
+> day and a $300 budget backs ~40") into a strategy where the pool is SMALLER than the budget, and
+> built a per-dollar-of-collateral table whose denominator was not the binding resource. **Check which
+> resource binds before proposing an allocation rule.** This is the same error class as the
+> 2026-11-12 `LOT_CAP` raise, which also rested on a replay whose constraint did not hold live.
+> **The lever for an under-deployed book is to ADD markets, not remove them.**
+
+**The 0.25-0.40 band is unmeasured by the strategy and positive in the sample.** `max_cheap` is 0.25
+and the setting allows 0.40:
+
+| band @60m | n | losses / implied | ratio | EV/contract | 95% CI | negative days | collateral/ct |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.02-0.25 (shipped) | 2,002 | 22 / 102.6 | 0.21 | +4.03c | [+3.57, +4.43] | 1 of 47 | 95c |
+| 0.10-0.40 | 323 | 45 / 68.4 | 0.66 | +7.26c | [+3.60, +10.74] | 11 of 46 | 79c |
+| 0.25-0.40 (the extension) | 111 | 26 / 35.2 | 0.74 | +8.32c | [+1.48, +14.05] | 11 of 36 | 68c |
+
+45 losses makes 0.10-0.40 the best-sampled slice in the study. It also locks LESS collateral per
+contract, so the worst single-market loss falls from $4.75 to ~$3.40 at a 5-lot and the $10 daily
+brake still stops the day before a second maximum loss -- the brake invariant gets safer, not looser.
+Proposed as **variant C at `min_cheap` 0.10 / `max_cheap` 0.40** (`2026-11-13-commodity-dear-half`),
+paper, main book unchanged. Honest limits: the losing-day profile is far worse (11 of 46 against 1 of
+47, worst day -48.2c/contract against -3.6c) because this band loses about a quarter of the time per
+market instead of 3% -- more frequent, larger losses against a far larger premium, the same trade-off
+the weather book records for its own extended band; the pool is ~5 markets a day, so ~$20/day of
+collateral; and **fill rate above 0.25 is unmeasured** -- the 34%-to-72% trend should extend, but that
+is extrapolation and establishing it is what the variant is for. `min_cheap` cannot express a
+dear-band-only test: its range stops at 0.10.
+
 ## Perps: recorded, never traded
 
 Kalshi's perps (the "Invest" product) are leveraged perpetual futures on the separate `/margin`
