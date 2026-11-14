@@ -51,11 +51,18 @@ class SearchCandidatesTest {
         assertNull(Vocabulary.pmTemperature("tc-temp-sjc-dec-lt40"))
     }
 
-    @Test fun `both are paper only, with variants, and owned markets are claimed for the kill sweep`() {
+    @Test fun `live is offered only where a live order path exists, and never on a variant`() {
+        // The Polymarket temperature book still has no live order path and must stay paper-only.
+        val pm = StrategyRegistry.byId(PolymarketTemperatureLongshot.ID)!!
+        assertFalse(Mode.LIVE in pm.supportedModes, "${PolymarketTemperatureLongshot.ID} has no live order path")
+        // The commodity book got one on 2026-11-14, on the 12-series settled-history measurement.
+        val com = StrategyRegistry.byId(KalshiCommodityLongshot.ID)!!
+        assertTrue(Mode.LIVE in com.supportedModes, "the commodity book has a live order path")
+        // A variant is paper whatever its base can do: a paper A/B must never place real orders.
         for (id in listOf(PolymarketTemperatureLongshot.ID, KalshiCommodityLongshot.ID)) {
-            val s = StrategyRegistry.byId(id)!!
-            assertFalse(Mode.LIVE in s.supportedModes, "$id has no live order path")
-            assertEquals(2, StrategyRegistry.variantsOf(id).size)
+            val variants = StrategyRegistry.variantsOf(id)
+            assertEquals(2, variants.size)
+            for (v in variants) assertFalse(Mode.LIVE in v.supportedModes, "${v.id} is a variant and must stay paper")
         }
         assertTrue(KalshiCommodityLongshot().ownsMarket("kalshi", "KXGOLDD-26OCT30H1700-T4000"))
         assertFalse(KalshiCommodityLongshot().ownsMarket("kalshi", "KXHIGHNY-26OCT30-B70.5"))

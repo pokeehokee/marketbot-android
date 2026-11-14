@@ -210,6 +210,54 @@ premium, the same trade-off the weather book records for its own extended band; 
 markets a day, so ~$30/day of collateral. `min_cheap` cannot express a dear-band-only test: its range
 stops at 0.10.
 
+### The live order path, 2026-11-14
+
+`PaperRangeLongshot` had no live path by construction -- "a candidate from the pool search is
+forward-tested in paper before anything else, and LIVE is not offered". That invariant was right
+while the only evidence was the paper book. It is not what decided this: **the paper book never
+had enough losses to decide anything.** 101 settled fills over 7 close-dates, every band split
+resting on 0-3 losses, against a settled-history measurement carrying 29 losses over 49
+close-dates. Count the LOSSES, not the fills -- the same rule the deep-ITM band correction turned on.
+
+So the gate moved rather than opening: the base class is live-capable only where a subclass
+implements every venue hook AND sets `liveCapable`, a **variant is never live** whatever its base
+can do, and `kalshi_commodity_longshot` is the only one that opts in. The Polymarket temperature
+book is untouched and still paper-only.
+
+The path is `KalshiBtcLadder`'s, not a new one -- that order code has 1,500+ live positions behind
+it. Four things it carries that a fresh path would have had to rediscover:
+
+- **The shard.** Commodities route to the same non-default exchange shard as the crypto ladder, and
+  Kalshi does not fund a shard automatically. The shard is read off each market's `exchange_index`
+  rather than assumed, orders and fill reads carry it, and preflight fails if that shard has no cash.
+- **Live size comes from the exchange or is not taken.** `liveEquity` reads the shard's own cash;
+  a balance that cannot be read **aborts the pass** (`balance unreadable`) instead of falling back
+  to a local number. The budget subtracts only collateral behind orders still RESTING, because the
+  exchange has already deducted a filled position's from cash -- subtracting both under-deploys by
+  the size of the book, which is the mirror of weatherbot's 2026-09-08 double-count.
+- **A withdrawal is a cancel at the exchange, and never a result.** The order is cancelled at
+  Kalshi first, the fill state is re-read after (a cancel races a fill), and the row is handed to
+  the settlement pass with no result written. This is the August TTL sweep that wrote 28 quotes off
+  as expired without checking fills, 18 of which were real filled positions.
+- **Live P&L is the exchange's figure or nothing.** The three-tier chain (settlements, then
+  `positions?settlement_status=settled`, then `/historical/positions`), and a filled row no store
+  has a figure for is left **ungraded and reported**, never derived from the local size and price.
+  Only the venue's own fill record reading zero grades a row unfilled.
+
+**How to start it, and why small.** The verdict depends on the number of LOSSES, not the lot, so
+take the whole pool at the smallest size: lot 1, the shipped 0.02-0.25 band, ~56 markets a day,
+~$50/day of collateral, the $10 brake unchanged (one market can lose ~$0.95, so the brake stops the
+day well before a second). Then watch the one thing the measurement cannot cover: **the live loss
+ratio against the population's 0.21.** A paper fill never sat in the real book -- it is modelled
+from the public tape behind our queue position, so it cannot be lifted by flow reacting to it. On
+the weather book that selection took a 0.73 population ratio to **0.96 on fills**, which is most of
+an edge. Size up on the live number, not on this file.
+
+Tests: `core/src/test/kotlin/com/marketbot/core/CommodityLiveTest.kt` freezes the post-only order on the market's own shard, the
+aborted pass on an unreadable balance, the cancel-before-withdraw, grading from the payload rather
+than local arithmetic, the ungraded-not-guessed branch, the never-filled reconciliation, and that
+live and paper books never mix.
+
 ## Perps: recorded, never traded
 
 Kalshi's perps (the "Invest" product) are leveraged perpetual futures on the separate `/margin`
