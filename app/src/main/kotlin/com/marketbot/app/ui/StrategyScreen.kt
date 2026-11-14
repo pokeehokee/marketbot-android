@@ -123,6 +123,7 @@ private fun Overview(vm: MainViewModel, s: Strategy, onOpenVariant: (String) -> 
     androidx.compose.material3.pulltorefresh.PullToRefreshBox("stats:${s.id}" in busy, { vm.loadStats(s) }) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(s.summary, style = MaterialTheme.typography.bodyLarge)
+        BottomLine(vm, s)
         if (s is com.marketbot.core.strategies.longshot.RuleLab) {
             val settingsTick by vm.modes.collectAsState()
             val cfg = loaded(s.id, settingsTick.size, st?.lastRunAt) { vm.strategyConfig(s) }
