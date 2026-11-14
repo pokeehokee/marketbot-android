@@ -210,6 +210,62 @@ premium, the same trade-off the weather book records for its own extended band; 
 markets a day, so ~$30/day of collateral. `min_cheap` cannot express a dear-band-only test: its range
 stops at 0.10.
 
+### The shipped edge is blended with dead markets, 2026-11-14
+
+Asked whether quoting closer to close pays more (the edge runs the right way: ratio 0.72 at 720m,
+0.21 at 60m), `research/commodity/commodity_leads.py` re-priced the 2,863 markets whose cheap side
+was reachable at 60m, paired, at 30m / 15m / 5m. **The question is unanswerable from candles, and
+the attempt corrected the headline instead.**
+
+**Kalshi's 1-minute candle history for these series is sparse, so every lead is really "the last
+quote at or before the mark".** The candle actually used, in minutes before close:
+
+| nominal lead | median age | p90 | max |
+| --- | --- | --- | --- |
+| 60m | **90 min** | 420 | 540 |
+| 30m | 60 min | 390 | 510 |
+| 15m / 5m | 60 min | 390 | 480 |
+
+15m and 5m resolve to the **identical candle on 100% of markets**, which is what exposed it. Zero
+lookahead still holds (the candle ends at or before the mark), so nothing is biased forward -- but
+a shorter nominal lead buys no fresher price, and the lead curve below 60m cannot be measured this
+way at all.
+
+**What it does to +3.88c.** Split the shipped 60m population by how old the quote was:
+
+| quote age at the 60m mark | n | losses / implied | ratio | EV/contract | 95% CI |
+| --- | --- | --- | --- | --- | --- |
+| **60-75 min (contested)** | **1,098** | **16 / 62.3** | **0.26** | **+4.22c** | **[+3.50, +4.94]** |
+| 75-120 min | 624 | 13 / 35.7 | 0.36 | +3.63c | [+2.53, +4.67] |
+| 2-6 h | 630 | **0** / 24.5 | 0.00 | +3.88c | [+3.50, +4.25] |
+| > 6 h | 381 | **0** / 12.6 | 0.00 | +3.30c | [+3.06, +3.57] |
+| all (the headline) | 2,733 | 29 / 135.0 | 0.21 | +3.88c | [+3.47, +4.22] |
+
+**1,011 of 2,733 markets -- 37% -- carry ZERO losses**, and their tight intervals are the
+zero-loss fake tightness this file already warns about for the KXLOW six-date sample, the first
+Polymarket pull and the BTC paper book. The mechanism: a book stops updating because the outcome
+has become certain, so the last quote **overstates the tail it is still nominally pricing**. The
+"implied" losses on those rows are computed from a price that is simply wrong, which is why the
+ratio reads 0.00 against 37 expected losses. That is not an edge; it is a market nobody is
+quoting, and a resting order there is one that does not fill.
+
+Two consequences, and the first is good news:
+
+- **The edge is real where it is tradeable, and bigger.** On contested markets it is +4.22c at
+  ratio 0.26 with **16 real losses**, against +3.88c blended. The part you can actually transact
+  in is the part that pays.
+- **+3.88c must not be quoted as the expected live figure.** It is a population number containing
+  37% unfillable rows. This is the same fact the volume split already recorded ("all 29 losses
+  fall in the markets with 1,000+ contracts of volume; the quieter buckets carry zero losses
+  because they were never contested"), seen through a sharper lens, and it explains part of the
+  paper book's +2.14c realised against +3.88c population.
+
+The lead question stays open, and candles cannot close it. Answering it needs **live book
+snapshots** of open commodity markets at a few minutes' resolution -- weatherbot's
+`market_flow_collector.py` is the shape -- after which the curve below 60m becomes measurable on
+books that really existed. Nothing about the shipped 40-90 min window changes meanwhile: the
+contested bucket IS the 60-75 minute one.
+
 ### The live order path, 2026-11-14
 
 `PaperRangeLongshot` had no live path by construction -- "a candidate from the pool search is
