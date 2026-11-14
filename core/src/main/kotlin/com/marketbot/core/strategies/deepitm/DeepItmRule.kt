@@ -46,12 +46,16 @@ data class DeepItmRules(
  * get capital at all, exactly as the ask-band ordering does for the weather longshot.
  *
  * It is a setting rather than a fixed rule so a change can be run as a paper variant beside the
- * main book and judged on the record, instead of being argued from a handful of losses.
+ * main book and judged on the record, instead of being argued from a handful of losses. That
+ * caution earned its keep: a 13-loss paper read said the sub-0.94 band had no edge and should be
+ * cut by raising `band_lo`; 1,535 live positions of the same configuration, recovered from the
+ * exchange on 2026-11-12, put that band at +1.45c/contract with a CI excluding zero. Ordering is
+ * the lever, not the floor. See CLAUDE.md.
  */
 object SlotOrder {
-    /** Lowest bid first: the original runner's rule, and correct while the band's floor is right. */
+    /** Lowest bid first: the original runner's rule, and the shipped default. Pays +1.45c/contract. */
     const val CHEAPEST = "cheapest"
-    /** Highest bid first: the safest contracts, which also pay the least per contract. */
+    /** Highest bid first: fewer losses AND more per contract (+2.53c) on the recovered live record. */
     const val DEAREST = "dearest"
     /** Nearest the middle of the joined band, which is where the weather longshot's edge sits. */
     const val MIDDLE = "middle"

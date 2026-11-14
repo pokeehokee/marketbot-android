@@ -76,9 +76,10 @@ abstract class DeepItmStrategy(
         Param.Num("band_hi", "Highest bid joined", "Top of the price band.", 0.96, 0.50, 0.99),
         Param.Text("slot_order", "Which bids take the free slots",
             "cheapest, dearest or middle (of the joined band). The pool exceeds the slot count almost every hour, so this " +
-            "decides which markets get capital. cheapest is the original rule and is right while the band's floor is right: " +
-            "in the paper record bids at or under 0.94 lost at 1.01 times the rate their price implied (no edge), while bids " +
-            "above it lost at 0.40 times. Raise the floor rather than reaching past a bad one.", SlotOrder.CHEAPEST),
+            "decides which markets get capital. Measured on 1,535 live positions of this strategy (73 losses, recovered " +
+            "from the exchange), every band pays: below 0.94 is +1.45c/contract and 0.94 and up is +2.53c, so the dearer " +
+            "band wins per slot (P 97%) without the cheaper one being a bad trade. dearest spends scarce slots on the " +
+            "better band and still fills the lower one when it is empty.", SlotOrder.CHEAPEST),
         Param.Num("fair_min", "Minimum model probability", "Random-walk P(our side wins) required.", 0.97, 0.80, 0.999, decimals = 3),
         Param.Int_("ttc_min", "Earliest, seconds before close", "Stop joining this close to settlement.", 300, 30, 3600, "s"),
         Param.Int_("ttc_max", "Latest, seconds before close", "Start joining this long before settlement.", 3000, 60, 7200, "s"),
