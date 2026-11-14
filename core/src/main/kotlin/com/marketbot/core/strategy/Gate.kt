@@ -25,6 +25,7 @@ enum class ReasonCode(val state: TradingState, val label: String) {
     FILL_LIMIT_TRIPPED(TradingState.HALTED, "Kalshi fill limit tripped"),
     CONFIG_INVALID(TradingState.HALTED, "Settings need fixing"),
     NOT_ARMED(TradingState.HALTED, "Live not armed"),
+    NO_LIVE_PATH(TradingState.HALTED, "No live order path"),
     // ---- reducing: keeps managing, opens nothing new
     BRAKE_DAILY(TradingState.REDUCING, "Daily loss brake"),
     LOCKED(TradingState.REDUCING, "Locked by a protection"),
@@ -37,6 +38,7 @@ enum class ReasonCode(val state: TradingState, val label: String) {
     BUDGET_SPENT(TradingState.REDUCING, "Budget spent"),
     EXPOSURE_CAP(TradingState.REDUCING, "City and day at its risk cap"),
     EXCHANGE_STATE_UNAVAILABLE(TradingState.REDUCING, "Exchange state unavailable"),
+    BALANCE_UNREADABLE(TradingState.REDUCING, "Balance unreadable"),
     // ---- active but degraded: the last pass failed; the next one tries again
     LISTING_FAILED(TradingState.ACTIVE, "Market list unavailable"),
     RATE_LIMITED(TradingState.ACTIVE, "Rate limited by the exchange"),
@@ -60,6 +62,10 @@ object Reasons {
         val s = summary?.trim()?.lowercase() ?: return null
         val code = when {
             s == "live not armed" -> ReasonCode.NOT_ARMED
+            s == "no live path" -> ReasonCode.NO_LIVE_PATH
+            // Live size is read from the exchange or not taken at all, so an unreadable balance
+            // stops the pass rather than falling back to a local number.
+            s == "balance unreadable" -> ReasonCode.BALANCE_UNREADABLE
             s == "invalid settings" -> ReasonCode.CONFIG_INVALID
             s == "settlements stale" -> ReasonCode.SETTLEMENTS_STALE
             s == "kill criterion" -> ReasonCode.KILL_CRITERION

@@ -1,7 +1,11 @@
 package com.marketbot.core.strategies.longshot
 
 import com.marketbot.core.contract.Vocabulary
+import com.marketbot.core.kalshi.FillState
 import com.marketbot.core.kalshi.makerFeeEstimate
+import com.marketbot.core.kalshi.positionPnl
+import com.marketbot.core.kalshi.priceRanges
+import com.marketbot.core.kalshi.settlementPnl
 import com.marketbot.core.polymarket.PmBook
 import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
@@ -16,6 +20,8 @@ import com.marketbot.core.strategy.PreflightResult
 import com.marketbot.core.strategy.StrategyContext
 import com.marketbot.core.strategy.TapeFillModel
 import com.marketbot.core.strategy.Venue
+import com.marketbot.core.util.num
+import com.marketbot.core.util.str
 import com.marketbot.core.strategy.variantName
 import java.time.Instant
 
@@ -116,8 +122,14 @@ class PolymarketTemperatureLongshot(id: String = ID, baseId: String? = null) : P
 
 /**
  * Candidate 2 of the pool search: Kalshi's daily and weekly commodity ranges (oil, gas, gold,
- * silver, copper) priced one hour before close. Thin evidence (7 losses against ~21 implied), so
- * paper only, and the price paid for being wrong is the paper account's.
+ * silver, copper) priced one hour before close.
+ *
+ * Live since 2026-11-14, on the settled-history measurement rather than the paper book: every
+ * settled market of all 12 series priced at a 60-minute lead with zero lookahead is 2,733 markets
+ * over 49 close-dates with **29 losses against 135.0 implied** (ratio 0.21, +3.88c/contract,
+ * CI [+3.47, +4.22], 48 of 49 days positive). The paper book agrees in sign but holds too few
+ * losses to resolve a trade whose result is dominated by rare losses, which is the repo's standing
+ * rule: count the losses, not the fills.
  */
 class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : KalshiPaperRange(id, baseId) {
     override val name = variantName("Commodity range longshot", id, baseId)
@@ -125,26 +137,29 @@ class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : KalshiP
     override val venueKey = "kalshi"
     override val apiSource = Source.KALSHI_API
     override val measuredLead = "the market's close"
-    override val summary = "Paper test: sells the cheap side of Kalshi's commodity price ranges by resting at the maker price, about an hour before close."
+    override val summary = "Sells the cheap side of Kalshi's commodity price ranges by resting at the maker price, about an hour before close."
+    override val liveCapable = true
     override val help = Help(
-        makes = "In the last hour a commodity range that is nearly decided still prices its long shots too high: in the history they settled YES at about a quarter of the implied rate.",
-        loses = "The evidence is seven losses: real enough to test, too few to trust. A loss pays the full dollar, and the last hour is when prices move fastest.",
+        makes = "In the last hour a commodity range that is nearly decided still prices its long shots too high: over 2,733 settled markets they settled YES at about a fifth of the implied rate.",
+        loses = "A loss pays the full dollar against a few cents of premium, so one bad market costs what twenty good ones make. The last hour is also when prices move fastest.",
         notes = listOf(
             "Series: Brent, WTI, natural gas, gold, silver and copper, daily and weekly ranges.",
-            "Offers rest from 40 to 90 minutes before close; unfilled ones are withdrawn at close. Paper fills come from Kalshi's public tape.",
-            "Paper only: there is no live order path until the paper record shows the edge.",
+            "Offers rest from 40 to 90 minutes before close; unfilled ones are withdrawn at close.",
+            "The edge DECAYS with lead here, unlike the weather book, where it grows: this is residual premium on an almost-decided contract, so the window is not a preference.",
+            "Live fills can be worse than the measurement: a paper fill never sat in the real book. Start small and watch the loss ratio against 0.21.",
         ),
     )
     override val evidence = Evidence(
         EvidenceLevel.BACKTEST_ONLY,
-        "History through 2026-10-29, held-out newest third: +6.69c/contract (p 0.031) one hour before close; +5.44c under the weather adverse-fill stress.",
+        "Every settled market of all 12 series at a 60-minute lead with zero lookahead: 29 losses against 135.0 implied (ratio 0.21), +3.88c/contract, 95% CI [+3.47, +4.22].",
         listOf(
-            "220 markets on 127 days across 12 series; losses at 0.23 of the rate the prices implied.",
-            "Matches weatherbot's 2026-09-08 finding: the deepest bin is overpriced in the last hours, and the bias reverses a day out.",
-            "Thin: the holdout p-value is 0.031 and it rests on a handful of losing markets.",
+            "2,733 markets over 49 close-dates; 48 of 49 days positive, worst day -3.6c/contract; all 12 series positive, weakest +2.97c.",
+            "Holds across halves (0.18 then 0.23). Clustered by close-date, because a day's strikes settle off one price move.",
+            "Decays with lead: ratio 0.72 at 12 hours, where WTI and gold read ABOVE fair. Matches weatherbot's finding that financial ranges reverse a day out.",
+            "Not measured live: a resting order that really sits in the book can be adversely selected. On the weather book that took a 0.73 population ratio to 0.96 on fills.",
         ),
         SEARCH,
-        Expectation(0.0669, null, null, "pool search holdout through 2026-10-29 (220 markets), resting at the maker price; +5.44c with adverse fills; fills unmeasured"),
+        Expectation(0.0388, 0.0347, 0.0422, "all 12 series, every settled market priced at a 60-min lead with zero lookahead (2,733 markets, 49 close-dates); CI clustered by close-date; resting fills pay no fee"),
     )
     override val defaultMinLeadMin = 40
     override val defaultMaxLeadMin = 90
@@ -157,14 +172,32 @@ class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : KalshiP
 
     override suspend fun preflight(ctx: StrategyContext): PreflightResult {
         val steps = mutableListOf<Pair<String, Boolean>>()
+        var anyShard: Int? = null
         for (s in listOf("KXGOLDD", "KXBRENTD")) {
             val ms = runCatching { ctx.kalshi.openMarkets(s) }
             steps += "List open $s markets (${ms.getOrNull()?.size ?: "failed: ${ms.exceptionOrNull()?.message}"})" to (ms.isSuccess)
+            ms.getOrNull()?.firstOrNull()?.exchangeIndex?.let { anyShard = it }
             val fee = runCatching { ctx.kalshi.seriesFeeType(s) }.getOrNull()
             steps += "$s fee type is quadratic (makers pay nothing): ${fee?.value}" to (fee?.value == "quadratic")
         }
+        if (!ctx.kalshi.hasCredentials) {
+            steps += "Kalshi API key saved (needed for the live checks)" to false
+            return PreflightResult(false, steps, "Add your Kalshi key under Accounts to check the live path.")
+        }
+        // Orders are routed to the shard the markets name, and Kalshi does not fund a shard
+        // automatically: cash sitting on the default shard cannot back an order here.
+        steps += "Markets report an exchange shard (orders route there): ${anyShard ?: "none"}" to (anyShard != null)
+        val sh = anyShard
+        if (sh != null) {
+            val b = runCatching { ctx.kalshi.balance(sh) }.getOrNull()
+            val cash = b?.byExchangeIndex?.get(sh)?.value ?: b?.cash?.value
+            steps += "Shard $sh cash: ${cash?.let { "$" + "%.2f".format(it) } ?: "unreadable"}" to ((cash ?: 0.0) >= 5.0)
+            steps += "Shard $sh trading is open" to (runCatching { ctx.kalshi.tradingActive(sh).value }.getOrDefault(false))
+        }
         val ok = steps.all { it.second }
-        return PreflightResult(ok, steps, if (ok) "Ready to paper-trade." else "Kalshi did not answer as expected.")
+        if (ok) ctx.stores.state.put("$id.preflight_ok_at", ctx.clock.now().toString())
+        ctx.info("preflight", "Preflight ${if (ok) "passed" else "FAILED"}: ${steps.joinToString("; ") { (s, k) -> (if (k) "ok " else "FAIL ") + s }}")
+        return PreflightResult(ok, steps, if (ok) "Ready to trade." else "Kalshi did not answer as expected; live stays blocked.")
     }
 
     companion object {
@@ -195,7 +228,10 @@ abstract class KalshiPaperRange(id: String, baseId: String?) : PaperRangeLongsho
                 val close = m.closeTime ?: continue
                 val book = m.book
                 out += RangeCandidate(m.ticker, book?.yesBid?.value, book?.yesAsk?.value, close, close, m.num("yes_ask_size_fp"), m.num("yes_bid_size_fp"), s,
-                    m.strikeType)
+                    m.strikeType,
+                    tick = com.marketbot.core.kalshi.tickSize(book?.yesAsk?.value ?: 0.5, m.raw.priceRanges()).value,
+                    exchangeIndex = m.exchangeIndex)
+                m.exchangeIndex?.let { shardSeen = it }
             }
         }
         return out
@@ -227,4 +263,83 @@ abstract class KalshiPaperRange(id: String, baseId: String?) : PaperRangeLongsho
 
     override suspend fun takerFee(ctx: StrategyContext, ticker: String, price: Double, contracts: Int): Sourced<Double> =
         Sourced.derived(com.marketbot.core.kalshi.kalshiFee(price, maxOf(1, contracts)), "ceil(0.07*C*P*(1-P))/C", "Kalshi's taker fee, rounded up per order")
+
+    // ----------------------------------------------------------- the live path
+    // Every call below mirrors KalshiBtcLadder, which is the order path this account has already
+    // run live. Commodities sit on the same non-default exchange shard as the crypto ladder, and
+    // the shard is read off the markets themselves rather than assumed.
+
+    /** The shard the listing reported, remembered for the balance and preflight reads. */
+    private var shardSeen: Int? = null
+    protected val shard: Int? get() = shardSeen
+
+    override fun venueHasCredentials(ctx: StrategyContext) = ctx.kalshi.hasCredentials
+
+    private fun shardOf(q: QuoteRow): Int? =
+        (q.extra["exchange_index"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() ?: shardSeen
+
+    /**
+     * Rest the cheap side post-only. Kalshi's `side` names the YES book: selling YES at p is the
+     * YES ASK at p; buying YES at p is the YES BID at p; buying NO at p is the YES ask at 1 - p.
+     * Not retried on failure -- `placeOrder` recovers a lost response by client_order_id itself.
+     */
+    override suspend fun place(ctx: StrategyContext, m: RangeCandidate, p: CheapPick, n: Int): Pair<String?, String?>? {
+        val (side, px) = when (p.action) {
+            "sell_yes" -> "ask" to p.price
+            "buy_no" -> "ask" to (1.0 - p.price)
+            else -> "bid" to p.price
+        }
+        val placed = ctx.kalshi.placeOrder(m.ticker, side, n, px, m.tick ?: 0.01, m.exchangeIndex,
+            postOnly = !p.taker, expirationEpochS = null)
+        if (placed.filtered) return null
+        return placed.orderId to placed.clientOrderId
+    }
+
+    override suspend fun cancel(ctx: StrategyContext, q: QuoteRow) {
+        val id = q.orderId ?: return
+        ctx.kalshi.cancelOrder(id, q.ticker)
+    }
+
+    override suspend fun liveFill(ctx: StrategyContext, q: QuoteRow): Sourced<Double>? {
+        val o = q.orderId?.let { ctx.kalshi.order(it) } ?: return null
+        val f = FillState.of(o)
+        val n = f.contracts ?: if (f.filled == true) q.contracts else return null
+        return Sourced.kalshi(n, "GET /portfolio/orders/${q.orderId} ${f.origin}", ctx.clock.now())
+    }
+
+    /**
+     * The exchange's own realised figure, from whichever of its three stores still holds this
+     * market: `/portfolio/settlements` returns only records still in the LIVE tier, so a settled
+     * position that has been archived is absent there and present in one of the other two.
+     */
+    override suspend fun livePnl(ctx: StrategyContext, q: QuoteRow, result: String): Sourced<Double>? {
+        runCatching { ctx.kalshi.settlementFor(q.ticker) }.getOrNull()?.let { return settlementPnl(it) }
+        runCatching { ctx.kalshi.positions(settlementStatus = "settled", ticker = q.ticker) }.getOrNull()
+            ?.firstOrNull { it.str("ticker") == q.ticker }
+            ?.let { positionPnl(it, "/portfolio/positions?settlement_status=settled") }?.let { return it }
+        return runCatching { ctx.kalshi.historicalPositions(ticker = q.ticker) }.getOrNull()
+            ?.firstOrNull { it.str("ticker") == q.ticker }
+            ?.let { positionPnl(it, "/historical/positions") }
+    }
+
+    override suspend fun confirmedFills(ctx: StrategyContext, q: QuoteRow): Sourced<Double>? {
+        val id = q.orderId ?: return null
+        val sh = shardOf(q)
+        val fills = ctx.kalshi.fills(ticker = q.ticker, maxPages = 5, orderId = id, exchangeIndex = sh)
+            .filter { (it.str("order_id") ?: id) == id }
+        val n = fills.sumOf { it.num("count_fp") ?: it.num("count") ?: 0.0 }
+        return Sourced.kalshi(n, "GET /portfolio/fills?order_id=$id${sh?.let { "&exchange_index=$it" } ?: ""} (${fills.size} fills)", ctx.clock.now())
+    }
+
+    /**
+     * Free cash on the shard these markets route to. Orders are funded per shard and the exchange
+     * does not move money between them, so the account-wide figure would overstate what can back
+     * an order here. Resting collateral is subtracted by the caller; filled positions are already
+     * out of this number.
+     */
+    override suspend fun liveEquity(ctx: StrategyContext): Sourced<Double>? {
+        val b = runCatching { ctx.kalshi.balance(shardSeen) }.getOrNull() ?: return null
+        shardSeen?.let { s -> b.byExchangeIndex[s]?.let { return it } }
+        return b.cash
+    }
 }
