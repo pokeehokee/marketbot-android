@@ -88,6 +88,10 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         }
         ScorecardAlerts(vm, onOpen)
 
+        // The board: a headline sentence, four tiles with a plain-English line each, the last
+        // 14 days and every strategy against the odds. Everything below it is unchanged.
+        Board(vm, onOpen)
+
         PortfolioHeader(vm)
         QuickActions(vm)
         ExposureSection(vm)
@@ -141,24 +145,6 @@ fun HomeScreen(vm: MainViewModel, onOpen: (String) -> Unit, onSources: () -> Uni
         val paper = equity.filter { it.mode == Mode.PAPER.name }
         if (paper.isNotEmpty()) Section(stringResource(R.string.paper_accounts)) {
             paper.forEach { e -> val s = e.toSnapshot(); SourcedRow("${e.venue.replaceFirstChar { it.uppercase() }} paper equity", s.cash, { money(it) }) }
-        }
-
-        Section(stringResource(R.string.strategies)) {
-            val settledRows by vm.settled.collectAsState()
-            vm.listed().forEach { s ->
-                val st = status[s.id]
-                val mode = st?.mode ?: vm.modeOf(s.id)
-                Row(Modifier.fillMaxWidth().clickable { onOpen(s.id) }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(s.name, style = MaterialTheme.typography.titleSmall)
-                        Text(st?.lastSummary?.let { "Last: $it" } ?: s.venue.label, style = MaterialTheme.typography.bodySmall,
-                            color = if (st?.lastError != null) LocalDesk.current.loss else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        MethodRecordLine(vm.methodRecord(s, settledRows))
-                        if (st?.state != null && st.state != com.marketbot.core.strategy.TradingState.ACTIVE || st?.reason != null) TradingStateLine(st)
-                    }
-                    ModePill(mode, st?.armed == true, running)
-                }
-            }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {

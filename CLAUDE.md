@@ -258,6 +258,33 @@ aborted pass on an unreadable balance, the cancel-before-withdraw, grading from 
 than local arithmetic, the ungraded-not-guessed branch, the never-filled reconciliation, and that
 live and paper books never mix.
 
+## The board: words under every number (2026-11-14)
+
+Home opens on a board, and each strategy on a Bottom line, built from three layers of words: one
+headline sentence; under every number one line saying what it means (the **Explain** switch,
+kept in the `ui` preferences, turns these back into terse figures); and a sheet behind every
+tile. The look is the dark control room; the words came from the "your bots" exploration, after
+the operator said the app "just looks like a bunch of numbers".
+
+**Every sentence is written in `core/strategy/Narration.kt`, from the ledger, and nowhere else.**
+`NarrationTest` freezes the rules it keeps:
+
+- **No sentence outruns its data.** A strategy is "beating odds" only when losses are at most 0.90
+  of what the prices implied, and the word stays neutral, with "too few losses to be sure", until
+  **30 losses** -- the stage gates' bar and the deep-ITM lesson. Green is earned, not assumed.
+- **Bad news is never hidden behind "too early".** A comparison opens once EITHER the expected or
+  the actual losses reach 3. Gating on the expected count alone read 8 losses against 2.3
+  expected as "too early", which is the book going wrong described as nothing.
+- **Real and practice money are never summed.** With no live book the headline says "No real
+  money is trading" and every tile relabels itself "Practice".
+- **There is no account-wide daily limit.** Each strategy has its own (`daily_loss_limit`, or
+  `daily_stop` on deep-ITM, same meaning); the tile shows the live strategy closest to its own,
+  and names it.
+
+Home kept everything it had (charts, quick actions, exposure, periods, capital, kill switch,
+accounts) below the board; only the old strategies list went, replaced by the board's table. The
+Strategies tab still has the full list.
+
 ## Perps: recorded, never traded
 
 Kalshi's perps (the "Invest" product) are leveraged perpetual futures on the separate `/margin`
