@@ -69,8 +69,11 @@ class SearchCandidatesTest {
         assertTrue(PolymarketTemperatureLongshot().ownsMarket("polymarket", "tc-temp-nychigh-2026-10-29-lt67f"))
     }
 
+    // Lot pinned, not inherited: the fills these tests assert on are sized in the fake tape, and
+    // the commodity book's shipped lot went to 1 for its live start (2026-11-15). Both books
+    // measured a lot of 5, so this is what they were written against.
     private fun ctx(s: com.marketbot.core.strategy.Strategy, stores: com.marketbot.core.store.Stores, clock: MutableClock, pmc: PolymarketClient = PolymarketClient(null)) =
-        StrategyContext(s.id, Mode.PAPER, StrategyConfig(s.params), stores, clock, fake.client(false), pmc,
+        StrategyContext(s.id, Mode.PAPER, StrategyConfig(s.params, mapOf("lot_cap" to "5")), stores, clock, fake.client(false), pmc,
             BtcIndex(venues = emptyMap(), candles = { emptyList() }), liveArmed = false)
 
     @Test fun `commodities offer inside the hour before close, fills from the tape, grades at settlement`() = runBlocking {

@@ -35,8 +35,11 @@ class CommodityLiveTest {
     private val inHour: String = t0.plusSeconds(3600).toString()
     private val ticker = "KXGOLDD-26OCT30H1600-T4000"
 
+    // The fake exchange's payloads below describe 5-contract fills, so the lot is pinned here
+    // rather than inherited: these tests are about how a fill is GRADED, and must not change
+    // meaning when the shipped lot does (it went to 1 for the live start on 2026-11-15).
     private fun live(s: com.marketbot.core.strategy.Strategy, stores: Stores, clock: MutableClock) =
-        StrategyContext(s.id, Mode.LIVE, StrategyConfig(s.params), stores, clock, fake.client(true), PolymarketClient(null),
+        StrategyContext(s.id, Mode.LIVE, StrategyConfig(s.params, mapOf("lot_cap" to "5")), stores, clock, fake.client(true), PolymarketClient(null),
             BtcIndex(venues = emptyMap(), candles = { emptyList() }), liveArmed = true)
 
     /** One cheap-YES gold market inside the window, on the non-default shard commodities route to. */
@@ -172,7 +175,7 @@ class CommodityLiveTest {
         val s = KalshiCommodityLongshot(); val stores = inMemoryStores(); val clock = MutableClock(t0)
         listOneCheapMarket()
         s.runOnce(live(s, stores, clock))
-        s.runOnce(StrategyContext(s.id, Mode.PAPER, StrategyConfig(s.params), stores, clock, fake.client(true),
+        s.runOnce(StrategyContext(s.id, Mode.PAPER, StrategyConfig(s.params, mapOf("lot_cap" to "5")), stores, clock, fake.client(true),
             PolymarketClient(null), BtcIndex(venues = emptyMap(), candles = { emptyList() }), liveArmed = false))
 
         assertEquals(1, stores.ledger.all(s.id, Mode.LIVE).size)

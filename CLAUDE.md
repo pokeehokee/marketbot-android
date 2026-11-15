@@ -102,6 +102,64 @@ three losses were bought below 0.94 -- which is what made the small sample look 
 > six-date sample and the first Polymarket pull. The rule it implies: before acting on a band split,
 > count the LOSSES, not the fills.
 
+## What the two live books are SET to, 2026-11-15 — three stale benchmarks
+
+Asked to check everything was correctly set, and the settings had drifted from the evidence in
+three places. All three are the same shape: **a number measured on history outlived the live
+record that replaced it.** The repo already records this failure mode for stale comments on
+live trading paths; an `Expectation` is worse than a comment, because
+`Scorecard` grades real fills against it.
+
+- **The BTC ladder was still described as having no edge.** `KalshiBtcDeepItm`'s evidence read
+  `EvidenceLevel.NO_EDGE`, "the reported +2c did not reproduce", with
+  `Expectation(-0.0122)` from the 2026-10-30 replay — and the go-live checklist asked the
+  operator to "accept: the historical replay found no edge". Meanwhile the account's own
+  settlement payloads carry **1,805 positions, 9,028 contracts, +$162.65, +1.80c/contract with
+  81 losing positions over 21 days, 95% CI [+1.09c, +2.43c]** clustered by settle-date. Split at
+  2026-10-01 it holds: **+1.75c then +1.94c**. The 2026-11-12 correction further up this file
+  recovered the original run and found the parameters identical; what it did not do is update
+  the `Evidence` object, so the app went on telling the operator its best strategy was dead.
+  Now `LIVE_PROVEN` at `Expectation(0.0180, 0.0109, 0.0243)`, sourced from the payloads.
+  The replay's two other claims die with it: live, **NO is +1.88c and YES +1.73c** (it had
+  called the NO side the loser), and there is no "-1.6c to -4.6c since 2026-08-30".
+  Why it was wrong: the pessimistic model only filled orders that traded through the bid, but
+  resting orders fill as makers and pay nothing — 130 of 130 of the app's own fills settled at
+  `fee_cost = 0`.
+- **The commodity book's expectation was the blended figure.** `Expectation(0.0388)` is the
+  number the section below says must NOT be quoted as the live expectation, because 1,277 of
+  those 2,733 markets had gone unquoted for hours and carry 3 losses against 50.3 implied — a
+  book nobody is pricing, where a resting order never fills. Fills come from contested books.
+  Now `Expectation(0.0422, 0.0348, 0.0493)` on the **contested subset** (1,098 markets, 16 real
+  losses, ratio 0.26), which holds across halves too (+4.70c then +4.05c).
+- **The commodity lot was 5, not the 1 its own live-start plan specifies.** `lot_cap` is a
+  shared `PaperRangeLongshot` param and its default was hardcoded; it is now
+  `open val defaultLotCap`, overridden to **1** for this book only. At lot 1 one day's whole
+  ~56-market pool costs ~$53 of collateral, so the pool is funded in full and the losses that
+  decide the verdict arrive as fast as the market makes them; at lot 5 the same pool wants ~$266
+  and would be collateral-bound at today's balance, funding an arbitrary subset by no measured
+  rule. Worst single market is then ~$0.98 against the $10 brake.
+
+**Hours do not select, and the attempt to make them is recorded here so it is not retried.**
+04–05 ET looks like the ladder's worst hour in-sample (−2.27c, 15 losses) and reads **+5.28c
+with zero losses** in the second half — a complete sign flip, so filtering it is overfitting,
+and the filter indeed improves the first half while hurting the second. 12–13 ET looks
+exceptional (+5.40c) and does hold (+6.08c then +3.97c) but rests on **one loss in each half**:
+suggestive, not actionable, and 18 cells were examined. The 0.92–0.94 band is the weakest in
+both halves and the only one that goes negative, on too few losses to drop. **Nothing about the
+ladder's configuration changed; only its description did.**
+
+> **A first-occurrence replace put the new lot on the wrong strategy.**
+> `override val defaultMinLeadMin = 40` appears in BOTH `PolymarketTemperatureLongshot` and
+> `KalshiCommodityLongshot`, so anchoring an edit on it and replacing once moved the Polymarket
+> weather book to lot 1 and left the commodity book at 5 — exactly inverted, and silent.
+> `ConfiguredDefaultsTest` caught it on its first run, which is the only reason it is a
+> footnote. An edit anchored on a line that is not unique to its class is not an edit.
+
+Tests: `core/src/test/kotlin/com/marketbot/core/ConfiguredDefaultsTest.kt` freezes all three
+settings and that lowering one book's lot does not move another's. `CommodityLiveTest` and
+`SearchCandidatesTest` now pin `lot_cap` explicitly, because they assert on fills sized in the
+fake tape and must not change meaning when a shipped default does.
+
 ## Commodity range longshot: the edge is at 60 minutes, and the book is under-deployed
 
 Measured 2026-11-13 against settled history, because the paper book could not answer the question:
@@ -209,6 +267,62 @@ quarter of the time per market instead of 1% -- more frequent, larger losses aga
 premium, the same trade-off the weather book records for its own extended band; and the pool is ~8
 markets a day, so ~$30/day of collateral. `min_cheap` cannot express a dear-band-only test: its range
 stops at 0.10.
+
+### The shipped edge is blended with dead markets, 2026-11-14
+
+Asked whether quoting closer to close pays more (the edge runs the right way: ratio 0.72 at 720m,
+0.21 at 60m), `research/commodity/commodity_leads.py` re-priced the 2,863 markets whose cheap side
+was reachable at 60m, paired, at 30m / 15m / 5m. **The question is unanswerable from candles, and
+the attempt corrected the headline instead.**
+
+**Kalshi's 1-minute candle history for these series is sparse, so every lead is really "the last
+quote at or before the mark".** The candle actually used, in minutes before close:
+
+| nominal lead | median age | p90 | max |
+| --- | --- | --- | --- |
+| 60m | **90 min** | 420 | 540 |
+| 30m | 60 min | 390 | 510 |
+| 15m / 5m | 60 min | 390 | 480 |
+
+15m and 5m resolve to the **identical candle on 100% of markets**, which is what exposed it. Zero
+lookahead still holds (the candle ends at or before the mark), so nothing is biased forward -- but
+a shorter nominal lead buys no fresher price, and the lead curve below 60m cannot be measured this
+way at all.
+
+**What it does to +3.88c.** Split the shipped 60m population by how old the quote was:
+
+| quote age at the 60m mark | n | losses / implied | ratio | EV/contract | 95% CI |
+| --- | --- | --- | --- | --- | --- |
+| **60-75 min (contested)** | **1,098** | **16 / 62.3** | **0.26** | **+4.22c** | **[+3.50, +4.94]** |
+| 75-120 min | 624 | 13 / 35.7 | 0.36 | +3.63c | [+2.53, +4.67] |
+| 2-6 h | 630 | **0** / 24.5 | 0.00 | +3.88c | [+3.50, +4.25] |
+| > 6 h | 381 | **0** / 12.6 | 0.00 | +3.30c | [+3.06, +3.57] |
+| all (the headline) | 2,733 | 29 / 135.0 | 0.21 | +3.88c | [+3.47, +4.22] |
+
+**1,011 of 2,733 markets -- 37% -- carry ZERO losses**, and their tight intervals are the
+zero-loss fake tightness this file already warns about for the KXLOW six-date sample, the first
+Polymarket pull and the BTC paper book. The mechanism: a book stops updating because the outcome
+has become certain, so the last quote **overstates the tail it is still nominally pricing**. The
+"implied" losses on those rows are computed from a price that is simply wrong, which is why the
+ratio reads 0.00 against 37 expected losses. That is not an edge; it is a market nobody is
+quoting, and a resting order there is one that does not fill.
+
+Two consequences, and the first is good news:
+
+- **The edge is real where it is tradeable, and bigger.** On contested markets it is +4.22c at
+  ratio 0.26 with **16 real losses**, against +3.88c blended. The part you can actually transact
+  in is the part that pays.
+- **+3.88c must not be quoted as the expected live figure.** It is a population number containing
+  37% unfillable rows. This is the same fact the volume split already recorded ("all 29 losses
+  fall in the markets with 1,000+ contracts of volume; the quieter buckets carry zero losses
+  because they were never contested"), seen through a sharper lens, and it explains part of the
+  paper book's +2.14c realised against +3.88c population.
+
+The lead question stays open, and candles cannot close it. Answering it needs **live book
+snapshots** of open commodity markets at a few minutes' resolution -- weatherbot's
+`market_flow_collector.py` is the shape -- after which the curve below 60m becomes measurable on
+books that really existed. Nothing about the shipped 40-90 min window changes meanwhile: the
+contested bucket IS the 60-75 minute one.
 
 ### The live order path, 2026-11-14
 
