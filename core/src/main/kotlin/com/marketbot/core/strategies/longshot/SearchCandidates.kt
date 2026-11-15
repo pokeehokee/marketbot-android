@@ -151,16 +151,22 @@ class KalshiCommodityLongshot(id: String = ID, baseId: String? = null) : KalshiP
     )
     override val evidence = Evidence(
         EvidenceLevel.BACKTEST_ONLY,
-        "Every settled market of all 12 series at a 60-minute lead with zero lookahead: 29 losses against 135.0 implied (ratio 0.21), +3.88c/contract, 95% CI [+3.47, +4.22].",
+        "Contested books -- the ones a resting order can fill in: 1,098 markets, 16 losses against 62.3 implied (ratio 0.26), +4.22c/contract, 95% CI [+3.48, +4.93].",
         listOf(
-            "2,733 markets over 49 close-dates; 48 of 49 days positive, worst day -3.6c/contract; all 12 series positive, weakest +2.97c.",
-            "Holds across halves (0.18 then 0.23). Clustered by close-date, because a day's strikes settle off one price move.",
+            "Blended over all 2,733 markets it reads +3.88c, but 1,277 of them had gone unquoted for over two hours and carry 3 losses against 50.3 implied -- a book nobody is pricing, where a resting order never fills. That part is not tradeable and is excluded above.",
+            "Holds across halves on both populations: all 2,733 reads 0.18 then 0.23; the contested subset +4.70c then +4.05c. Clustered by close-date, because a day's strikes settle off one price move.",
+            "48 of 49 days positive, worst day -3.6c/contract; all 12 series positive, weakest +2.97c (KXWTI).",
             "Decays with lead: ratio 0.72 at 12 hours, where WTI and gold read ABOVE fair. Matches weatherbot's finding that financial ranges reverse a day out.",
             "Not measured live: a resting order that really sits in the book can be adversely selected. On the weather book that took a 0.73 population ratio to 0.96 on fills.",
         ),
         SEARCH,
-        Expectation(0.0388, 0.0347, 0.0422, "all 12 series, every settled market priced at a 60-min lead with zero lookahead (2,733 markets, 49 close-dates); CI clustered by close-date; resting fills pay no fee"),
+        Expectation(0.0422, 0.0348, 0.0493, "the CONTESTED subset -- the 1,098 of 2,733 markets whose quote was under 75 min old at the 60-min mark, i.e. the books a resting order can actually fill in (16 real losses, 49 close-dates); CI clustered by close-date; resting fills pay no fee. The blended 2,733-market figure (+3.88c) is NOT the live expectation: 37% of that population had not been quoted for hours and carries zero losses"),
     )
+    // The verdict on this book depends on how many LOSSES it accumulates, not on the stake, and at
+    // lot 1 one day's whole ~56-market pool costs ~$53 of collateral -- so the pool is funded in
+    // full and the losses arrive as fast as the market produces them. At lot 5 the same pool wants
+    // ~$266 and would be collateral-bound at today's balance, funding an arbitrary two thirds of it.
+    override val defaultLotCap = 1
     override val defaultMinLeadMin = 40
     override val defaultMaxLeadMin = 90
     override val defaultEveryMin = 10

@@ -102,6 +102,64 @@ three losses were bought below 0.94 -- which is what made the small sample look 
 > six-date sample and the first Polymarket pull. The rule it implies: before acting on a band split,
 > count the LOSSES, not the fills.
 
+## What the two live books are SET to, 2026-11-15 — three stale benchmarks
+
+Asked to check everything was correctly set, and the settings had drifted from the evidence in
+three places. All three are the same shape: **a number measured on history outlived the live
+record that replaced it.** The repo already records this failure mode for stale comments on
+live trading paths; an `Expectation` is worse than a comment, because
+`Scorecard` grades real fills against it.
+
+- **The BTC ladder was still described as having no edge.** `KalshiBtcDeepItm`'s evidence read
+  `EvidenceLevel.NO_EDGE`, "the reported +2c did not reproduce", with
+  `Expectation(-0.0122)` from the 2026-10-30 replay — and the go-live checklist asked the
+  operator to "accept: the historical replay found no edge". Meanwhile the account's own
+  settlement payloads carry **1,805 positions, 9,028 contracts, +$162.65, +1.80c/contract with
+  81 losing positions over 21 days, 95% CI [+1.09c, +2.43c]** clustered by settle-date. Split at
+  2026-10-01 it holds: **+1.75c then +1.94c**. The 2026-11-12 correction further up this file
+  recovered the original run and found the parameters identical; what it did not do is update
+  the `Evidence` object, so the app went on telling the operator its best strategy was dead.
+  Now `LIVE_PROVEN` at `Expectation(0.0180, 0.0109, 0.0243)`, sourced from the payloads.
+  The replay's two other claims die with it: live, **NO is +1.88c and YES +1.73c** (it had
+  called the NO side the loser), and there is no "-1.6c to -4.6c since 2026-08-30".
+  Why it was wrong: the pessimistic model only filled orders that traded through the bid, but
+  resting orders fill as makers and pay nothing — 130 of 130 of the app's own fills settled at
+  `fee_cost = 0`.
+- **The commodity book's expectation was the blended figure.** `Expectation(0.0388)` is the
+  number the section below says must NOT be quoted as the live expectation, because 1,277 of
+  those 2,733 markets had gone unquoted for hours and carry 3 losses against 50.3 implied — a
+  book nobody is pricing, where a resting order never fills. Fills come from contested books.
+  Now `Expectation(0.0422, 0.0348, 0.0493)` on the **contested subset** (1,098 markets, 16 real
+  losses, ratio 0.26), which holds across halves too (+4.70c then +4.05c).
+- **The commodity lot was 5, not the 1 its own live-start plan specifies.** `lot_cap` is a
+  shared `PaperRangeLongshot` param and its default was hardcoded; it is now
+  `open val defaultLotCap`, overridden to **1** for this book only. At lot 1 one day's whole
+  ~56-market pool costs ~$53 of collateral, so the pool is funded in full and the losses that
+  decide the verdict arrive as fast as the market makes them; at lot 5 the same pool wants ~$266
+  and would be collateral-bound at today's balance, funding an arbitrary subset by no measured
+  rule. Worst single market is then ~$0.98 against the $10 brake.
+
+**Hours do not select, and the attempt to make them is recorded here so it is not retried.**
+04–05 ET looks like the ladder's worst hour in-sample (−2.27c, 15 losses) and reads **+5.28c
+with zero losses** in the second half — a complete sign flip, so filtering it is overfitting,
+and the filter indeed improves the first half while hurting the second. 12–13 ET looks
+exceptional (+5.40c) and does hold (+6.08c then +3.97c) but rests on **one loss in each half**:
+suggestive, not actionable, and 18 cells were examined. The 0.92–0.94 band is the weakest in
+both halves and the only one that goes negative, on too few losses to drop. **Nothing about the
+ladder's configuration changed; only its description did.**
+
+> **A first-occurrence replace put the new lot on the wrong strategy.**
+> `override val defaultMinLeadMin = 40` appears in BOTH `PolymarketTemperatureLongshot` and
+> `KalshiCommodityLongshot`, so anchoring an edit on it and replacing once moved the Polymarket
+> weather book to lot 1 and left the commodity book at 5 — exactly inverted, and silent.
+> `ConfiguredDefaultsTest` caught it on its first run, which is the only reason it is a
+> footnote. An edit anchored on a line that is not unique to its class is not an edit.
+
+Tests: `core/src/test/kotlin/com/marketbot/core/ConfiguredDefaultsTest.kt` freezes all three
+settings and that lowering one book's lot does not move another's. `CommodityLiveTest` and
+`SearchCandidatesTest` now pin `lot_cap` explicitly, because they assert on fills sized in the
+fake tape and must not change meaning when a shipped default does.
+
 ## Commodity range longshot: the edge is at 60 minutes, and the book is under-deployed
 
 Measured 2026-11-13 against settled history, because the paper book could not answer the question:

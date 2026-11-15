@@ -155,8 +155,15 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
     open val defaultMaxLeadMin = 90
     open val defaultEveryMin = 10
 
+    /**
+     * Contracts per market. 5 is the weather longshot's measured lot. A book whose verdict still
+     * depends on counting LOSSES overrides this down, so that one day's whole candidate pool fits
+     * the budget: the losses arrive as fast as the market allows them to, at the smallest stake.
+     */
+    open val defaultLotCap = 5
+
     override val params: List<Param> get() = listOf(
-        Param.Int_("lot_cap", "Contracts per market", "Lot size; 5 is the weather longshot's.", 5, 1, 10),
+        Param.Int_("lot_cap", "Contracts per market", "Lot size; 5 is the weather longshot's.", defaultLotCap, 1, 10),
         Param.Num("daily_loss_limit", "Daily loss brake", "Stop quoting for the day once realised paper losses reach this.", 10.0, 1.0, 100.0, "$"),
         Param.Num("collateral_fraction", "Share of equity to deploy", "Collateral locked is the most the book can lose.", 0.75, 0.05, 1.0, decimals = 2),
         Param.Int_("min_lead_min", "Quote from (minutes before)", "Earliest point of the measured window, in minutes before the reference time.", defaultMinLeadMin, 5, 1440, "min"),
