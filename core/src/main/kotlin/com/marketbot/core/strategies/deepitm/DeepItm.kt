@@ -295,14 +295,34 @@ abstract class DeepItmStrategy(
             finalFill(ctx, venue, q, now)
     }
 
+    /**
+     * Stamps a result on every row whose market has closed -- **in both books, not just the one
+     * this pass is running**.
+     *
+     * It used to read `ledger.open(id, bookMode(ctx))`, i.e. only the mode the strategy happens to
+     * be in now, and branch on `ctx.live` rather than on the row. Two things stranded rows forever:
+     * switching the strategy between paper and live left the other book's open rows with nobody to
+     * visit them, and every row froze as it stood the moment the strategy went OFF, because
+     * [runOnce] returns before this is reached. Nothing else writes `resolvedAt`, and the ungraded
+     * alarm only looks at FILLED positions, so unfilled bids piled up unnoticed and the Orders list
+     * showed them as resting or withdrawn for good.
+     *
+     * The grading path is chosen by `q.mode`, which is what it should always have been: a paper row
+     * is graded by the paper model and a live row from the exchange's own figure, whichever mode
+     * the pass itself is in. Live rows are skipped while there are no credentials to read them
+     * with, rather than failing into the ungraded path.
+     */
     private suspend fun grade(ctx: StrategyContext, venue: LadderVenue, now: Instant) {
-        val due = ctx.stores.ledger.open(id, bookMode(ctx)).filter { it.closeTime != null && !it.closeTime.isAfter(now) }
+        val creds = if (venue.venueKey == "kalshi") ctx.kalshi.hasCredentials else ctx.polymarket.hasCredentials
+        val due = (ctx.stores.ledger.open(id, Mode.PAPER) + ctx.stores.ledger.open(id, Mode.LIVE))
+            .filter { it.closeTime != null && !it.closeTime.isAfter(now) }
+            .filter { it.mode != Mode.LIVE || creds }
         val results = mutableMapOf<String, Sourced<String>?>()
         for (q in due) {
             val res = results.getOrPut(q.ticker) { runCatching { venue.result(q.ticker) }.getOrNull() } ?: continue
             val side = if (q.action == "buy_yes") "yes" else "no"
             val filled = q.filledContracts ?: 0.0
-            if (!ctx.live) {
+            if (q.mode != Mode.LIVE) {
                 val pnl = DeepItmRule.pnl(side, q.price, filled, res.value)
                 ctx.stores.ledger.update(q.copy(resolvedAt = now, result = res.value, pnl = pnl, pnlSource = Source.PAPER_MODEL,
                     pnlOrigin = "simulated fills x (payout - price); result: ${res.origin}", hypothetical = filled <= 0))
@@ -375,6 +395,10 @@ abstract class DeepItmStrategy(
         if (ctx.mode == Mode.OFF) return
         val venue = ladderVenue(ctx)
         cancelAll(ctx, venue, "stopped", rt(bookMode(ctx)))
+        // Settle whatever has already closed before the passes stop: once the strategy is OFF,
+        // runOnce returns immediately and nothing reaches grade() again until it is turned back on.
+        runCatching { grade(ctx, venue, ctx.clock.now()) }
+            .onFailure { ctx.warn("grade", "Could not settle closed rows while stopping: ${it.message}") }
         rt(bookMode(ctx)).started = false
     }
 

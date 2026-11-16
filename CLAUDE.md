@@ -426,6 +426,52 @@ aborted pass on an unreadable balance, the cancel-before-withdraw, grading from 
 than local arithmetic, the ungraded-not-guessed branch, the never-filled reconciliation, and that
 live and paper books never mix.
 
+## Unfilled bids sat unsettled for ever, 2026-11-16
+
+Reported from the app: the deep-ITM Orders list showed a lot of orders as not settled, and the
+operator's reading was right -- they never filled. The app agreed about the fill; it just never
+stamped them finished.
+
+**Only `grade()` ever writes `resolvedAt`**, and it had two gates that stranded rows permanently:
+
+- `runOnce` returns at `if (ctx.mode == Mode.OFF)`, so **switching the strategy off froze every
+  open row exactly as it stood**, with nothing to come back and settle it;
+- it read `ledger.open(id, bookMode(ctx))` and branched on `ctx.live`, i.e. **only the book of the
+  mode the pass happened to be in**, so switching between paper and live left the other book's
+  open rows with nobody to visit them.
+
+Nothing else closes a row. The engine's 5-minute `reconcileOrders()` does notice when Kalshi no
+longer has the order and stamps `cancelledAt` -- which is why these read "Withdrawn" rather than
+"Resting" -- but it never resolves, and it skips OFF strategies too. And
+`KillCriteria.ungradedPositions` only alarms on rows with `filledContracts > 0`, by design, so an
+unfilled backlog raised nothing. Three mechanisms each did their own job correctly and the row
+still never finished.
+
+Fixed three ways:
+
+- `grade()` now reads **both books** and chooses the grading path from **`q.mode`**, not from
+  `ctx.live`: a paper row is graded by the paper model and a live row from the exchange's figure,
+  whichever mode the pass is in. Live rows are skipped while no credentials exist to read them
+  with, rather than failing into the ungraded path.
+- `onStop()` grades after cancelling, so switching off settles what has already closed.
+- The Orders row no longer calls an order on a **closed** market "Resting ... 3h 12m". That was a
+  false claim about live state; it now reads "Not filled, awaiting settlement".
+
+> **The first hypothesis was wrong, and testing it is what saved the fix.** The obvious suspect was
+> the repo's own rule that Kalshi partitions markets into live and historical tiers, since
+> `result()` reads a single `GET /markets/{ticker}`. Probed against real tickers from this
+> account's settlements at 1 day, 3 weeks and 8 weeks old, **every one still returns
+> `status=finalized` with a result.** The tier is not the problem and no three-tier chain was
+> needed here. Had that gone in on reasoning alone it would have added a fallback nothing uses and
+> left the real cause untouched.
+
+What this does NOT fix: a market that closes while the strategy is OFF still waits for the next
+pass in either mode, because no pass runs at all. Turning the strategy on settles it.
+
+Tests: five in `DeepItmEngineTest`. Two of them fail against the old code (the mode switch and the
+stop); the other three are guards that must pass either way -- a closed market settles, an open one
+is not settled early, and a live row is never graded by the paper model.
+
 ## The board: words under every number (2026-11-14)
 
 Home opens on a board, and each strategy on a Bottom line, built from three layers of words: one

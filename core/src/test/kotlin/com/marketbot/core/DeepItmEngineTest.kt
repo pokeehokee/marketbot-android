@@ -264,4 +264,80 @@ class DeepItmEngineTest {
         assertTrue(s.validate(StrategyConfig(s.params, mapOf("slot_order" to "sideways"))).any { "Slot order" in it })
         assertTrue(s.validate(StrategyConfig(s.params, mapOf("slot_order" to "middle"))).isEmpty())
     }
+
+    // ------------------------------------------- unfilled bids must not sit unsettled for ever
+
+    /** A closed market whose result the fake exchange reports, so grade() has something to read. */
+    private fun settled(ticker: String, result: String) {
+        fake.marketByTicker[ticker] = FakeKalshi.market(ticker, 0.0, 1.0,
+            "2026-10-27T21:00:00Z", status = "finalized", result = result)
+    }
+
+    private suspend fun placeUnfilled(mode: Mode, ticker: String) =
+        stores.ledger.insert(com.marketbot.core.store.QuoteRow(
+            strategyId = s.id, mode = mode, venue = "kalshi", ticker = ticker, action = "buy_yes",
+            price = 0.94, contracts = 5.0, placedAt = clock.now().minusSeconds(3_600),
+            closeTime = Instant.parse("2026-10-27T21:00:00Z"), orderId = "o-$ticker",
+            filledContracts = 0.0, fillSource = "test", cancelledAt = clock.now().minusSeconds(60)))
+
+    @Test fun `an unfilled bid on a closed market is settled, not left resting for ever`() = runTest {
+        val ix = warmIndex()
+        val tk = "KXBTCD-26OCT2717-T74000"
+        placeUnfilled(Mode.PAPER, tk); settled(tk, "yes")
+        clock.at = Instant.parse("2026-10-27T21:30:00Z")      // the hour has closed
+        s.runOnce(ctx(Mode.PAPER, ix))
+        val q = stores.ledger.all(s.id, Mode.PAPER).single { it.ticker == tk }
+        assertTrue(q.resolvedAt != null, "a closed market with a readable result must settle the row")
+        assertEquals(0.0, q.pnl, "nothing was filled, so nothing was won or lost")
+        assertEquals(true, q.hypothetical, "an unfilled row must never count toward the record")
+    }
+
+    /**
+     * The stranding this test exists for: grade() used to read only the book of the mode the pass
+     * was running in, so switching paper to live (or back) left the other book's rows with nobody
+     * to settle them, for good.
+     */
+    @Test fun `rows of the other book are settled too, so a mode switch strands nothing`() = runTest {
+        val ix = warmIndex()
+        val paperTk = "KXBTCD-26OCT2717-T73500"
+        placeUnfilled(Mode.PAPER, paperTk); settled(paperTk, "no")
+        clock.at = Instant.parse("2026-10-27T21:30:00Z")
+        // The strategy is now LIVE and armed; the stranded row belongs to the PAPER book.
+        s.runOnce(ctx(Mode.LIVE, ix, armed = true))
+        val q = stores.ledger.all(s.id, Mode.PAPER).single { it.ticker == paperTk }
+        assertTrue(q.resolvedAt != null, "a paper row must still settle while the strategy runs live")
+        assertEquals(true, q.hypothetical)
+    }
+
+    /** Switching off used to freeze every open row exactly as it stood, because runOnce returns first. */
+    @Test fun `stopping the strategy settles what has already closed`() = runTest {
+        val ix = warmIndex()
+        val tk = "KXBTCD-26OCT2717-T74000"
+        placeUnfilled(Mode.PAPER, tk); settled(tk, "yes")
+        clock.at = Instant.parse("2026-10-27T21:30:00Z")
+        s.onStop(ctx(Mode.PAPER, ix))
+        assertTrue(stores.ledger.all(s.id, Mode.PAPER).single { it.ticker == tk }.resolvedAt != null,
+            "onStop must settle closed rows rather than leave them for a pass that will not come")
+    }
+
+    /** A row whose market has not closed yet is still genuinely open and must be left alone. */
+    @Test fun `an open market's bid is not settled early`() = runTest {
+        val ix = warmIndex()
+        val tk = "KXBTCD-26OCT2717-T74000"
+        placeUnfilled(Mode.PAPER, tk); settled(tk, "yes")
+        s.runOnce(ctx(Mode.PAPER, ix))                        // clock is still 20:20Z, close is 21:00Z
+        assertTrue(stores.ledger.all(s.id, Mode.PAPER).single { it.ticker == tk }.resolvedAt == null,
+            "the hour has not closed; nothing may be graded yet")
+    }
+
+    /** Without credentials a live row cannot be graded from the exchange, so it waits rather than guesses. */
+    @Test fun `a live row is left alone when there are no credentials to read it with`() = runTest {
+        val ix = warmIndex()
+        val tk = "KXBTCD-26OCT2717-T76000"
+        placeUnfilled(Mode.LIVE, tk); settled(tk, "no")
+        clock.at = Instant.parse("2026-10-27T21:30:00Z")
+        s.runOnce(ctx(Mode.PAPER, ix))                        // paper pass: the client holds no key
+        val q = stores.ledger.all(s.id, Mode.LIVE).single { it.ticker == tk }
+        assertTrue(q.resolvedAt == null, "a live row must not be graded by the paper model")
+    }
 }

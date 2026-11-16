@@ -336,6 +336,11 @@ private fun OrderRow(q: QuoteRow, cancelling: Boolean = false, onOpen: () -> Uni
         q.cancelledAt != null -> "Withdrawn" + (q.filledContracts?.takeIf { it > 0 }?.let { ", %.0f filled".format(it) } ?: "")
         (q.filledContracts ?: 0.0) >= q.contracts -> "Filled"
         (q.filledContracts ?: 0.0) > 0 -> "%.0f of %.0f filled".format(q.filledContracts, q.contracts)
+        // An order on a market that has already closed is NOT resting at the exchange, whatever
+        // this row still says: it filled, expired or was pulled, and the only honest reading is
+        // that it is waiting to be settled. Saying "Resting - 3h 12m" there is a false claim
+        // about live state, and it is what made unfilled bids look like a backlog of open orders.
+        q.closeTime?.let { !it.isAfter(java.time.Instant.now()) } == true -> "Not filled, awaiting settlement"
         else -> "Resting" + restingDetail(q, java.time.Instant.now())
     }
     Surface(onClick = onOpen, shape = Radius.banner, color = Elevation.section(),
