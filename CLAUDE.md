@@ -324,6 +324,60 @@ snapshots** of open commodity markets at a few minutes' resolution -- weatherbot
 books that really existed. Nothing about the shipped 40-90 min window changes meanwhile: the
 contested bucket IS the 60-75 minute one.
 
+### Order books are recorded forward now, 2026-11-16
+
+The lead question above is open because **candles cannot answer it** and Kalshi serves no historical
+order books. `research/commodity/book_collector.py` writes them down as they happen: top of book
+for every market within 120 minutes of its close, every 60 seconds, plus full ladders for the cheap
+band. Read-only (`assert_read_only()` whitelists the market listing and the two orderbook reads and
+raises on anything else), unauthenticated, its own database, places nothing.
+
+Shape of the problem, measured on 2026-11-16: the 12 series carry **537 open markets**, but closes
+cluster into about **two times a day** — 19:30Z with 30 markets and 22:00Z with 270. So the
+collector idles ~20 hours a day and works two 2-hour windows. Top of book for every market comes
+from the 12 per-series listings — 12 calls a cycle however many markets exist — and that alone is
+what pricing the cheap side needs (`yes_ask_dollars`, `yes_bid_dollars` and both sizes). Ladders
+cost a call each, so they go through the batch endpoint, cheap band only, capped. ~140 Read tokens
+and ~2 s a cycle, ~100 MB a month. It needs a machine that stays up (`DEPLOY.md`: systemd user
+service with linger, after what the pm2 daemon did to weatherbot on 2026-09-09); **a day missed is
+a day that cannot be recovered.**
+
+Three payload facts it depends on, all verified live against the exchange rather than assumed:
+
+- **The orderbook carries only bids**, so **the YES ask is `1 − best NO bid`** and the queue at that
+  ask is that NO level's size. Confirmed against the market object twice, independently:
+  KXGOLDD-26NOV1617-T4087 ladder best NO bid 0.99/537 → 0.01/537 against `yes_ask_dollars 0.0100` /
+  `yes_ask_size_fp 537.00`; KXWTI-26NOV1614-T88.49 → 0.41/204 against 0.41/204.
+- **An empty side is an EMPTY LIST, not a missing key** (`yes_dollars: []`), which the docs do not
+  spell out, and on the market object it is `yes_bid_dollars '0.0000'` / `yes_ask_dollars '1.0000'`
+  — the same shape a closed market quotes. All of it stores as NULL. This is the sentinel that once
+  made a stop-loss replay report a 97% trigger rate at −72c/contract.
+- **`tickers=A,B` on `/markets/orderbooks` is a trap, and it does not fail.** It returns **one**
+  entry whose `ticker` is the literal string `"A,B"` with both sides empty — which reads as a market
+  with nothing resting. Called that way the collector would have recorded a fabricated empty book
+  for every market it tracked, and the dataset would have looked complete. The parameter must be
+  repeated (`tickers=A&tickers=B`), and an entry naming a ticker that was not asked for is
+  discarded rather than stored. Found by checking the batch result against the per-market endpoint,
+  which is the only reason it was found at all.
+
+> **It also records when each row was really read.** The series listing and the ladder are separate
+> HTTP calls, so they land a second or more apart and the book moves in between: observed on
+> KXWTI-26NOV1614-T88.49, where the listing reported 167 contracts at the best YES bid and the
+> ladder read 15 a moment later. Both are correct for their own instant. `book_top.fetched_ts` and
+> `book_depth.fetched_ts` carry the real arrival time per row, with `snapshot_ts` kept only as the
+> cycle id for joining, so the skew (1.7 s measured within a cycle) is measurable instead of
+> assumed. This is the "13:00 prices that actually spanned 04:45 to 13:45" mistake, pre-empted.
+
+What it is for, in order: the **lead curve below 60 minutes** on books that really existed; and how
+the **queue at the ask** evolves through the window, which is the input to a real fill model — the
+current one rests on 707 fill-checked quotes and a queue-depth relationship the data says is *not*
+established. Give it a week covering both close times before scoring anything, and cluster by
+close-date.
+
+Tests: `research/commodity/test_book_collector.py` (22 tests, stdlib `unittest`, run in CI before
+the Kotlin suites) freezes the sentinel, the ask derivation, best-level selection that does not rely
+on server ordering, the comma-batch trap, the read-only guard, and idempotent inserts.
+
 ### The live order path, 2026-11-14
 
 `PaperRangeLongshot` had no live path by construction -- "a candidate from the pool search is
