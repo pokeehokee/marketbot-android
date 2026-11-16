@@ -453,6 +453,45 @@ Home kept everything it had (charts, quick actions, exposure, periods, capital, 
 accounts) below the board; only the old strategies list went, replaced by the board's table. The
 Strategies tab still has the full list.
 
+## The notification carries the money, 2026-11-16
+
+The persistent notification led with the engine's status ("1 live, 3 paper"). It now leads with
+the account: **`$39.40 · up $1.20 in 24h`**, with the status and next pass moved into the body so
+the live/paper split and the kill state are never lost from the shade. When the kill switch is on
+the title still says so first.
+
+**It makes no API call.** The figures come from the `equity` store, which the engine fills from
+`/portfolio/balance` every 15 minutes whatever the strategies' modes. `/portfolio/balance` has its
+own 1/s bucket and, as the API skill records, changes only on fills, settlements and transfers --
+polling it to paint a notification would be waste, and on a phone that redraws the shade often it
+would be a lot of waste.
+
+Every figure and every word is `Narration.balance()` / `Narration.balanceLine()`, keeping the
+board's rule that sentences are written in `Narration.kt` and nowhere else. Four things it refuses
+to do, each with a test:
+
+- **A withdrawal is not a loss.** The change subtracts every confirmed `CashFlow` inside the
+  window. Without that, the $200 withdrawal of 2026-11-14 reads as the worst day the account ever
+  had -- `a withdrawal is not a loss` asserts the naive figure (-$198.50) and the right one
+  (+$1.50) side by side. Deposits are symmetric.
+- **A missing reading is not $0.00.** No snapshot means the line reads "Balance not read yet" and
+  the notification falls back to the old status title; one snapshot shows the balance and says
+  "24h change needs a day of history" rather than inventing a change.
+- **The span is the real span.** With only six hours of history it says "up $0.40 in 6h", not
+  "in 24h". The anchor is the newest reading at or before the window opens, so two days of history
+  still reports 24 hours. This is the same discipline as `fetched_ts` on the book collector and the
+  "13:00 prices that spanned nine hours" near-miss in weatherbot.
+- **Practice money is never added in.** `Mode.PAPER` snapshots are filtered out, so the $400
+  paper wallet cannot reach a line about the real account.
+
+Equity per venue is the exchange's own mark (`total` = cash + portfolio value), falling back to
+cash only where a venue reports no mark -- matching `CashFlows.candidates`. Venues are summed, and
+each venue's flows are netted against that venue only. A reading older than
+`BALANCE_STALE_AFTER` (45 min, three snapshot intervals) is labelled with its time rather than
+presented as current.
+
+Tests: the `NarrationTest` balance block (12 cases).
+
 ## Perps: recorded, never traded
 
 Kalshi's perps (the "Invest" product) are leveraged perpetual futures on the separate `/margin`

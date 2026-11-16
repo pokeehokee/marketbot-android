@@ -225,6 +225,114 @@ object Narration {
         return Line(sb.toString(), tone)
     }
 
+    // ------------------------------------------------- the account, and what trading did to it
+
+    /** Older than this and the reading is labelled with its age: balances snapshot every 15 min. */
+    val BALANCE_STALE_AFTER: Duration = Duration.ofMinutes(45)
+    /** A span at least this long may be called "24h" rather than stated in hours. */
+    private val NEAR_24H: Duration = Duration.ofHours(23)
+
+    /**
+     * The live account as the EXCHANGE last reported it, and what trading alone did over a window.
+     *
+     * Three things this is careful about, each of which has burned this project or weatherbot:
+     *
+     *  - **Deposits and withdrawals are not performance.** The change subtracts every confirmed
+     *    [CashFlow] inside the window, so moving money in or out does not read as a win or a loss.
+     *    Without this, one withdrawal shows up as the worst day the account ever had.
+     *  - **A missing reading is null, never zero.** No snapshot means "not read yet", which is a
+     *    different sentence from "$0.00".
+     *  - **The span is the real span.** If the oldest snapshot is six hours old the change is
+     *    reported over six hours and SAID so, rather than being labelled 24h. weatherbot's one
+     *    near-miss on a false edge came from exactly this: "13:00 prices" that actually spanned
+     *    nine hours.
+     *
+     * Equity per snapshot is `total` (the exchange's own mark: cash + portfolio value) and falls
+     * back to `cash` only when the venue reports no mark, matching [CashFlows.candidates].
+     */
+    data class Balance(
+        /** Live equity summed over the venues that have a reading. Null means none does. */
+        val equity: Double?,
+        val asOf: Instant?,
+        /** Trading-only change over [span], with confirmed cash flows removed. Null = no anchor. */
+        val change: Double?,
+        val span: Duration?,
+        val flowsRemoved: Double,
+    ) {
+        fun stale(now: Instant): Boolean = asOf?.let { Duration.between(it, now) > BALANCE_STALE_AFTER } ?: true
+        val isFullWindow: Boolean get() = span != null && span >= NEAR_24H
+    }
+
+    fun balance(
+        snapshots: List<com.marketbot.core.store.EquitySnapshot>,
+        flows: List<CashFlow>,
+        now: Instant,
+        window: Duration = Duration.ofDays(1),
+    ): Balance {
+        val live = snapshots.filter { it.mode == Mode.LIVE }
+        if (live.isEmpty()) return Balance(null, null, null, null, 0.0)
+        fun value(s: com.marketbot.core.store.EquitySnapshot) = s.total?.value ?: s.cash.value
+
+        var equity = 0.0
+        var latestAt: Instant? = null
+        var change = 0.0
+        var flowsOut = 0.0
+        var shortestSpan: Duration? = null
+        var anchored = false
+
+        for (venue in live.map { it.venue }.distinct()) {
+            val s = live.filter { it.venue == venue }.sortedBy { it.at }
+            val latest = s.last()
+            equity += value(latest)
+            if (latestAt == null || latest.at.isAfter(latestAt)) latestAt = latest.at
+            // The newest snapshot at or before the window's start, else the oldest there is.
+            val cutoff = now.minus(window)
+            val anchor = s.lastOrNull { !it.at.isAfter(cutoff) } ?: s.first()
+            val span = Duration.between(anchor.at, latest.at)
+            if (span.isZero || span.isNegative) continue      // one reading cannot show a change
+            val moved = flows.filter {
+                it.venue == venue && it.instant.isAfter(anchor.at) && !it.instant.isAfter(latest.at)
+            }.sumOf { it.amount }
+            change += (value(latest) - value(anchor)) - moved
+            flowsOut += moved
+            anchored = true
+            if (shortestSpan == null || span < shortestSpan) shortestSpan = span
+        }
+        return Balance(equity, latestAt, if (anchored) change else null,
+            if (anchored) shortestSpan else null, flowsOut)
+    }
+
+    /**
+     * The one line a glanceable surface shows: the balance, then what trading did to it.
+     *
+     * It never claims a window it does not have, and it never presents a figure whose reading is
+     * stale without saying how old it is.
+     */
+    fun balanceLine(b: Balance, now: Instant, zone: ZoneId = ZoneId.systemDefault()): String {
+        val eq = b.equity ?: return "Balance not read yet"
+        val head = money(eq)
+        val tail = when {
+            b.change == null -> "24h change needs a day of history"
+            abs(b.change) < 0.005 && b.isFullWindow -> "flat over 24h"
+            abs(b.change) < 0.005 -> "flat over ${spanWords(b.span!!)}"
+            b.isFullWindow -> "${upDown(b.change)} in 24h"
+            else -> "${upDown(b.change)} in ${spanWords(b.span!!)}"
+        }
+        val age = if (b.stale(now) && b.asOf != null)
+            " (as of ${b.asOf.atZone(zone).toLocalTime().withSecond(0).withNano(0)})" else ""
+        return "$head · $tail$age"
+    }
+
+    /** A duration a person reads at a glance: "6h", "40 min", "3 days". */
+    fun spanWords(d: Duration): String {
+        val mins = d.toMinutes()
+        return when {
+            mins < 90 -> "$mins min"
+            mins < 60 * 48 -> "${(mins / 60.0).roundToInt()}h"
+            else -> "${(mins / 1440.0).roundToInt()} days"
+        }
+    }
+
     // ------------------------------------------------------------------ words
 
     private val WORDS = listOf("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
