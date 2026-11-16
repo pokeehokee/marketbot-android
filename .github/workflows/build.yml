@@ -25,6 +25,10 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Research script tests (payload rules the collected datasets depend on)
+        # Stdlib unittest, no dependencies: these freeze the empty-book sentinel, the
+        # YES-ask-is-1-minus-best-NO-bid derivation and the collector's read-only guard.
+        run: python3 -m unittest discover -s research/commodity -p 'test_*.py' -v
       - name: Core tests (golden comparisons against the Python originals, clients, strategies)
         run: ./gradlew --no-daemon :core:test
       - name: App tests (Room stores, vault, screens)

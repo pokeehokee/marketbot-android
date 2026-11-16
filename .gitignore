@@ -9,3 +9,11 @@ build/
 .cxx
 /release-keystore.jks
 .kotlin/
+
+# Research artefacts: rebuildable (sample) or forward-collected (book), never committed.
+__pycache__/
+*.pyc
+research/**/*.jsonl
+research/**/*.db
+research/**/*.db-wal
+research/**/*.db-shm
