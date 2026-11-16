@@ -1,6 +1,11 @@
 package com.marketbot.core
 
+import com.marketbot.core.store.EquitySnapshot
 import com.marketbot.core.store.QuoteRow
+import com.marketbot.core.provenance.Source
+import com.marketbot.core.provenance.Sourced
+import com.marketbot.core.strategy.CashFlow
+import java.time.Duration
 import com.marketbot.core.strategy.Mode
 import com.marketbot.core.strategy.Narration
 import com.marketbot.core.strategy.Narration.Tone
@@ -132,5 +137,115 @@ class NarrationTest {
     @Test fun `a strategy with no settled bets says so in its own mode's words`() {
         assertEquals("Practising; no bets have finished yet.", Narration.bottomLine(Mode.PAPER, emptyList(), now).text)
         assertEquals("Off, with no record yet.", Narration.bottomLine(Mode.OFF, emptyList(), now).text)
+    }
+
+    // ------------------------------------------------- the balance line on the notification
+
+    private fun snap(venue: String, at: Instant, cash: Double, positions: Double? = null) =
+        EquitySnapshot(at, venue, Mode.LIVE,
+            Sourced(cash, Source.KALSHI_API, "balance_dollars"),
+            positions?.let { Sourced(it, Source.KALSHI_API, "portfolio_value") },
+            Sourced(cash + (positions ?: 0.0), Source.DERIVED, "cash + portfolio_value"))
+
+    @Test fun `the balance is the exchange's own mark, and a day's change with it`() {
+        val day = listOf(snap("kalshi", now.minusSeconds(86_400), 10.0, 28.0),
+                         snap("kalshi", now.minusSeconds(60), 12.0, 27.2))
+        val b = Narration.balance(day, emptyList(), now)
+        assertEquals(39.2, b.equity!!, 1e-9, "cash + portfolio value, not cash alone")
+        assertEquals(1.2, b.change!!, 1e-9)
+        assertTrue(b.isFullWindow)
+        assertEquals("$39.20 · up $1.20 in 24h", Narration.balanceLine(b, now, utc))
+    }
+
+    @Test fun `a withdrawal is not a loss`() {
+        // Equity fell $200 because the operator took $200 out, while trading made $1.50.
+        val rows = listOf(snap("kalshi", now.minusSeconds(86_400), 240.0),
+                          snap("kalshi", now.minusSeconds(60), 41.5))
+        val flow = CashFlow("kalshi", now.minusSeconds(40_000).toString(), -200.0, "withdrawal")
+        val naive = Narration.balance(rows, emptyList(), now)
+        assertEquals(-198.5, naive.change!!, 1e-9, "without the flow it reads as a catastrophe")
+        val b = Narration.balance(rows, listOf(flow), now)
+        assertEquals(1.5, b.change!!, 1e-9, "with it, performance is what trading did")
+        assertEquals(-200.0, b.flowsRemoved, 1e-9)
+        assertEquals("$41.50 · up $1.50 in 24h", Narration.balanceLine(b, now, utc))
+    }
+
+    @Test fun `a deposit is not a gain either`() {
+        val rows = listOf(snap("kalshi", now.minusSeconds(86_400), 40.0),
+                          snap("kalshi", now.minusSeconds(60), 239.0))
+        val b = Narration.balance(rows, listOf(CashFlow("kalshi", now.minusSeconds(3_600).toString(), 200.0)), now)
+        assertEquals(-1.0, b.change!!, 1e-9)
+        assertEquals("$239.00 · down $1.00 in 24h", Narration.balanceLine(b, now, utc))
+    }
+
+    @Test fun `a span shorter than a day is reported as the span it really is`() {
+        val rows = listOf(snap("kalshi", now.minusSeconds(6 * 3600), 30.0),
+                          snap("kalshi", now.minusSeconds(60), 30.4))
+        val b = Narration.balance(rows, emptyList(), now)
+        assertFalse(b.isFullWindow, "six hours may not be called 24h")
+        assertEquals("$30.40 · up $0.40 in 6h", Narration.balanceLine(b, now, utc))
+    }
+
+    @Test fun `one reading shows a balance and refuses to invent a change`() {
+        val b = Narration.balance(listOf(snap("kalshi", now.minusSeconds(60), 39.4)), emptyList(), now)
+        assertEquals(39.4, b.equity!!, 1e-9)
+        assertNull(b.change, "a single reading cannot show a change")
+        assertEquals("$39.40 · 24h change needs a day of history", Narration.balanceLine(b, now, utc))
+    }
+
+    @Test fun `no reading is not a zero balance`() {
+        val b = Narration.balance(emptyList(), emptyList(), now)
+        assertNull(b.equity)
+        assertEquals("Balance not read yet", Narration.balanceLine(b, now, utc))
+    }
+
+    @Test fun `paper money never reaches the balance`() {
+        val paper = EquitySnapshot(now.minusSeconds(60), "kalshi", Mode.PAPER,
+            Sourced(400.0, Source.DERIVED, "paper wallet"), null, null)
+        val b = Narration.balance(listOf(paper, snap("kalshi", now.minusSeconds(60), 39.4)), emptyList(), now)
+        assertEquals(39.4, b.equity!!, 1e-9, "the $400 practice wallet must not be added in")
+    }
+
+    @Test fun `a stale reading says how old it is`() {
+        val old = now.minusSeconds(3 * 3600)
+        val rows = listOf(snap("kalshi", old.minusSeconds(86_400), 30.0), snap("kalshi", old, 31.0))
+        val b = Narration.balance(rows, emptyList(), now)
+        assertTrue(b.stale(now))
+        assertTrue(Narration.balanceLine(b, now, utc).endsWith("(as of 17:00)"),
+            Narration.balanceLine(b, now, utc))
+        // A fresh reading carries no age.
+        val fresh = Narration.balance(listOf(snap("kalshi", now.minusSeconds(86_400), 30.0),
+                                             snap("kalshi", now.minusSeconds(120), 31.0)), emptyList(), now)
+        assertFalse(fresh.stale(now))
+        assertFalse("as of" in Narration.balanceLine(fresh, now, utc))
+    }
+
+    @Test fun `two venues are summed and each keeps its own flows`() {
+        val rows = listOf(
+            snap("kalshi", now.minusSeconds(86_400), 20.0), snap("kalshi", now.minusSeconds(60), 21.0),
+            snap("polymarket", now.minusSeconds(86_400), 10.0), snap("polymarket", now.minusSeconds(60), 15.0))
+        val b = Narration.balance(rows, listOf(CashFlow("polymarket", now.minusSeconds(3_600).toString(), 4.0)), now)
+        assertEquals(36.0, b.equity!!, 1e-9)
+        assertEquals(2.0, b.change!!, 1e-9, "+1 on kalshi, +5 less a $4 deposit on polymarket")
+    }
+
+    @Test fun `flat is said rather than dressed up as a move`() {
+        val rows = listOf(snap("kalshi", now.minusSeconds(86_400), 39.4), snap("kalshi", now.minusSeconds(60), 39.4))
+        assertEquals("$39.40 · flat over 24h", Narration.balanceLine(Narration.balance(rows, emptyList(), now), now, utc))
+    }
+
+    @Test fun `the anchor is the newest reading at or before the window opens`() {
+        // Readings every 15 min for two days, rising by a cent each: the change must cover the
+        // last 24h (96 quarter-hours = $0.96), not the whole 48h of history ($1.92).
+        val rows = (0..192).map { snap("kalshi", now.minusSeconds(it * 900L), 30.0 + (192 - it) * 0.01) }
+        val b = Narration.balance(rows, emptyList(), now)
+        assertEquals(Duration.ofSeconds(96 * 900L), b.span, "96 quarter-hours is 24h")
+        assertEquals(0.96, b.change!!, 1e-6, "the oldest reading is 48h old and must not be the anchor")
+    }
+
+    @Test fun `spans read the way a person says them`() {
+        assertEquals("45 min", Narration.spanWords(Duration.ofMinutes(45)))
+        assertEquals("6h", Narration.spanWords(Duration.ofHours(6)))
+        assertEquals("3 days", Narration.spanWords(Duration.ofDays(3)))
     }
 }

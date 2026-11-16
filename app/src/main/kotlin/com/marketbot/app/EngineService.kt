@@ -66,18 +66,32 @@ class EngineService : LifecycleService() {
                 combine(app.engine.status, app.engine.globalKill) { st, k -> st to k }.collectLatest { (st, killed) ->
                     val active = st.values.filter { it.mode != Mode.OFF }
                     val live = active.filter { it.mode == Mode.LIVE && it.armed }
-                    val title = when {
-                        killed -> "Kill switch on"
+                    val status = when {
                         live.isNotEmpty() -> "${live.size} live, ${active.size - live.size} paper"
                         active.isEmpty() -> "No strategies on"
                         else -> "${active.size} in paper mode"
                     }
+                    // The balance comes from the equity history, which the engine fills from
+                    // /portfolio/balance every 15 min. Reading the store rather than the endpoint
+                    // is deliberate: balance has its own 1/s bucket and changes only on fills,
+                    // settlements and transfers, so polling it to paint a notification is waste.
+                    val bal = balanceLine()
+                    val title = when {
+                        killed && bal != null -> "Kill switch on · $bal"
+                        killed -> "Kill switch on"
+                        bal != null -> bal
+                        else -> status
+                    }
                     val next = active.mapNotNull { it.nextRunAt }.minOrNull()
+                    val nextTxt = next?.let { "next pass ${it.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0)}" } ?: "idle"
+                    // Status moves into the body once the title carries the money, so the live /
+                    // paper split and the kill state are never lost from the shade.
+                    val text = if (bal != null) "$status · $nextTxt" else nextTxt.replaceFirstChar { it.uppercase() }
                     val lines = active.map { s0 -> "${app.engine.strategies.firstOrNull { it.id == s0.id }?.name ?: s0.id}: ${if (s0.mode == Mode.LIVE && s0.armed) "LIVE" else "paper"}" +
                         (s0.lastSummary?.let { " - $it" } ?: "") }
                     Surfaces.refresh(this@EngineService)
                     getSystemService(android.app.NotificationManager::class.java).notify(NOTIF_ID,
-                        notification(title, next?.let { "Next pass ${it.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0)}" } ?: "Idle", lines, live.isNotEmpty() && !killed))
+                        notification(title, text, lines, live.isNotEmpty() && !killed))
                 }
             }
             lifecycleScope.launch { managePower(app) }
@@ -155,6 +169,26 @@ class EngineService : LifecycleService() {
         }
     }
 
+    /**
+     * "$39.40 · up $1.20 in 24h", or null when there is nothing honest to say.
+     *
+     * Null rather than a placeholder: with no live credentials or no reading yet there is no
+     * balance, and the notification then shows the engine's status as before rather than "$0.00".
+     * Every figure and every word comes from [Narration.balance]; nothing is computed here.
+     */
+    private suspend fun balanceLine(): String? {
+        val app = application as MarketbotApp
+        return runCatching {
+            val now = Instant.now()
+            val since = now.minus(java.time.Duration.ofDays(3))   // headroom to find a 24h anchor
+            val snaps = VENUES.flatMap { app.engine.stores.equity.history(it, Mode.LIVE, since) }
+            if (snaps.isEmpty()) return null
+            val flows = com.marketbot.core.strategy.CashFlows.load(app.engine.stores.state)
+            val b = com.marketbot.core.strategy.Narration.balance(snaps, flows, now)
+            b.equity?.let { com.marketbot.core.strategy.Narration.balanceLine(b, now) }
+        }.getOrNull()
+    }
+
     private fun notification(title: String, text: String = "", lines: List<String> = emptyList(), live: Boolean = false): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 1, Intent(this, EngineService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
@@ -194,6 +228,9 @@ class EngineService : LifecycleService() {
         const val NOTIF_ID = 1
         const val ACTION_STOP = "com.marketbot.app.STOP"
         const val EXTRA_BOOT = "boot"
+
+        /** The venues whose live equity the notification sums, as recordLiveBalances() names them. */
+        val VENUES = listOf("kalshi", "polymarket")
 
         fun start(ctx: Context) = ctx.startForegroundService(Intent(ctx, EngineService::class.java))
         fun stop(ctx: Context) = ctx.startService(Intent(ctx, EngineService::class.java).setAction(ACTION_STOP))
