@@ -195,6 +195,52 @@ the one thing that is measured", and each needs its own measurement before it sh
   so it stays on measured ground. Worth ~+$0.6/day, but the real argument is reaching the 30-loss
   verdict sooner -- at ~1.15 implied losses a day that is otherwise **~26 days** away.
 
+### The lot step-up, written up 2026-11-18 — and `max_open` is NOT the cheap one
+
+`docs/lot-step-up-experiment.md` holds the protocol for `lot: 5 -> 7 -> 10`: the gate (six
+thresholds, 8 days and >= 30 losses per step), the abort conditions, and the collateral and
+worst-hour arithmetic. Nothing is shipped; `lot: 5` stands until step 1's gate passes. Three
+corrections to the review above came out of writing it.
+
+**The peak hour is $38.35, not $56.20.** That figure was a legacy desktop 10-lot hour. Restricted
+to hours whose largest position is 5 contracts (308 of 357), the peak equals the p99 equals
+`8 x 5 x $0.96` -- the slot cap binds exactly, so scaling the lot is arithmetic rather than
+extrapolation: $53.76 at lot 7 (60% of shard-2 equity), $76.80 at lot 10 (86%), unfundable at 12.
+
+**Lot 10's objection is the worst hour, not funding.** One BTC hour's strikes settle off one price
+move, so the worst hour scales linearly: -$17.35 today, -$34.70 at lot 10, which is 39% of
+shard-2 equity in one hour. And `$15 / $9.60` is **1.6 single strikes**, below the
+two-to-three-typical-losses floor, so lot 10 cannot be configured without raising the stop --
+which the 2026-11-14 rule permits only on **observed** benefit. Hence the order: lot 7 earns the
+stop raise, or lot 10 never happens.
+
+**`max_open 8 -> 12` was listed as the lever with no fill unknown. The settlements say the hours
+it binds in are the worse hours:** capped hours (156) run **+1.61c** on 6,142 contracts against
+**+2.00c** on 4,414 in the 201 uncapped hours. Raising the cap adds contracts in exactly the
+hours that pay least, at strikes `slot_order` already passed over (the `<0.94` band pays +1.64c
+against +1.85c). Capped hours are presumably capped because the pool was rich, which correlates
+with volatility and so with losses -- a property of those hours rather than proof about the
+marginal strike -- but it is not free, it costs the same collateral per added contract as the lot,
+and the account can fund about one step of either. The lot is the larger one (+40% of contracts in
+every hour against +30% of positions in 44% of them), so it goes first and `max_open` is frozen
+while it runs.
+
+### Kalshi runs no volume-incentive pool, and our series are in none (checked 2026-11-18)
+
+The weatherbot notes record a **Volume Incentive Program** paying up to $0.005/contract on
+order-book trades priced 0.03-0.97 -- our band -- and the capital review put it at ~$2.20/day of
+free yield for an operator to confirm on the website. The public, unauthenticated endpoints settle
+it: `GET /incentive_programs` (1,000 records, 100 distinct series) and `GET /incentive_schedules`
+(636) are **`incentive_type: liquidity` on every single row**, with `target_size_fp: "1000.00"`
+throughout. There is no volume type in either listing, and **no commodity or crypto series we
+trade appears in any pool** -- the categories are Elections 174, Financials 146, Economics 90,
+Entertainment 84, Politics 55, Sports 38, Science and Technology 35, Climate and Weather 8,
+Companies 6, and the crypto-adjacent hits are `KXHEGSETHIMPEACH` and `KXIAETHANOL`. The one
+programme that exists needs 1,000 contracts resting per side, which is the retail-excluded wall
+weatherbot already recorded. **So there is nothing to collect and the ~$2.20/day should not be
+counted.** Re-check with those two endpoints rather than from the help pages; a pool appearing for
+`KXBTCD` would be free yield on a book that already rests all day.
+
 ## What the two live books are SET to, 2026-11-15 — three stale benchmarks
 
 Asked to check everything was correctly set, and the settings had drifted from the evidence in
