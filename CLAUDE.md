@@ -102,6 +102,99 @@ three losses were bought below 0.94 -- which is what made the small sample look 
 > six-date sample and the first Polymarket pull. The rule it implies: before acting on a band split,
 > count the LOSSES, not the fills.
 
+## Capital and throughput review, 2026-11-18 — two "free" levers died on measurement
+
+Asked to optimise the live books for dollars per day. Read from the exchange's own settlements
+(3,180 records) rather than any local table. **Two changes were offered and both failed when
+checked. Neither was made.** What the review did establish is where the ceiling actually is.
+
+| book | contracts | P&L | per contract | losses | |
+| --- | --- | --- | --- | --- | --- |
+| **BTC deep-ITM ladder** | 10,551 | **+$186.72** | **+1.77c** | 90 | 440 ct/day, **+$7.78/day**, $0.00 fees |
+| commodity longshot | 28 | -$0.69 | -2.46c | 3 | two days old; 3 losses against 2.31 implied |
+| weather (OFF) | 4,620 | +$11.47 | +0.25c | 115 | correctly retired |
+
+**Capital is not the constraint.** Equity $100.62; the ladder's peak ever locked in a single hour
+is **$56.20**, 65% of shard 2, and far less most hours. $11.86 sits on shard 0, where no live
+strategy trades since weather went off -- Kalshi moves nothing between shards by itself, so that is
+idle until someone transfers it. More money would sit idle too.
+
+### The dearest-band advantage is ~5x smaller than this file claimed, and has no room left
+
+The deep-ITM section above says `>=0.94` beats `<0.94` by **"+1.4c/contract, CI [-0.13, +3.00],
+P(better) 97%"**. Recomputed on the account's settlements, weighted by contracts:
+
+| | contracts | per contract | losses |
+| --- | --- | --- | --- |
+| < 0.94 | 4,185 | +1.64c | 55 |
+| >= 0.94 | 6,366 | +1.85c | 35 |
+
+**+0.21c pooled** (+0.30c desktop era, +0.71c app era) with overlapping intervals -- the same
+attenuation-as-the-sample-grows that this file records for the first Polymarket pull. The per-band
+table has moved too: 0.94-0.955 now reads +1.34c [-0.42, +2.98] against the +3.21c recorded above.
+
+And the lever has nowhere to go: **the app era already fills 87% of its contracts at >=0.94**
+(2,591 of 2,966) under `slot_order: cheapest`, against 50% in the desktop era. Only 13% of
+contracts, about 56 a day, could move. At +0.21c that is **+$0.12/day.** `slot_order` was left on
+`cheapest`: changing a live book's behaviour for twelve cents is not worth the churn, and the
+measurement does not establish the direction anyway.
+
+### The daily stop is not "outrun by one hour", and must not be widened on this evidence
+
+The first reading of the risk was wrong and is recorded here so it is not repeated. All strikes of
+one BTC hour settle off one price move, and three hours in the record lost more than the whole
+$15 daily stop in a single burst (-$18.50, -$17.35, -$16.73). That looked like a broken control.
+It is not: **no realised-P&L stop can prevent the first batch**, only the next one, and at
+`lot: 5` one strike risks ~$4.65, so the stop does halt the day before another hour can land. The
+invariant holds.
+
+Walking each day's settlements in time order, the $15 stop **would have tripped once in 24 days**
+(2026-09-27) -- and that day recovered **+$11.34** after the trip point, finishing at -$6.39
+instead of the -$17.73 the stop would have locked in. So its measured record is one trip, $11.34
+forfeited, nothing saved. That mildly favours a wider stop and **is not a reason to widen it**: one
+observation, and widening is loosening a risk control, which the 2026-11-14 entry forbids on
+anything less than observed benefit. Empirically the book loses in 18% of hours but only 3 of 24
+days: bad hours get recovered within the day, which is why the stop has stayed quiet.
+
+### Hour-of-day is still not a selector, and the skip list is still unverified
+
+Per-contract by ET close hour ranges from **+5.98c (hour 20)** to **-3.73c (hour 5)** across 22
+traded hours, on ~500 contracts and a handful of losses each. That is the shape this file already
+rejected for 04-05 ET, which flipped sign between halves, out of 18 cells examined. **Do not
+select on it.** Hours **3 and 10 ET are never traded** (as `skip_hours_et` configures) and 21 and
+23 carry 40 contracts each; the setting's own description claims "session opens, where losses ran
+3-7x higher", and that claim is supported by nothing in this repo. Unskipping 3 and 10 is worth
+about 8% of throughput and is a **measurement to run, not a change to make.**
+
+### No second ladder exists
+
+Six other hourly crypto ladders carry deep-ITM strikes, and only one has flow. 24-hour volume on
+the in-band strikes (YES bid 0.90-0.96), measured live:
+
+| KXBTCD | KXETHD | KXSOLD | KXHYPED | KXBNBD | KXXRPD | KXDOGE |
+| --- | --- | --- | --- | --- | --- | --- |
+| **87,620** | 2,455 | 514 | 186 | 56 | 0 | 0 |
+
+The **median in-band strike outside BTC trades zero**. No flow, no fills -- the same wall that
+closed sports and Polymarket-US. BTC is the pool, and the ladder already sits on it.
+
+### What is actually left
+
+`max_open: 8` is reached in **156 of 356 traded hours (44%)**, and the ladder fills ~5.9 strikes an
+hour at lot 5. So the book is **size- and slot-limited, not opportunity-limited**, on an account
+that funds roughly twice what it deploys. Every remaining lever is therefore some form of "more of
+the one thing that is measured", and each needs its own measurement before it ships:
+
+- **lot 5 -> 10** is the only large one (~+$7.78/day if the per-contract fill rate holds). The
+  median queue ahead of us on an in-band BTC strike is **3,691 contracts**, so 5 versus 10 is noise
+  against it and the binding factor is flow reaching our price, not our size -- but that is
+  reasoning, and fills above 5 remain unmeasured. It also doubles the worst hour and would force
+  the stop question above.
+- **max_open 8 -> 12**, binding 44% of hours.
+- **commodity `max_lead_min` 90 -> 120**: the 75-120 minute bucket measured +3.63c [+2.53, +4.67],
+  so it stays on measured ground. Worth ~+$0.6/day, but the real argument is reaching the 30-loss
+  verdict sooner -- at ~1.15 implied losses a day that is otherwise **~26 days** away.
+
 ## What the two live books are SET to, 2026-11-15 — three stale benchmarks
 
 Asked to check everything was correctly set, and the settings had drifted from the evidence in
