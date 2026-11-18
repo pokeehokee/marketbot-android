@@ -167,3 +167,18 @@ One measurement note the first hour already raised: the 04:41Z fills show a sing
 as 2.44 + 1.56 + 1.00. **Gate 2 counts partial POSITIONS, not partial fills** -- an order that
 fills in three pieces to its full size is not a partial. The baseline 4.2% is positions whose
 filled count fell short of the lot.
+
+**Confirmed at the exchange, 05:31Z.** The first lot-7 fills are on the record:
+`KXBTCD-26NOV1801-T64999.99` at 05:30:24Z and `-T64399.99` at 05:31:39Z, both **7.00** contracts.
+Shard-2 cash $88.28 with `portfolio_value` $13.65 — the two 7-lots locked ~$13.30, which is the
+arithmetic behaving. Equity $101.93. Step 1 is running from here; the clock started at 05:30Z.
+
+A false alarm worth recording, because the next person to watch a step start will see the same
+thing. Between 05:12Z and 05:14Z there were **zero resting orders account-wide** and the newest
+fill was 04:41Z at size 5 — about 35 quiet minutes on a book that fills ~5.9 strikes an hour,
+which read like an engine that had stopped placing after the setting change. It had not. The
+ladder only quotes inside `ttc` (300–3000 s to close), so between one hour's last fill and the
+next hour's window opening there is nothing resting by design, and both of the next orders filled
+on arrival rather than sitting. **Zero resting orders is not evidence of a stalled engine; a
+missing FILL across a whole placement window would be.** Check against `ttc`, not against the
+clock.
