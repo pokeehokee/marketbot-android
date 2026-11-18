@@ -140,3 +140,30 @@ collateral. Scaling to $30/day needs roughly double again — lot 20, ~$154 of p
 ~$200 of shard-2 equity, and a worst hour near −$70. **The remaining headroom at today's ~$101 of
 equity is about +$3/day for step 1 and +$8/day for step 2, and then the account is the constraint
 again.** No ordering, band or hour filter found in this repo adds to that; money does.
+
+## Step 1 started: 2026-11-18
+
+`lot: 7` set by the operator on 2026-11-18 (~05:10Z). Everything measured from here is step 1's;
+nothing before it counts toward the gate.
+
+**Starting state, read from the exchange, not from any local table:**
+
+| | |
+| --- | --- |
+| equity | **$101.58**, all of it on shard 2 |
+| shard 0 | $0.00 — the idle $11.86 was transferred (`4dc9661a`, `event_contract/0 -> /2`, complete) |
+| open positions | none; `portfolio_value` 0 |
+| lot-5 record it replaces | 2,094 positions, 10,556 contracts, +$186.92, **+1.77c**, 90 losses, 24 days |
+| peak hour expected at lot 7 | $53.76 = 53% of equity (was 43% at lot 5 against a smaller balance) |
+
+**Earliest possible verdict: 2026-11-26** — 8 days, and >= 30 losing positions at the new lot. At
+the lot-5 cadence of 3.75 losses/day the loss count lands around day 8, so the two bind together.
+Read the six gate thresholds and the four abort conditions above; the gate is read on **positions
+placed at lot 7**, by placement time, never by settlement date. (Cutting by resolution date smears
+configurations together -- the weatherbot CLAUDE.md records exactly that error costing a correct
+verdict.)
+
+One measurement note the first hour already raised: the 04:41Z fills show a single 5-lot filling
+as 2.44 + 1.56 + 1.00. **Gate 2 counts partial POSITIONS, not partial fills** -- an order that
+fills in three pieces to its full size is not a partial. The baseline 4.2% is positions whose
+filled count fell short of the lot.
