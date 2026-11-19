@@ -4,8 +4,16 @@ Headline is the RATIO: realised wins / implied wins (the sum of the prices paid)
   ratio > 1  the tail is UNDERPRICED -> a buyer has an edge
   ratio < 1  the tail is OVERPRICED  -> the seller has it (what the app already does)
 
-Every interval is bootstrapped CLUSTERED BY EVENT HOUR, because all strikes of
-one BTC hour settle off a single price move and are not independent draws.
+Every interval is bootstrapped CLUSTERED BY DAY, not by event hour. Hour
+clustering is the obvious choice -- each hour settles off its own price move --
+and it is WRONG here, because what generates a tail win is a day-level
+volatility regime that persists across the hours. Measured on 2,343 quotes:
+hour clustering gave a ratio CI of [0.17, 0.98] and an EV CI of [-1.46c,
+-0.04c], both excluding fair; day clustering gives [0.15, 1.10] and [-1.50c,
++0.17c], both INCLUDING it. 14 of 23 wins fell on two days and one day paid 8x
+its implied rate, so the effective sample is the day count (23), not the quote
+count. Any Poisson-binomial p-value over these quotes assumes independence the
+data does not have and will read several orders of magnitude too significant.
 
 The rare event here is a WIN, so the sample is sized on expected wins, not on
 quotes -- the inverse of the repo's "count the LOSSES, not the fills" rule.
@@ -24,14 +32,15 @@ def fee_per_contract(p, stake=1.0):
     return f / c
 
 
-def load(lead=1800, where="1=1"):
+def load(lead=1800, where="1=1", by="day"):
     c = sqlite3.connect(DB)
-    rows = c.execute(f"SELECT event_ticker, side, ask, won, dist, strike, spot, close_ts "
+    key = ("strftime('%Y-%m-%d', close_ts, 'unixepoch')" if by == "day" else "event_ticker")
+    rows = c.execute(f"SELECT {key}, side, ask, won, dist, strike, spot, close_ts "
                      f"FROM quote WHERE lead_s={lead} AND ({where})").fetchall()
-    by = {}
-    for ev, side, ask, won, dist, strike, spot, cts in rows:
-        by.setdefault(ev, []).append((side, ask, won, dist, cts))
-    return by
+    out = {}
+    for g, side, ask, won, dist, strike, spot, cts in rows:
+        out.setdefault(g, []).append((side, ask, won, dist, cts))
+    return out
 
 
 def stats(by, taker=True):
@@ -71,7 +80,7 @@ def line(name, by, taker=True):
     ratio = wins / implied if implied else float("nan")
     per = 100 * ev / n
     lo, hi = boot(by, taker) if len(by) > 2 else (float("nan"), float("nan"))
-    print(f"{name:<34} hours={len(by):>4} n={n:>5} wins={wins:>4} implied={implied:>7.1f} "
+    print(f"{name:<34} days={len(by):>4} n={n:>5} wins={wins:>4} implied={implied:>7.1f} "
           f"ratio={ratio:>5.2f}  EV={per:>+6.2f}c  95%CI=[{100*lo:>+6.2f},{100*hi:>+6.2f}]")
 
 
