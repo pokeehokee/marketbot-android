@@ -45,7 +45,34 @@ Action: the lot-10 gate in the step-up protocol should read the structural cap,
 not the scaled observation. At 76% of equity in one unpreventable hour, lot 10
 is a different decision from the one that doc describes.
 
-## 2. The shock that sweeps a side is not rare
+## 2. The shock that sweeps a side is not rare -- measured properly
+
+The honest statistic is the **net move to the close**, not the intra-hour range:
+settlement is the top-of-hour print, so a whipsaw that returns settles as a win
+and range overstates the risk. Net |move| to the settlement instant, 8,821
+hourly boundaries over 368 days of 5-minute BTC closes:
+
+| lead | median | p90 | p99 | max |
+| --- | --- | --- | --- | --- |
+| **50 min** (the ladder's `ttc_max`) | **$131** | $467 | **$1,138** | **$4,013** |
+| 30 min | $99 | $344 | $869 | $2,152 |
+| 5 min | $50 | $163 | $417 | $1,392 |
+
+How often the move reaches a given sweep distance:
+
+| net 50-min move | share of 8,821 hours | roughly |
+| --- | --- | --- |
+| >= $200 | **34.7%** | 1 in 3 hours |
+| >= $300 | 20.8% | 1 in 5 |
+| **>= $450** (half the median strike span) | **10.7%** | **1 in 9 hours** |
+| >= $600 | 5.6% | 1 in 18 |
+| >= $900 | 2.1% | 1 in 47 |
+
+**Sweeping one side is a 1-in-9-hours event, not a tail.** It also requires the
+book to be concentrated on the side that moves, which is what keeps the realised
+record milder: 66 losing hours of 384, the worst losing 97% of its exposed side.
+
+## 2b. Earlier range-based figures, kept for contrast
 
 What move is needed, and how often BTC supplies it:
 
@@ -66,7 +93,45 @@ returns settles as a win. The range figures above bound the move; they do not
 equal it. A net-move distribution keyed to each market's own `ttc` window is the
 measurement to run next.
 
-## 3. The highest-value missing control: exchange-vs-ledger position reconciliation
+## 3. Exchange-vs-ledger reconciliation EXISTS -- and is wired only to the retired book
+
+**Corrected 2026-11-19, after proposing to build it.** `core/strategy/Reconcile.kt`
+already does this: `reconcileKalshi` reads the venue's resting orders and held
+positions in a strategy's own markets and reports anything the ledger does not
+know. It is a port of weatherbot's `longshot_reconcile --check` and its comment
+names the exact hazard ("a second trader on the same account... the file lock on
+the desktop only ever covered one machine").
+
+**It is called by exactly one strategy: `WeatherLongshot`, which is retired and
+OFF.** Both books that trade real money have no reconciliation at all. The
+control was built, the strategy it guarded was retired, and it was never moved
+to the books that replaced it.
+
+That is the same failure shape this repo keeps recording -- the `Evidence`
+object that outlived its measurement, the `ecosystem.config.js` comment that
+denied a risk control existed. **A safety control orphaned by a refactor is
+indistinguishable from no control, and worse than none, because the docs read as
+though the ground is covered.** Any audit of this system should check not just
+that a control exists but that something live calls it.
+
+What is now added is narrower and complementary, not a replacement:
+
+| | `reconcileKalshi` (existing) | `KillCriteria.orphanPositions` (added) |
+| --- | --- | --- |
+| when | pre-flight, before live quoting | continuous, inside `healthChecks` |
+| resting orders | **yes** | no |
+| unknown positions | yes | yes |
+| **size mismatch** | **no** | **yes** |
+| surfaces as a `Check` | no | yes |
+
+`DeepItm` now runs `orphanPositions` on every live health check, reading
+`/portfolio/positions` and comparing per ticker against the ledger, scoped to
+`KXBTCD-`. A read that fails reports INSUFFICIENT; it is never assumed clean.
+**`reconcileKalshi` should additionally be wired to both live books as the
+pre-flight gate it was written to be** -- that part is still undone, and it is
+the half that covers resting orders.
+
+## 3b. Why the control matters: the hazard is not hypothetical
 
 **This account has already suffered this failure, at scale.** The 2026-11-12
 entry records recovering "the original desktop run" from the exchange: **1,612

@@ -1,5 +1,7 @@
 package com.marketbot.core.strategies.deepitm
 
+import com.marketbot.core.util.num
+import com.marketbot.core.util.str
 import com.marketbot.core.strategy.FunnelStep
 import com.marketbot.core.provenance.Source
 import com.marketbot.core.provenance.Sourced
@@ -131,12 +133,48 @@ abstract class DeepItmStrategy(
 
     override val outcomeBands get() = com.marketbot.core.strategy.AdverseSelection.DEEP_BANDS
 
-    /** The generic criterion: losses against what the bid prices implied, over 60 days. */
+    /**
+     * The generic criterion: losses against what the bid prices implied, over 60 days.
+     *
+     * Live also reconciles against the venue. `reconcileKalshi` already existed for
+     * exactly this and was wired only to `WeatherLongshot`, which is retired and OFF
+     * -- so the two books that actually trade had no reconciliation at all. That is a
+     * control orphaned by a refactor, the same shape as the `Evidence` object that
+     * outlived its measurement. This surfaces it where the operator looks, and adds
+     * the case it never covered: a position the ledger knows about but at a SMALLER
+     * size than the venue holds.
+     */
     override suspend fun healthChecks(ctx: StrategyContext, mode: Mode) =
         ctx.stores.ledger.all(id, mode).let { rows ->
             listOf(com.marketbot.core.strategy.KillCriteria.lossRatio(rows, ctx.clock.now())) +
-                (if (mode == Mode.LIVE) listOf(com.marketbot.core.strategy.KillCriteria.ungradedPositions(rows, ctx.clock.now())) else emptyList())
+                (if (mode == Mode.LIVE) listOf(
+                    com.marketbot.core.strategy.KillCriteria.ungradedPositions(rows, ctx.clock.now()),
+                    venuePositionCheck(ctx, rows),
+                ) else emptyList())
         }
+
+    /** Reads the venue's own positions. A read that fails is reported, never assumed clean. */
+    private suspend fun venuePositionCheck(
+        ctx: StrategyContext,
+        rows: List<com.marketbot.core.store.QuoteRow>,
+    ): com.marketbot.core.strategy.Check {
+        val name = "Exchange holds nothing the ledger has missed"
+        if (!ctx.kalshi.hasCredentials) {
+            return com.marketbot.core.strategy.Check(name, com.marketbot.core.strategy.Check.Verdict.INSUFFICIENT,
+                "no credentials, so the venue's positions cannot be read")
+        }
+        val held = runCatching { ctx.kalshi.positions() }.getOrElse {
+            return com.marketbot.core.strategy.Check(name, com.marketbot.core.strategy.Check.Verdict.INSUFFICIENT,
+                "could not read the venue's positions: ${it.message ?: it.javaClass.simpleName}")
+        }
+        val sizes = held.mapNotNull { p ->
+            val t = p.str("ticker") ?: return@mapNotNull null
+            val n = p.num("position_fp") ?: p.num("position") ?: return@mapNotNull null
+            t to kotlin.math.abs(n)
+        }.toMap()
+        return com.marketbot.core.strategy.KillCriteria.orphanPositions(
+            exchange = sizes, rows = rows, ownedPrefixes = listOf("KXBTCD-"), now = ctx.clock.now())
+    }
     private fun rt(m: Mode) = runtimes.getOrPut(m) { Runtime() }
     private fun bookMode(ctx: StrategyContext) = if (ctx.live) Mode.LIVE else Mode.PAPER
     private fun k(ctx: StrategyContext, s: String) = "$id.${bookMode(ctx).name.lowercase()}.$s"
