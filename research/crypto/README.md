@@ -95,3 +95,35 @@ Two lessons, both of which cost a wrong conclusion here:
   for the *daily* crypto series (`BTCD`, `BTC`, `ETHD`, `KXBTCMAXD`) is checked
   two ways and solid: zero markets AND zero events of any status — listed
   shells, the same pattern weatherbot records for international weather series.
+
+## The long-horizon series are the opposite of dead -- and structurally unmeasurable
+
+Re-measured with the candlestick (the market object's `open_interest` and
+`volume_24h` are BOTH dead -- zero even on heavily traded open `KXBTCD`
+markets, so neither can be used for anything):
+
+| series | cheap-band markets | OI median | OI max | closes |
+| --- | --- | --- | --- | --- |
+| `KXBTCY` | 22 | **483,952** | 546,122 | 2027-01-01 |
+| `KXBTC2026200` | 1 | **5,312,824** | — | 2027-01-01 |
+| `KXBTCMAX150` | 1 | 874,937 | — | 2027-01-01 |
+| `KXBTCMAXY` | 7 | 168,143 | 550,206 | 2027-01-01 |
+| `KXBTCMAXMON` | 7 | 118,209 | 294,383 | 2026-12-01 |
+
+An earlier pass called these "60 open markets, 50 cheap, total 24h volume 0".
+They are among the most heavily held markets on the exchange, and they are
+exactly the shape the >=20x question wants: a large multiplier with months of
+runway, so the required move is possible rather than near-impossible (the
+hourly ladder needs a $738 median move against a $117 median realised one).
+
+**And they cannot be measured, now or ever.** A 14-month one-touch yields one
+observation per horizon, and every `BTC-above-X-by-2027` market settles off the
+SAME single price path, so the effective sample is n ~ 1 per year rather than 22
+markets. The bar this repo applies everywhere -- >= 30 losses, clustered by
+whatever drives the outcome -- is unreachable when the cluster IS the sample.
+Buying them is a view, not a measured edge; that distinction is the whole
+difference between this repo's two live books and everything it has closed.
+
+So the measurable end is the short end, which is what `crypto_tail_sample.py`
+covers. Anyone extending this should NOT try to validate a long-horizon tail
+from settled history: there is no history to validate it with.
