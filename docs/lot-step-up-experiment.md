@@ -182,3 +182,37 @@ next hour's window opening there is nothing resting by design, and both of the n
 on arrival rather than sitting. **Zero resting orders is not evidence of a stalled engine; a
 missing FILL across a whole placement window would be.** Check against `ttc`, not against the
 clock.
+
+### Day 1, and a fill rate that must not be read off the exchange
+
+Lot 7's first ~23 hours (18 traded hours, fills and settlements from the exchange):
+
+| | lot 5 baseline, 358 h | lot 7, day 1 |
+| --- | --- | --- |
+| partial positions | 4.2% | **5.6%** (85 full 7-lots, 5 partial) |
+| strikes/hour | 5.86 | **4.78** |
+| hours at the 8-slot cap | 44% | **11%** |
+| contracts/hour | 29.5 | **33.6 (+14%)** |
+| peak collateral in one hour | $56.20 | **$55.67** |
+| per contract | +1.77c | +1.17c on **3 losses** |
+
+Equity $110.01, all on shard 2, nothing open: +$8.08 on the day. **Nothing aborts** -- partials are
+well inside gate 2 and three losses say nothing about gate 1.
+
+**`GET /portfolio/orders` cannot give a fill rate for this strategy.** Since the step started it
+reads **750 canceled against 85 executed, which looks like a 10.2% fill rate and is not one.**
+`dead_man_s` (120 s) makes a live bid expire at the exchange and be re-placed while the app runs,
+so one logical quote becomes dozens of canceled orders -- ~42 cancels an hour across ~5 strikes is
+exactly that churn. The denominator is renewals, not chances to fill. **Gate 3 must be read from
+the app's ledger, which holds one row per quote**, or from fills per hour as above; a fill rate
+computed from exchange order statuses would kill a working step.
+
+**What day 1 does raise: the lot is partly buying fewer strikes rather than more contracts.**
+Contracts rose 14% where the lot rose 40%, strikes/hour fell 5.86 -> 4.78, the at-cap rate
+collapsed 44% -> 11%, and peak collateral landed on the same ~$56 as at lot 5 even though the slot
+cap moved from $38.40 to $53.76. If that holds, step 1 pays nearer +$1/day than the modelled
++$3.11, and **gate 3 is the gate at risk, not gate 1.** Three candidates, not separable from 18
+hours: the queue declining bigger lots, a thin pool on one day, or a deployment ceiling -- and it
+is not a strategy setting, because deep-ITM has no collateral-fraction param. Re-read at day 3
+before drawing anything; if strikes/hour is still near 4.8 then, the question is worth its own
+measurement.
