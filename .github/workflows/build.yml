@@ -29,6 +29,13 @@ jobs:
         # Stdlib unittest, no dependencies: these freeze the empty-book sentinel, the
         # YES-ask-is-1-minus-best-NO-bid derivation and the collector's read-only guard.
         run: python3 -m unittest discover -s research/commodity -p 'test_*.py' -v
+      - name: Research tests (crypto tail)
+        # These freeze the zero-lookahead candle rule, the empty-book sentinel,
+        # no_ask = 1 - yes_bid, the per-order fee, DAY clustering, the 429 backoff and
+        # the read-only guard. Added as its own step rather than widened to -s research,
+        # because each directory's tests put their own dir on sys.path to import the
+        # module under test, and a single rooted discovery silently skips them.
+        run: python3 -m unittest discover -s research/crypto -p 'test_*.py' -v
       - name: Core tests (golden comparisons against the Python originals, clients, strategies)
         run: ./gradlew --no-daemon :core:test
       - name: App tests (Room stores, vault, screens)
