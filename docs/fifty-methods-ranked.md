@@ -116,3 +116,60 @@ The one measured-positive thing **not yet shipped** is not on this list at all:
 the commodity **0.10–0.40 band**, +5.95c/contract with a 95% CI of [+2.37,
 +9.20] on **60 realised losses** — the best-sampled slice in that study. Its
 unknown is the fill rate above 0.25, which is what a paper variant establishes.
+
+---
+
+## #30 tested, 2026-11-19: NEGATIVE, interval excludes zero
+
+The top-ranked testable method. `research/index/` prices every settled `KXINX`
+daily range bracket at 13:30Z with zero lookahead against a VIX1D-implied
+lognormal built from the **previous** session's closes. 1,336 brackets,
+48 event-days:
+
+| | |
+| --- | --- |
+| Brier, 394 two-sided brackets | model **0.0974** vs market mid **0.0906** |
+| buy-at-ask when model > ask + 0.03 | **-7.42c/contract**, 95% CI by day **[-8.17, -6.74]** |
+| gates >= 0.12 | zero trades |
+
+Rejected: a flat lognormal from one implied-vol number. **Not** tested: the full
+SPX chain's risk-neutral density, which carries the put skew a single vol number
+discards. See `research/index/README.md` for the three design facts that cost a
+run each -- including that a zero bid is **not** the empty-book sentinel on these
+brackets, because overnight they are genuinely one-sided, so only the buy leg is
+executable.
+
+## And the commodity 0.10-0.40 band was ALREADY shipped, and is negative
+
+This file's closing paragraph recommended the 0.10-0.40 band as "the one
+measured-positive thing not yet shipped". **Both halves were wrong.** It was
+approved as `kalshi_commodity_longshot@c` on 2026-11-13 and has run in paper
+since. From the sync snapshot and the raw order journal, mode-separated:
+
+| book | mode | settled fills | lost | per contract | fill% by band |
+| --- | --- | --- | --- | --- | --- |
+| commodity main | LIVE | 15 | 2 | -6.07c | 50 / 0 / 33 / 0 |
+| commodity main | PAPER | 131 | 12 | **+2.06c** | 40 / 57 / 38 / **72** |
+| variant B (12h lead) | PAPER | 39 | 11 | **-18.67c** | 28 / 67 |
+| **variant C (0.10-0.40)** | PAPER | 11 | 4 | **-15.18c** | 40 / **0** / **17** |
+
+**The extrapolation that justified variant C is not holding.** Its case was that
+fill rate rises monotonically with price (34% -> 72%) and would extend above
+0.25; measured, 0.25-0.40 fills at **17%**, the lowest band rather than the
+highest. The main book's own curve is not monotonic either (38% at 0.10-0.15
+sits below 57% at 0.05-0.10). Four losses and six quotes above 0.25 decide
+nothing against the 30-loss bar, and variant C filled 0 of 5 at 0.15-0.25 where
+the main book filled 72%, so the two are not directly comparable. But the
+direction is against the hypothesis, not for it.
+
+> **Two process failures in reading this, both the repo's own rules.** The first
+> pass summed **hypothetical** (unfilled, counterfactually-graded) rows and so
+> reported +$17.10 for a book the app records at -$9.00. The second mixed PAPER
+> and LIVE rows -- "paper and live never mix" -- which is why 146 settled fills
+> did not reconcile with the snapshot's 51. Filter `mode` and
+> `hypothetical=false` before any figure from `exports/orders-latest.csv`.
+
+**An unresolved discrepancy worth an operator check:** the app snapshot records
+the live commodity book as **+$0.84 on 51 settled**; the raw order journal gives
+**-$0.91 on 15 settled** for LIVE mode. Both cannot be the live record.
+`/portfolio/settlements` is the authority.
