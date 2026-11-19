@@ -193,7 +193,7 @@ Lot 7's first ~23 hours (18 traded hours, fills and settlements from the exchang
 | strikes/hour | 5.86 | **4.78** |
 | hours at the 8-slot cap | 44% | **11%** |
 | contracts/hour | 29.5 | **33.6 (+14%)** |
-| peak collateral in one hour | $56.20 | **$55.67** |
+| peak collateral in one hour | **$38.35** (lot-5-only hours) | **$55.67** (x1.45, vs a lot ratio of 1.40) |
 | per contract | +1.77c | +1.17c on **3 losses** |
 
 Equity $110.01, all on shard 2, nothing open: +$8.08 on the day. **Nothing aborts** -- partials are
@@ -207,12 +207,29 @@ exactly that churn. The denominator is renewals, not chances to fill. **Gate 3 m
 the app's ledger, which holds one row per quote**, or from fills per hour as above; a fill rate
 computed from exchange order statuses would kill a working step.
 
-**What day 1 does raise: the lot is partly buying fewer strikes rather than more contracts.**
-Contracts rose 14% where the lot rose 40%, strikes/hour fell 5.86 -> 4.78, the at-cap rate
-collapsed 44% -> 11%, and peak collateral landed on the same ~$56 as at lot 5 even though the slot
-cap moved from $38.40 to $53.76. If that holds, step 1 pays nearer +$1/day than the modelled
-+$3.11, and **gate 3 is the gate at risk, not gate 1.** Three candidates, not separable from 18
-hours: the queue declining bigger lots, a thin pool on one day, or a deployment ceiling -- and it
-is not a strategy setting, because deep-ITM has no collateral-fraction param. Re-read at day 3
-before drawing anything; if strikes/hour is still near 4.8 then, the question is worth its own
-measurement.
+**What day 1 does raise: the lot may be partly buying fewer strikes rather than more contracts.**
+Contracts/hour rose 14% where the lot rose 40%, strikes/hour fell 5.86 -> 4.78, the at-cap rate
+collapsed 44% -> 11%, and median collateral rose only 11% ($30.01 -> $33.39). Three candidates,
+not separable from 18 hours: the queue declining bigger lots, a thin pool on one day, or the mean
+simply not having moved yet. Re-read at day 3; if strikes/hour is still near 4.8 then, it is worth
+its own measurement.
+
+> **An earlier version of this section claimed a deployment ceiling, and it was the file's own
+> corrected number read back in.** It said peak collateral "landed on the same ~$56 as at lot 5
+> even though the slot cap moved from $38.40 to $53.76", and concluded gate 3 was at risk against
+> an unfound ceiling. That compared lot 7 against the peak over ALL baseline hours, $56.20 --
+> which the capital review above had already established is a **legacy desktop 10-lot hour**, not
+> a lot-5 hour. On lot-5-only hours (309 of 358) the peak is $38.35, so lot 7's $55.67 is x1.45
+> against a lot ratio of 1.40: **collateral scales with the lot and there is no ceiling.** The
+> wrong comparison was to the very figure this document was written to correct. Compare
+> like-for-like hours, or the baseline will quietly include a configuration you are not running.
+
+**One strike can now hold more than one lot, and at lot 5 it never did.** In 1,816 lot-5 positions
+across 309 hours, **zero** held more than 5 contracts. On lot 7's first day, 4 of 86 positions
+(4.7%) held more: three at 14 (two 7-lots) and one at 9. `max_open` counts strikes, so a strike
+already held can apparently be quoted again and re-fill. It matters because the worst case per
+strike is then **$13.44, not the $6.72** the effect preview states, and `daily_stop / worst strike`
+falls from 2.2 to 1.1 -- at the edge of the brake invariant that one market can never outrun the
+brake. Not yet established: whether this is new behaviour at lot 7 or a thin day's renewals
+re-filling. **Count it at day 3, and if it is systematic it is a defect, not a lever** -- stacking
+lots on one strike concentrates exactly the correlated risk `max_open` exists to spread.
