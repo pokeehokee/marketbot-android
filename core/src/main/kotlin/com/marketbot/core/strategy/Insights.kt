@@ -79,6 +79,106 @@ object KillCriteria {
             if (settled.isEmpty()) "no settled fills yet" else "$losses losses against %.1f implied (ratio %s; needs $minLosses losses to judge)"
                 .format(implied, ratio?.let { "%.2f".format(it) } ?: "n/a"))
     }
+
+    /**
+     * Risk the EXCHANGE holds that the ledger does not know about. This is the
+     * mirror of [ungradedPositions] and the more dangerous direction: an unknown
+     * position is invisible to every brake, stop and exposure figure in the app,
+     * so it accrues loss silently and nothing stops the day.
+     *
+     * The hazard is not hypothetical on this account. Recovering "the original
+     * desktop run" turned up **1,612 fills and 1,535 positions whose `order_id`
+     * the app never placed** (2026-11-12). That was a different runner rather
+     * than a fault, but it is exactly this signature. Live, it arrives as a lost
+     * order response (the repo forbids retrying a create and says to recover by
+     * `client_order_id` -- nothing currently checks that the recovery happened),
+     * a manual trade, a second process on the same account, or a partial fill
+     * recorded at the wrong size.
+     *
+     * [exchange] is ticker -> contracts the venue reports held, [rows] every
+     * ledger row for this strategy in any mode or state. [ownedPrefixes] limits
+     * the comparison to series this strategy is responsible for, because one
+     * Kalshi account carries other books' positions and alarming on those would
+     * be noise that gets the check ignored.
+     */
+    fun orphanPositions(
+        exchange: Map<String, Double>,
+        rows: List<QuoteRow>,
+        ownedPrefixes: List<String>,
+        now: Instant = Instant.now(),
+    ): Check {
+        val name = "Exchange holds nothing the ledger has missed"
+        if (ownedPrefixes.isEmpty()) {
+            return Check(name, Check.Verdict.INSUFFICIENT, "no series claimed, so nothing can be reconciled")
+        }
+        val mine = exchange.filter { (t, n) -> n != 0.0 && ownedPrefixes.any { t.startsWith(it) } }
+        if (mine.isEmpty()) return Check(name, Check.Verdict.PASS, "the exchange reports no open position in this book's series")
+        // Known = the ledger has ANY row for that ticker. A graded row still
+        // counts as known: the venue can report a position between the fill and
+        // settlement, and that is not an orphan.
+        val known = rows.groupBy { it.ticker }
+        val unknown = mine.keys.filter { known[it].isNullOrEmpty() }.sorted()
+        // Under-recorded: the venue holds more than the ledger's filled counts.
+        val short = mine.filter { (t, n) ->
+            val k = known[t] ?: return@filter false
+            val recorded = k.sumOf { it.filledContracts ?: 0.0 }
+            recorded + 1e-9 < n
+        }.keys.sorted()
+        if (unknown.isEmpty() && short.isEmpty()) {
+            return Check(name, Check.Verdict.PASS, "${mine.size} open position(s), all present in the ledger at the venue's size")
+        }
+        val parts = buildList {
+            if (unknown.isNotEmpty()) add("${unknown.size} position(s) the ledger has never seen: ${unknown.take(3).joinToString()}")
+            if (short.isNotEmpty()) add("${short.size} recorded smaller than the venue holds: ${short.take(3).joinToString()}")
+        }
+        return Check(name, Check.Verdict.FAIL, parts.joinToString("; ") + " -- unknown risk is invisible to the brake")
+    }
+
+    /**
+     * Per-table write freshness. Three separate incidents in the source repo were
+     * the same shape: **a table silently stopped being written while everything
+     * else kept trading** -- `settlements` froze for 4 days behind a NameError in
+     * an alert, `performance_by_category` for 2 weeks behind a column the schema
+     * never had, and calibration updates were dropped on lock collisions. Each
+     * was found by a human reading logs.
+     *
+     * This is the generic control that catches all three without knowing what
+     * they are. [newest] is writer -> the newest row's timestamp (null when the
+     * writer has never run), [expected] that writer's own cadence. The threshold
+     * is per writer deliberately: a single global one either misses the slow
+     * writers or cries wolf on the fast ones, and an alarm that fires when
+     * nothing happened is an alarm that gets ignored the day it matters.
+     *
+     * A writer that has never run is INSUFFICIENT, not FAIL: that is a fresh
+     * install, not a freeze.
+     */
+    fun staleWrites(
+        newest: Map<String, Instant?>,
+        expected: Map<String, Duration>,
+        now: Instant,
+        tolerance: Double = 3.0,
+    ): Check {
+        val name = "Every writer still writing"
+        if (newest.isEmpty()) return Check(name, Check.Verdict.INSUFFICIENT, "no writers registered")
+        val never = newest.filterValues { it == null }.keys.sorted()
+        val stale = mutableListOf<Pair<String, Duration>>()
+        for ((who, at) in newest) {
+            if (at == null) continue
+            val cadence = expected[who] ?: continue
+            val age = Duration.between(at, now)
+            if (age > Duration.ofMillis((cadence.toMillis() * tolerance).toLong())) stale += who to age
+        }
+        stale.sortByDescending { it.second }
+        if (stale.isEmpty()) {
+            val d = if (never.isEmpty()) "${newest.size} writer(s) fresh"
+            else "${newest.size - never.size} fresh; not yet run: ${never.joinToString()}"
+            return Check(name, if (never.isEmpty()) Check.Verdict.PASS else Check.Verdict.INSUFFICIENT, d)
+        }
+        val worst = stale.first()
+        return Check(name, Check.Verdict.FAIL,
+            "${stale.size} writer(s) stale, worst ${worst.first} last wrote ${worst.second.toHours()}h ${worst.second.toMinutesPart()}m ago " +
+                "(cadence ${expected[worst.first]?.toMinutes()}m) -- the book keeps trading while its accounting is frozen")
+    }
 }
 
 /**
