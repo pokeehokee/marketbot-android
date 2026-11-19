@@ -140,3 +140,96 @@ collateral. Scaling to $30/day needs roughly double again — lot 20, ~$154 of p
 ~$200 of shard-2 equity, and a worst hour near −$70. **The remaining headroom at today's ~$101 of
 equity is about +$3/day for step 1 and +$8/day for step 2, and then the account is the constraint
 again.** No ordering, band or hour filter found in this repo adds to that; money does.
+
+## Step 1 started: 2026-11-18
+
+`lot: 7` set by the operator on 2026-11-18 (~05:10Z). Everything measured from here is step 1's;
+nothing before it counts toward the gate.
+
+**Starting state, read from the exchange, not from any local table:**
+
+| | |
+| --- | --- |
+| equity | **$101.58**, all of it on shard 2 |
+| shard 0 | $0.00 — the idle $11.86 was transferred (`4dc9661a`, `event_contract/0 -> /2`, complete) |
+| open positions | none; `portfolio_value` 0 |
+| lot-5 record it replaces | 2,094 positions, 10,556 contracts, +$186.92, **+1.77c**, 90 losses, 24 days |
+| peak hour expected at lot 7 | $53.76 = 53% of equity (was 43% at lot 5 against a smaller balance) |
+
+**Earliest possible verdict: 2026-11-26** — 8 days, and >= 30 losing positions at the new lot. At
+the lot-5 cadence of 3.75 losses/day the loss count lands around day 8, so the two bind together.
+Read the six gate thresholds and the four abort conditions above; the gate is read on **positions
+placed at lot 7**, by placement time, never by settlement date. (Cutting by resolution date smears
+configurations together -- the weatherbot CLAUDE.md records exactly that error costing a correct
+verdict.)
+
+One measurement note the first hour already raised: the 04:41Z fills show a single 5-lot filling
+as 2.44 + 1.56 + 1.00. **Gate 2 counts partial POSITIONS, not partial fills** -- an order that
+fills in three pieces to its full size is not a partial. The baseline 4.2% is positions whose
+filled count fell short of the lot.
+
+**Confirmed at the exchange, 05:31Z.** The first lot-7 fills are on the record:
+`KXBTCD-26NOV1801-T64999.99` at 05:30:24Z and `-T64399.99` at 05:31:39Z, both **7.00** contracts.
+Shard-2 cash $88.28 with `portfolio_value` $13.65 — the two 7-lots locked ~$13.30, which is the
+arithmetic behaving. Equity $101.93. Step 1 is running from here; the clock started at 05:30Z.
+
+A false alarm worth recording, because the next person to watch a step start will see the same
+thing. Between 05:12Z and 05:14Z there were **zero resting orders account-wide** and the newest
+fill was 04:41Z at size 5 — about 35 quiet minutes on a book that fills ~5.9 strikes an hour,
+which read like an engine that had stopped placing after the setting change. It had not. The
+ladder only quotes inside `ttc` (300–3000 s to close), so between one hour's last fill and the
+next hour's window opening there is nothing resting by design, and both of the next orders filled
+on arrival rather than sitting. **Zero resting orders is not evidence of a stalled engine; a
+missing FILL across a whole placement window would be.** Check against `ttc`, not against the
+clock.
+
+### Day 1, and a fill rate that must not be read off the exchange
+
+Lot 7's first ~23 hours (18 traded hours, fills and settlements from the exchange):
+
+| | lot 5 baseline, 358 h | lot 7, day 1 |
+| --- | --- | --- |
+| partial positions | 4.2% | **5.6%** (85 full 7-lots, 5 partial) |
+| strikes/hour | 5.86 | **4.78** |
+| hours at the 8-slot cap | 44% | **11%** |
+| contracts/hour | 29.5 | **33.6 (+14%)** |
+| peak collateral in one hour | **$38.35** (lot-5-only hours) | **$55.67** (x1.45, vs a lot ratio of 1.40) |
+| per contract | +1.77c | +1.17c on **3 losses** |
+
+Equity $110.01, all on shard 2, nothing open: +$8.08 on the day. **Nothing aborts** -- partials are
+well inside gate 2 and three losses say nothing about gate 1.
+
+**`GET /portfolio/orders` cannot give a fill rate for this strategy.** Since the step started it
+reads **750 canceled against 85 executed, which looks like a 10.2% fill rate and is not one.**
+`dead_man_s` (120 s) makes a live bid expire at the exchange and be re-placed while the app runs,
+so one logical quote becomes dozens of canceled orders -- ~42 cancels an hour across ~5 strikes is
+exactly that churn. The denominator is renewals, not chances to fill. **Gate 3 must be read from
+the app's ledger, which holds one row per quote**, or from fills per hour as above; a fill rate
+computed from exchange order statuses would kill a working step.
+
+**What day 1 does raise: the lot may be partly buying fewer strikes rather than more contracts.**
+Contracts/hour rose 14% where the lot rose 40%, strikes/hour fell 5.86 -> 4.78, the at-cap rate
+collapsed 44% -> 11%, and median collateral rose only 11% ($30.01 -> $33.39). Three candidates,
+not separable from 18 hours: the queue declining bigger lots, a thin pool on one day, or the mean
+simply not having moved yet. Re-read at day 3; if strikes/hour is still near 4.8 then, it is worth
+its own measurement.
+
+> **An earlier version of this section claimed a deployment ceiling, and it was the file's own
+> corrected number read back in.** It said peak collateral "landed on the same ~$56 as at lot 5
+> even though the slot cap moved from $38.40 to $53.76", and concluded gate 3 was at risk against
+> an unfound ceiling. That compared lot 7 against the peak over ALL baseline hours, $56.20 --
+> which the capital review above had already established is a **legacy desktop 10-lot hour**, not
+> a lot-5 hour. On lot-5-only hours (309 of 358) the peak is $38.35, so lot 7's $55.67 is x1.45
+> against a lot ratio of 1.40: **collateral scales with the lot and there is no ceiling.** The
+> wrong comparison was to the very figure this document was written to correct. Compare
+> like-for-like hours, or the baseline will quietly include a configuration you are not running.
+
+**One strike can now hold more than one lot, and at lot 5 it never did.** In 1,816 lot-5 positions
+across 309 hours, **zero** held more than 5 contracts. On lot 7's first day, 4 of 86 positions
+(4.7%) held more: three at 14 (two 7-lots) and one at 9. `max_open` counts strikes, so a strike
+already held can apparently be quoted again and re-fill. It matters because the worst case per
+strike is then **$13.44, not the $6.72** the effect preview states, and `daily_stop / worst strike`
+falls from 2.2 to 1.1 -- at the edge of the brake invariant that one market can never outrun the
+brake. Not yet established: whether this is new behaviour at lot 7 or a thin day's renewals
+re-filling. **Count it at day 3, and if it is systematic it is a defect, not a lever** -- stacking
+lots on one strike concentrates exactly the correlated risk `max_open` exists to spread.
