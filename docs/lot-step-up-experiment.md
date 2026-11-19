@@ -141,6 +141,27 @@ collateral. Scaling to $30/day needs roughly double again — lot 20, ~$154 of p
 equity is about +$3/day for step 1 and +$8/day for step 2, and then the account is the constraint
 again.** No ordering, band or hour filter found in this repo adds to that; money does.
 
+## The worst-hour column is wrong, corrected 2026-11-19
+
+The table above gives "worst hour (scaled)" by doubling the worst hour OBSERVED
+in 24 days. That is calibrating risk to a benign sample, and it understates the
+cap by about half. Measured on 384 event-hours: all 66 losing hours were
+**one-sided** (KXBTCD settles on the top-of-hour price, so one close can only
+be beyond the strikes on one side of spot), the worst hour lost **97% of its
+exposed side**, and the book has put **$35.51 of a possible $38.40** on a single
+side. So the cap is one side swept:
+
+| lot | one side swept | share of ~$101 equity |
+| --- | --- | --- |
+| 5 | ~$38 | 38% |
+| 7 | ~$54 | 53% |
+| **10** | **~$77** | **76%** |
+
+`daily_stop` cannot prevent that batch — it reads settled P&L, and settlement
+follows the close. **Step 2's gate must read the structural cap, not the scaled
+observation**: 76% of equity in one unpreventable hour is a different decision
+from the -$34.70 this document described. See `docs/hardening.md` section 1.
+
 ## Step 1 started: 2026-11-18
 
 `lot: 7` set by the operator on 2026-11-18 (~05:10Z). Everything measured from here is step 1's;
