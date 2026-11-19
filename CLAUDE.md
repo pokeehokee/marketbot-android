@@ -241,6 +241,97 @@ weatherbot already recorded. **So there is nothing to collect and the ~$2.20/day
 counted.** Re-check with those two endpoints rather than from the help pages; a pool appearing for
 `KXBTCD` would be free yield on a book that already rests all day.
 
+## Buying the >=20x crypto tail, 2026-11-19 — a loss as a taker, fair as a maker
+
+Operator question: put $1 on a >20x outcome that still has a chance, and find a
+way to tell when the market is about to turn so the bet goes on before it does.
+
+The question splits, and only one half needed answering first: **is the cheap
+tail underpriced at all?** If it is, no timing is needed. If it is not, no
+pattern rescues it, because you would be paying spread and fee on a fair bet.
+Timing is also the single most closed avenue in this repo — Kronos, a 102M-
+parameter K-line model fine-tuned on BTC 5-minute bars, could not beat a
+driftless random walk at a 30-minute lead on exactly `KXBTCD`, where the
+market's reliability measured 0.0004.
+
+`research/crypto/` prices every cheap-tail strike (buy price <= 0.05, both
+tails) of each settled `KXBTCD` hour at a 30-minute lead with zero lookahead,
+unauthenticated and read-only. **3,571 quotes, 257 hours, 33 days, 37 wins
+against 62.2 implied by the prices paid — ratio 0.59.** CIs bootstrapped
+clustered by DAY:
+
+| | ratio | EV/contract | 95% CI |
+| --- | --- | --- | --- |
+| **buy at the ask (taker)** | 0.59 | **-0.83c** | **[-1.40, -0.10]** — excludes zero |
+| rest a bid (no fee) | 0.59 | -0.71c | [-1.27, +0.00] — touches zero |
+| ask 0.010-0.015 | 0.47 | -0.60c | [-1.02, -0.04] |
+| ask 0.025-0.035 | 1.08 | +0.01c | [-1.71, +2.05] |
+| ask 0.045-0.055 | 0.43 | -3.21c | [-5.35, -0.59] |
+
+**Taking the tail is a measured loss; resting a bid for it is a coin flip.** The
+fee is the difference: a $1 stake at 0.02 buys 50 contracts and pays
+`ceil(0.07 x 50 x 0.02 x 0.98)` = $0.07, 7% of stake, because Kalshi rounds the
+fee up per ORDER.
+
+**And the direction is corroborated by live money on the other side.** Buying
+YES at 0.94 and selling NO at 0.06 are the same payoff, so the deep-ITM ladder
+IS the short-the-cheap-tail trade on these very markets, earning **+1.77c/
+contract over 10,551 contracts**. The buyer's -0.83c and the ladder's +1.77c are
+the same phenomenon from two sides. **This idea is the inverse of the account's
+best strategy.**
+
+Why it fails is geometric, not statistical: over a 30-minute lead BTC's median
+move is **$117** (p90 $329, max $503 across 67 hours) against a median
+**$738** needed to win. The multiplier is 20-100x *because* the move required is
+six times the typical one.
+
+Three things NOT established, each of which looked established at some point:
+
+- **The wins cluster and the split is unstable.** 20 of 37 wins fall on three
+  days, 21 of 33 days have zero, and one day paid **5.4x** its implied rate.
+  Earlier half ratio 0.84, later half 0.37. The side asymmetry (strike above
+  spot 0.36, below 0.82) is almost certainly the window's direction — BTC fell
+  from ~$72.8k to ~$63.2k across it — not a tradeable fact.
+- **Volatility conditioning does not harvest the clustering.** Trailing 60-min
+  realised vol at the quote, quartiled: ratios 0.50 / 0.14 / 0.78 / 0.20, non-
+  monotonic, all EV negative. The reason is in the implied column, which rises
+  **6.0 -> 7.1 -> 7.7 -> 9.9** across the quartiles: the market already widens
+  the ask on volatile days by about the right amount.
+- **The long-horizon tail is liquid and cannot be measured.** `KXBTCY` (22
+  cheap markets, OI median **483,952**), `KXBTC2026200` (OI **5,312,824**),
+  `KXBTCMAXMON`, `KXBTCMAXY` carry months of runway and enormous open interest —
+  the shape the >=20x question actually wants. But a 14-month one-touch yields
+  one observation per horizon and every `BTC-above-X-by-2027` market settles off
+  the SAME price path, so n ~ 1 per year. The >= 30-loss bar cannot be reached
+  when the cluster is the sample. Buying them is a view, not a measured edge.
+  The *daily* crypto series that would be measurable (`BTCD`, `BTC`, `ETHD`,
+  `KXBTCMAXD`) return **zero markets and zero events of any status** — listed
+  shells, as weatherbot records for international weather series.
+
+> **Three claims were made during this work and withdrawn, all the same root
+> cause: a number reported before the field or the clustering behind it was
+> checked.** (1) Two Poisson-binomial p-values (3.9e-6, 2.6e-4) assumed quotes
+> were independent draws when 20 of 37 wins sit on three days; hour clustering
+> gave a ratio CI of [0.17, 0.98] against day clustering's [0.27, 1.02].
+> (2) "The cheap band has median 24h volume of zero, probably fatal" came from
+> a field that is **not populated**: of 200 settled `KXBTCD` markets, zero
+> report `volume > 0`, including strikes this account demonstrably traded, and
+> `open_interest` and `volume_24h` on the market object are dead too. From the
+> candlestick the band carries a median **3,754** contracts of OI. (3) The
+> long-horizon series were called dead on that same invalid read. **Never
+> report a liquidity figure without first checking the field populates on a
+> case known to have traded** — a zero meaning "not reported" and a zero
+> meaning "no trades" are indistinguishable downstream. The mid-price control
+> was also mis-specified at first: it reused the cheap band's $100-$1500
+> distance-from-spot window, so it could not see 0.30-0.70 strikes at all
+> (4 hours, 2 quotes). A control that cannot observe its own target is not a
+> control; it was replaced by checking every quote's exchange result against
+> realised BTC spot, which agreed **830 of 831** times.
+
+Tests: `research/crypto/test_crypto_tail.py` (17, stdlib unittest) freeze the
+zero-lookahead candle rule, the empty-book sentinel, `no_ask = 1 - yes_bid`, the
+per-order fee, day clustering, the 429 backoff and the read-only guard.
+
 ## What the two live books are SET to, 2026-11-15 — three stale benchmarks
 
 Asked to check everything was correctly set, and the settings had drifted from the evidence in
