@@ -59,3 +59,39 @@ not a bug.
 > *within* ~$100 of spot, so it could not find any: 4 hours scanned, 2 quotes.
 > **A control that cannot observe its own target is not a control.** A
 > mid-price run needs `NEAR = 0`.
+
+## The `volume` field on these markets is NOT populated, and it voided a claim
+
+A first pass concluded the cheap band was unfillable — "132 of 200 open
+`KXBTCD` markets sit at <=5c with median 24h volume of zero" — and called that
+probably fatal. **It was an artifact.** The control that should have been run
+first: of 200 *settled* `KXBTCD` markets, **zero** report `volume > 0`,
+including near-the-money strikes that demonstrably traded (this account's own
+deep-ITM ladder filled 10,556 contracts on these series). The field reads zero
+whether or not the market traded — the same shape as `yes_bid` coming back
+`None`, which this repo already documents.
+
+Read liquidity from the **candlestick** instead (`volume_fp`,
+`open_interest_fp`), which the sampler stores per quote. On 2,791 cheap-band
+quotes at the 30-minute mark:
+
+| | |
+| --- | --- |
+| open interest | median **3,754** contracts, p90 20,835, max 94,736 |
+| quotes with any open interest | **85%** |
+| 1-minute candle volume | median 0, p90 **572**, max 6,386 |
+
+Open interest rises with price across the band (1,006 at 0.010-0.015 to 16,755
+at 0.035-0.055). The cheap band is **deeply traded**, not dead.
+
+Two lessons, both of which cost a wrong conclusion here:
+
+- **Never report a liquidity figure without first checking the field populates
+  on a case known to have traded.** A zero that means "not reported" and a zero
+  that means "no trades" are indistinguishable downstream.
+- The same invalid read was applied to the long-horizon series
+  (`KXBTCY`, `KXBTCMAXMON`, `KXBTCHITBY`, ...), reported as "60 open markets, 50
+  cheap, total 24h volume 0". **That is unmeasured, not zero.** What does hold
+  for the *daily* crypto series (`BTCD`, `BTC`, `ETHD`, `KXBTCMAXD`) is checked
+  two ways and solid: zero markets AND zero events of any status — listed
+  shells, the same pattern weatherbot records for international weather series.
