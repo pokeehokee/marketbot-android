@@ -163,3 +163,37 @@ class ReadOnly(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TheFetchWindowMustNotClipTheBand(unittest.TestCase):
+    """~190 strikes an hour at one candle call each is minutes per hour, so only
+    strikes within a distance of spot are priced. If that window clipped the
+    0.90-0.96 band the sample would select on VOLATILITY -- a quiet hour puts
+    the band near spot, a wild one far -- which is exactly the hour-of-day
+    question being asked, so the bias would land on the answer."""
+
+    def test_the_outer_edge_clears_the_observed_band_with_margin(self):
+        # Calibrated on the first in-band picks: $192 to $435 from spot.
+        self.assertGreaterEqual(sh.WINDOW_HI, 435 + sh.CLIP_MARGIN)
+        self.assertGreaterEqual(sh.WINDOW_HI / 435.0, 3.0, "leave real margin over the observed band")
+
+    def test_the_inner_edge_cannot_reach_a_deep_itm_price(self):
+        """A strike within WINDOW_LO of spot is near the money, nowhere near
+        0.90-0.96, so the inner edge cannot clip the band -- which is why only
+        the outer edge is guarded. The observed band starts at $192."""
+        self.assertLess(sh.WINDOW_LO, 192, "the inner edge must sit inside the nearest in-band strike")
+
+    def test_the_window_is_a_distance_from_spot_at_the_lead_moment(self):
+        """Not from the settlement price: that would be lookahead, and a window
+        drawn around the outcome would pick the strikes that won."""
+        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "skipped_hours.py")).read()
+        self.assertIn("abs(k - spot)", src)
+        self.assertNotIn("abs(k - close", src)
+
+    def test_only_the_outer_edge_is_guarded(self):
+        """An inner guard warned on every sample: the band reaches $192 and the
+        margin is $200. A guard that always fires is one that gets ignored."""
+        self.assertGreater(sh.CLIP_MARGIN, 0)
+        src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "skipped_hours.py")).read()
+        self.assertIn("WINDOW_HI - CLIP_MARGIN", src)
+        self.assertNotIn("WINDOW_LO + CLIP_MARGIN", src)

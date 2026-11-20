@@ -59,6 +59,25 @@ BAND_LO, BAND_HI = 0.90, 0.96
 MAX_OPEN = 8                      # distinct strikes per event-hour, one side each
 LEAD_S = 1800                     # inside the fill window: ttc_min 300, ttc_max 3000
 SKIPPED = (3, 10, 21, 23)         # skip_hours_et
+
+# Only price strikes this far from spot. A KXBTCD hour lists ~190 strikes and
+# each needs its own candle call, so pricing all of them costs minutes an hour;
+# the 0.90-0.96 band cannot live at either extreme. CALIBRATED, not guessed: on
+# the first 7 in-band picks the band sat $192-$435 from spot, so $50-$2,000 is
+# about five times the observed spread. It is a distance from SPOT AT THE LEAD
+# MOMENT, so it selects on nothing the ladder could not see -- the same device
+# crypto_tail_sample uses for the cheap band.
+#
+# A window that clipped the band would silently select on volatility (a quiet
+# hour puts the band near spot, a wild one far), so score() reports any pick
+# landing within CLIP_MARGIN of the OUTER edge instead of trusting the window.
+# Only the outer edge is checked: a strike within $50 of spot is near the money
+# and can never be priced 0.90-0.96, so the inner edge cannot clip the band by
+# construction. Checking it anyway warned on every sample, because the band
+# reaches $192 from spot and the margin is $200 -- a guard that always fires is
+# one that gets ignored.
+WINDOW_LO, WINDOW_HI = 50.0, 2000.0
+CLIP_MARGIN = 200.0
 ACCOUNT_RATIO = 0.72              # the control: /portfolio/settlements, 11,623 contracts
 
 SCHEMA = """
@@ -108,6 +127,8 @@ def pick_hour(c, markets) -> int:
             continue
         # Deep ITM means the strike is already passed: YES below spot, NO above.
         side = "yes" if k < spot else "no"
+        if not (WINDOW_LO <= abs(k - spot) <= WINDOW_HI):
+            continue
         p = cts.price_at(m["ticker"], close_ts, LEAD_S)
         time.sleep(0.10)
         if p is None:
@@ -226,6 +247,19 @@ def score() -> int:
         print(f"{label:28} {len(sub):6} picks {len(g):4} hours  lost {sum(r['lost'] for r in sub):4}"
               f" / {sum(1 - r['entry'] for r in sub):7.1f} implied  ratio {ra:.2f} {ci:>14}  {e:+.2f}c")
         return ra
+
+    # Did the fetch window clip the band? If the dearest in-band picks sit at the
+    # edge, strikes beyond it were never priced and the sample selects on
+    # volatility rather than on the hour.
+    edge = [r for r in rows if abs(r["strike"] - r["spot"]) >= WINDOW_HI - CLIP_MARGIN]
+    if edge:
+        print(f"WARNING: {len(edge)} pick(s) sit within ${CLIP_MARGIN:.0f} of the outer window "
+              f"(${WINDOW_HI:.0f}). Widen it and rebuild: strikes beyond it were never priced, "
+              f"so the sample selects on volatility.\n")
+    else:
+        far = max(abs(r["strike"] - r["spot"]) for r in rows)
+        print(f"window OK: the furthest in-band strike sits ${far:.0f} from spot, "
+              f"inside ${WINDOW_HI:.0f}.\n")
 
     traded = block("traded hours (control)", lambda h: h not in SKIPPED)
     skipped = block("skipped hours (all four)", lambda h: h in SKIPPED)
