@@ -60,22 +60,46 @@ class ClaudeSyncTest {
     }
 
     /** A fake GitHub contents API: files in a map, sha = content hash; a write must name the current sha. */
+    /**
+     * Stores BYTES, not a String. The exports are gzipped now, and decoding those
+     * through a String would mangle them -- a fake that cannot hold what the app
+     * really sends cannot test it.
+     */
     private class FakeGitHub : Dispatcher() {
-        val files = mutableMapOf<String, String>()
+        val raw = mutableMapOf<String, ByteArray>()
         val writes = mutableListOf<String>()
-        private fun sha(t: String) = t.hashCode().toString()
+        val deletes = mutableListOf<String>()
+
+        /** Text view, for the JSON files and the assertions that read them. */
+        val files: MutableMap<String, String> get() = object : AbstractMutableMap<String, String>() {
+            override val entries get() = raw.entries.map { (k, v) ->
+                java.util.AbstractMap.SimpleEntry(k, String(v)) as MutableMap.MutableEntry<String, String>
+            }.toMutableSet()
+            override fun put(key: String, value: String): String? = raw.put(key, value.toByteArray())?.let { String(it) }
+        }
+
+        /** The gzipped bytes at a path, un-gzipped. */
+        fun gunzip(path: String): String =
+            java.util.zip.GZIPInputStream(raw.getValue(path).inputStream()).readBytes().toString(Charsets.UTF_8)
+
+        private fun sha(b: ByteArray) = b.contentHashCode().toString()
         override fun dispatch(request: RecordedRequest): MockResponse {
             val path = request.requestUrl!!.encodedPath.substringAfter("/contents/")
             if (request.getHeader("Authorization") != "Bearer tok") return MockResponse().setResponseCode(401)
             return when (request.method) {
-                "GET" -> files[path]?.let { MockResponse().setBody("""{"sha":"${sha(it)}","content":"${Base64.getMimeEncoder().encodeToString(it.toByteArray()).replace("\r\n", "\\n")}"}""") }
+                "GET" -> raw[path]?.let { MockResponse().setBody("""{"sha":"${sha(it)}","content":"${Base64.getMimeEncoder().encodeToString(it).replace("\r\n", "\\n")}"}""") }
                     ?: MockResponse().setResponseCode(404)
                 "PUT" -> {
                     val b = Json.parseToJsonElement(request.body.readUtf8()) as JsonObject
-                    val old = files[path]
+                    val old = raw[path]
                     if (old != null && (b["sha"] as? JsonPrimitive)?.content != sha(old)) return MockResponse().setResponseCode(409)
-                    files[path] = String(Base64.getDecoder().decode((b["content"] as JsonPrimitive).content)); writes += path
+                    raw[path] = Base64.getDecoder().decode((b["content"] as JsonPrimitive).content); writes += path
                     MockResponse().setResponseCode(if (old == null) 201 else 200).setBody("{}")
+                }
+                "DELETE" -> {
+                    if (raw.remove(path) == null) return MockResponse().setResponseCode(404)
+                    deletes += path
+                    MockResponse().setResponseCode(200).setBody("{}")
                 }
                 else -> MockResponse().setResponseCode(405)
             }
@@ -84,6 +108,43 @@ class ClaudeSyncTest {
 
     private val server = MockWebServer()
     @AfterTest fun stop() { runCatching { server.shutdown() } }
+
+    @Test fun `a sync gzips the exports and retires the uncompressed path it replaced`() = runTest {
+        val gh = FakeGitHub(); server.dispatcher = gh; server.start()
+        val base = server.url("").toString().trimEnd('/')
+        FakeKalshi().use { fake ->
+            val engine = Engine(inMemoryStores(), MutableClock(Instant.parse("2026-11-20T12:00:00Z")),
+                clientFactory = { _ -> fake.client(false) to PolymarketClient(null) })
+            // The repository as it stood: 8.49 MB of uncompressed orders, the file
+            // whose base64 was timing the sync out.
+            gh.files[GitHubMailbox.RETIRED.first()] = "strategy,mode,venue\nstale,LIVE,kalshi\n"
+            val sync = SyncService(engine) { r, t -> GitHubMailbox(r, t, base) }
+            sync.sync("me/sync", "tok", "1.0.test")
+
+            assertTrue(GitHubMailbox.ORDERS in gh.raw, "the gzipped export was not written")
+            assertTrue(gh.gunzip(GitHubMailbox.ORDERS).startsWith("strategy,mode,venue"))
+            assertTrue(GitHubMailbox.RETIRED.first() !in gh.raw,
+                "the uncompressed export must be removed, or the repo carries both copies for ever")
+            assertTrue(GitHubMailbox.RETIRED.first() in gh.deletes)
+            // Raw gzip bytes, not text: a String round trip would corrupt them.
+            assertEquals(0x1f.toByte(), gh.raw.getValue(GitHubMailbox.ORDERS)[0])
+            assertEquals(0x8b.toByte(), gh.raw.getValue(GitHubMailbox.ORDERS)[1])
+        }
+    }
+
+    @Test fun `a retired path that is already gone does not fail the sync`() = runTest {
+        val gh = FakeGitHub(); server.dispatcher = gh; server.start()
+        val base = server.url("").toString().trimEnd('/')
+        FakeKalshi().use { fake ->
+            val engine = Engine(inMemoryStores(), MutableClock(Instant.parse("2026-11-20T12:00:00Z")),
+                clientFactory = { _ -> fake.client(false) to PolymarketClient(null) })
+            val sync = SyncService(engine) { r, t -> GitHubMailbox(r, t, base) }
+            val line = sync.sync("me/sync", "tok", "1.0.test")   // nothing to retire
+            assertTrue("failed" !in line.lowercase(), line)
+            assertTrue(GitHubMailbox.ORDERS in gh.raw)
+            assertTrue(gh.deletes.isEmpty())
+        }
+    }
 
     @Test fun `a sync sends the snapshot and ledger, holds proposals for approval, and reports what was done`() = runTest {
         val gh = FakeGitHub(); server.dispatcher = gh; server.start()
@@ -101,7 +162,7 @@ class ClaudeSyncTest {
             val line = sync.sync("me/sync", "tok", "1.0.test")
             assertTrue("3 proposal(s) waiting" in line && "1 refused" in line, line)
             assertTrue(GitHubMailbox.SNAPSHOT in gh.files && "kalshi_weather_longshot@b" in gh.files.getValue(GitHubMailbox.SNAPSHOT))
-            assertTrue(gh.files.getValue(GitHubMailbox.ORDERS).startsWith("strategy,mode,venue"))
+            assertTrue(gh.gunzip(GitHubMailbox.ORDERS).startsWith("strategy,mode,venue"), "the orders export must gunzip to the CSV header")
             assertTrue(listOf("BEGIN", "PRIVATE", "token", "tok\"").none { it in gh.files.getValue(GitHubMailbox.SNAPSHOT) }, "no secrets sent")
 
             val pend = sync.pending().associateBy { it.proposal.id }

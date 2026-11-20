@@ -60,12 +60,21 @@ class SyncService(
                     MethodRecord.preferred(mode, rows, now.minus(Duration.ofDays(1)))?.line())
             }
             box.write(GitHubMailbox.SNAPSHOT, SyncPayload.snapshot(now, appVersion, snaps), "app: snapshot $now")
+            // The CSV exports go up GZIPPED. Uncompressed they had reached 23 MB,
+            // which the contents API turns into 31 MB of base64 across four PUTs --
+            // the timeout the daily sync had been failing on. See writeBytes.
             val rows = engine.strategies.flatMap { s -> engine.stores.ledger.all(s.id) }
-            box.write(GitHubMailbox.ORDERS, SyncPayload.ordersCsv(rows.asSequence()), "app: orders $now")
-            books?.invoke()?.let { box.write(GitHubMailbox.BOOKS, it, "app: cross-venue books $now") }
-            trades?.invoke()?.let { box.write(GitHubMailbox.TRADES, it, "app: trade tape $now") }
-            perps?.invoke()?.let { box.write(GitHubMailbox.PERPS, it, "app: perps samples $now") }
-            perpFunding?.invoke()?.let { box.write(GitHubMailbox.PERP_FUNDING, it, "app: perps funding history $now") }
+            box.writeBytes(GitHubMailbox.ORDERS, SyncPayload.gzip(SyncPayload.ordersCsv(rows.asSequence())), "app: orders $now")
+            books?.invoke()?.let { box.writeBytes(GitHubMailbox.BOOKS, SyncPayload.gzip(it), "app: cross-venue books $now") }
+            trades?.invoke()?.let { box.writeBytes(GitHubMailbox.TRADES, SyncPayload.gzip(it), "app: trade tape $now") }
+            perps?.invoke()?.let { box.writeBytes(GitHubMailbox.PERPS, SyncPayload.gzip(it), "app: perps samples $now") }
+            perpFunding?.invoke()?.let { box.writeBytes(GitHubMailbox.PERP_FUNDING, SyncPayload.gzip(it), "app: perps funding history $now") }
+            // One-time: drop the uncompressed exports these replaced, so the repo
+            // does not carry two copies of 23 MB. A failure here must not fail the
+            // sync -- the stale file is untidy, not harmful.
+            for (old in GitHubMailbox.RETIRED) {
+                runCatching { box.deleteIfPresent(old, "app: superseded by the gzipped export") }
+            }
             com.marketbot.core.strategies.bets.ResearchBets.report(engine.stores).takeIf { it.isNotEmpty() }?.let {
                 box.write(GitHubMailbox.BET_RESULTS, com.marketbot.core.strategies.bets.ResearchBets.resultsJson(it), "app: ${it.size} research bet(s) $now")
             }
