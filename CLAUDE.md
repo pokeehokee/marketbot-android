@@ -841,6 +841,40 @@ skill writes each target up in a fixed format ending in a bet or watch proposal.
 
 Snapshots and exports never carry keys.
 
+**The CSV exports are gzipped (2026-11-20).** The daily sync had been failing
+with a timeout, and the cause was size, not the network: the four exports had
+grown to **23 MB** between them (orders 8.49, trades 8.10, books 6.23, perps
+1.04), and the contents API takes base64, so each sync pushed **31 MB in four
+PUTs under a 60-second per-call budget** — the largest single file 11.3 MB.
+Gzipped the same payload is **5.2 MB of base64** (orders 7.5x, books 10.6x,
+trades 3.9x, perps 4.6x). `exports/*.csv.gz` via `writeBytes`; the JSON files
+stay plain text because a person reads and edits `proposals/pending.json` in the
+GitHub UI. `GitHubMailbox.RETIRED` holds the uncompressed paths and the sync
+deletes them once, so the repository does not carry both copies — a failure
+there is swallowed, because a stale file is untidy rather than harmful.
+
+It also bounds the repository. Every sync rewrites each file **whole**, so each
+one is a new blob for ever: at 120 commits `.git` was already **59 MB**, gaining
+~24 MB per sync, which daily would have passed a gigabyte within six weeks.
+Gzipped that is ~4 MB a sync. `SyncPayload.gzip` is deterministic — Java's
+`GZIPOutputStream` leaves the header's MTIME at zero — so an unchanged export
+produces identical bytes and a quiet day writes no commit at all; a test crosses
+a whole second to pin that.
+
+What was NOT the problem, checked before the fix: nothing reads an export back
+before writing it. Every one is rebuilt from the app's own stores
+(`perpFunding?.invoke()`), so the 400-day funding series lives in the device
+database and a read returning empty could not truncate it. Worth knowing because
+`GET /contents` returns `content: ""` with `encoding: "none"` for any file over
+1 MB — all four exports were past that — so `read()` had been silently yielding
+empty text for them. Only the sha is used, so nothing broke; anything that
+later reads an export back must not go through `read()`.
+
+Still open: the contents API needs a GET for each file's sha before each PUT, so
+a sync is two calls per file and six commits. The Git Data API (blobs, one tree,
+one commit, update the ref) would make it one commit and drop the sha reads. Not
+done; gzip is what the timeout needed.
+
 ## Commands
 
 ```bash

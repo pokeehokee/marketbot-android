@@ -161,16 +161,43 @@ class GitHubMailbox(
         }
     }
 
-    fun write(path: String, text: String, message: String) {
+    fun write(path: String, text: String, message: String) = writeBytes(path, text.toByteArray(), message)
+
+    /**
+     * Write raw bytes. The exports go through here GZIPPED, which is what keeps a
+     * sync inside its timeout.
+     *
+     * Measured 2026-11-20, when the daily sync had been failing: the four CSV
+     * exports had grown to 23 MB, and the contents API takes base64, so each sync
+     * was pushing **31 MB** in four PUTs under a 60 s per-call budget -- the
+     * largest single file 11.3 MB. Gzipped the same payload is 5.2 MB (orders
+     * 7.5x, books 10.6x, trades 3.9x). It also cuts what the repository gains per
+     * sync from ~24 MB of fresh blobs to ~4 MB: every sync rewrites each file
+     * whole, so each one is a new blob for ever.
+     */
+    fun writeBytes(path: String, bytes: ByteArray, message: String) {
         val sha = read(path)?.second
         val body = kotlinx.serialization.json.buildJsonObject {
             put("message", kotlinx.serialization.json.JsonPrimitive(message))
-            put("content", kotlinx.serialization.json.JsonPrimitive(Base64.getEncoder().encodeToString(text.toByteArray())))
+            put("content", kotlinx.serialization.json.JsonPrimitive(Base64.getEncoder().encodeToString(bytes)))
             sha?.let { put("sha", kotlinx.serialization.json.JsonPrimitive(it)) }
         }.toString()
         http.newCall(req(path).put(body.toRequestBody("application/json".toMediaType())).build()).execute().use { r ->
             check(r.isSuccessful) { "GitHub ${r.code} writing $path" + if (r.code == 401 || r.code == 403) ": check the token can read and write this repository" else "" }
         }
+    }
+
+    /** Remove a path if it is there. Used once, to retire the uncompressed exports. */
+    fun deleteIfPresent(path: String, message: String): Boolean {
+        val sha = read(path)?.second ?: return false
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("message", kotlinx.serialization.json.JsonPrimitive(message))
+            put("sha", kotlinx.serialization.json.JsonPrimitive(sha))
+        }.toString()
+        http.newCall(req(path).delete(body.toRequestBody("application/json".toMediaType())).build()).execute().use { r ->
+            check(r.isSuccessful) { "GitHub ${r.code} deleting $path" }
+        }
+        return true
     }
 
     fun proposals(): List<Proposal> = read(PENDING)?.first?.let { json.decodeFromString(ProposalFile.serializer(), it).proposals } ?: emptyList()
@@ -184,14 +211,25 @@ class GitHubMailbox(
 
     companion object {
         const val SNAPSHOT = "snapshot/latest.json"
-        const val ORDERS = "exports/orders-latest.csv"
-        const val BOOKS = "exports/books-latest.csv"
-        const val TRADES = "exports/trades-latest.csv"
+
+        // The CSV exports are gzipped: see writeBytes. The JSON files are NOT --
+        // snapshot and the proposal files are small (20 KB and under) and a person
+        // reads and edits them in the GitHub UI, which a .gz would end.
+        const val ORDERS = "exports/orders-latest.csv.gz"
+        const val BOOKS = "exports/books-latest.csv.gz"
+        const val TRADES = "exports/trades-latest.csv.gz"
+        const val PERPS = "exports/perps-latest.csv.gz"
+        const val PERP_FUNDING = "exports/perps-funding.csv.gz"
+
+        /** The uncompressed paths these replaced, deleted once so the repo carries one copy. */
+        val RETIRED = listOf(
+            "exports/orders-latest.csv", "exports/books-latest.csv", "exports/trades-latest.csv",
+            "exports/perps-latest.csv", "exports/perps-funding.csv",
+        )
+
         const val PENDING = "proposals/pending.json"
         const val RESULTS = "proposals/results.json"
         const val BET_RESULTS = "bets/results.json"
-        const val PERPS = "exports/perps-latest.csv"
-        const val PERP_FUNDING = "exports/perps-funding.csv"
     }
 }
 
@@ -204,5 +242,17 @@ object SyncPayload {
 
     fun ordersCsv(rows: Sequence<com.marketbot.core.store.QuoteRow>) = buildString {
         append(LedgerCsv.header()); rows.forEach { append(LedgerCsv.row(it)) }
+    }
+
+    /**
+     * GZIP, for the CSV exports. Deterministic: GZIPOutputStream writes no
+     * filename and the mtime field stays zero, so an unchanged export produces
+     * identical bytes and the contents API records no new commit. Writing the
+     * clock in there would make every sync a change even on a quiet day.
+     */
+    fun gzip(text: String): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.GZIPOutputStream(out).use { it.write(text.toByteArray()) }
+        return out.toByteArray()
     }
 }
