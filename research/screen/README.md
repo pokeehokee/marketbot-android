@@ -72,3 +72,25 @@ near-decided; this run sampled ERCOT ~24h out. That caveat does not rescue any
 of the three here (ERCOT's zero OI means it never traded at any phase, and the
 other two are settled-history-checked), but a future run looking for daily pools
 should be scheduled against each series' own close time.
+
+## The scripts that read the account
+
+`kalshi_auth.py` is a self-contained signed read-only GET from environment
+credentials (`KALSHI_KEY_ID`, `KALSHI_PRIVATE_KEY` as the bare PKCS#8 body or a
+full PEM). `assert_read_only()` whitelists exactly `/portfolio/settlements`,
+`/portfolio/fills` and `/portfolio/positions` and refuses everything else, and
+429 is retried inside `get()` because a rate-limited page returns an EMPTY list
+that reads exactly like "this account has nothing".
+
+| script | question |
+| --- | --- |
+| `account_record.py` | what each book has actually earned, from the exchange and nothing else |
+| `btc_sweep_geometry.py` | how far BTC must move to sweep one side of the deep-ITM book, and how often it does |
+| `btc_side_split.py` | how a `max_open` hour divides between the two sides, which is what caps a worst-hour loss |
+| `deep_itm_screen.py` | is there a second deep-ITM pool on Kalshi (no) |
+
+> **No test here may assert on `os.environ`.** The first version of
+> `test_kalshi_auth.py` did, to prove the guard ran without credentials, and
+> unittest put the entire environment in the failure message — the live trading
+> key among it. In CI that lands in a public log. Prove a guard by showing that
+> nothing reached the network, never by inspecting the environment.

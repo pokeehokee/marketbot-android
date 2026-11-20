@@ -36,6 +36,13 @@ jobs:
         # because each directory's tests put their own dir on sys.path to import the
         # module under test, and a single rooted discovery silently skips them.
         run: python3 -m unittest discover -s research/crypto -p 'test_*.py' -v
+      - name: Research tests (the credentialed screen scripts' read-only guard)
+        # account_record.py and the two geometry scripts are the only things in
+        # research/ that sign with the account key, so the endpoint whitelist is
+        # the whole of their safety. These also pin that no test may assert on
+        # os.environ: unittest puts the environment in a failure message, and the
+        # first version of this file printed the live trading key that way.
+        run: python3 -m unittest discover -s research/screen -p 'test_*.py' -v
       - name: Core tests (golden comparisons against the Python originals, clients, strategies)
         run: ./gradlew --no-daemon :core:test
       - name: App tests (Room stores, vault, screens)
