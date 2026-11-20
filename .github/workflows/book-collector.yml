@@ -14,13 +14,24 @@ name: Commodity order-book collector
 # A missed day cannot be recovered. If a run fails, re-run it only while a
 # window is still open; afterwards the books are gone.
 on:
+  # MANY SHORT FIRES, NOT ONE LONG ONE. The first design was a single daily
+  # 17:25Z job of ~295 cycles, and on its first day it NEVER FIRED -- zero runs,
+  # while a manual dispatch of the same file worked. GitHub's `schedule` is
+  # explicitly best-effort ("can be delayed during periods of high load"), which
+  # is an unfit host for a collector whose own documentation says a missed day
+  # cannot be recovered: one dropped fire cost the whole day.
+  #
+  # Every 15 minutes from 17:00Z to 22:59Z instead, each run collecting ~14
+  # minutes and exiting. That spans both close clusters (19:30Z and 22:00Z) with
+  # the 120-minute tracking window ahead of each, and a dropped fire now costs
+  # 15 minutes rather than a day.
   schedule:
-    - cron: "25 17 * * *"
+    - cron: "*/15 17-22 * * *"
   workflow_dispatch:
     inputs:
       cycles:
-        description: "Cycles to run (60 s each). 295 covers both close clusters."
-        default: "295"
+        description: "Cycles to run (60 s each). 14 fills one 15-minute slot."
+        default: "14"
       interval:
         description: "Seconds between cycles."
         default: "60"
@@ -37,15 +48,16 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    # 4.9 h of cycles plus slack for a late cron start; GitHub's own ceiling is 6 h.
-    timeout-minutes: 330
+    # One 15-minute slot plus slack for a late start. Short runs are the point:
+    # a dropped or delayed fire loses its own slice, not the day.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      - name: Record books through both close clusters
+      - name: Record books for this slot
         run: |
           python3 research/commodity/book_collector.py \
-            --cycles "${{ github.event.inputs.cycles || '295' }}" \
+            --cycles "${{ github.event.inputs.cycles || '14' }}" \
             --interval "${{ github.event.inputs.interval || '60' }}"
 
       # Always export: a run cancelled or timed out mid-window still holds real
@@ -62,7 +74,8 @@ jobs:
         with:
           name: commodity-books-${{ github.run_id }}
           path: exported/
-          # The measurement needs a week or two; 90 days is plenty and keeps the
-          # repo free of a database that grows ~100 MB a month.
-          retention-days: 90
+          # ~24 small artifacts a day rather than one big one. The measurement
+          # needs a week or two, so 30 days is ample and keeps the repo free of a
+          # database that grows ~100 MB a month.
+          retention-days: 30
           if-no-files-found: error

@@ -1058,3 +1058,49 @@ adverse-selection number weatherbot measured on fills (a 0.73 population ratio
 arriving as 0.96 once only the lifted quotes count), and it is the reason the
 commodity book's live 1.12 against a 0.26 backtest is being watched rather than
 explained away.
+
+
+## Two hosts that were not hosts, 2026-11-20 evening
+
+Both of the day's long-running jobs were put somewhere that cannot keep them,
+and both failures are the lesson this file already carried for weatherbot's pm2
+daemon -- re-learned twice in one day.
+
+**A Claude session's container is not a host.** The skipped-hours sampler
+(`research/crypto/skipped_hours.py`, ~90 minutes for 320 event-hours) was
+launched detached with `nohup` on the assumption it would outlive the turn. It
+died at **17 of 320 event-hours**: `nohup` survives a parent shell, not the
+container being reclaimed. Nothing in a session container should be relied on
+past the turn that starts it.
+
+**And GitHub's `schedule` is not a host for a job that cannot miss a day.** The
+book collector was given one daily fire at 17:25Z, and on its first day it
+**never ran -- zero runs**, while a manual `workflow_dispatch` of the identical
+file worked immediately. The workflow was registered and `active`; the schedule
+simply did not fire. GitHub documents `schedule` as best-effort ("can be delayed
+during periods of high load"), so a design that spends its whole day on one fire
+loses the whole day when that fire is dropped -- for a collector whose own
+documentation says **a missed day cannot be recovered.**
+
+Fixed by changing the shape rather than the file:
+
+| | was | is |
+| --- | --- | --- |
+| book collector | one fire, 17:25Z, ~295 cycles, 330-min timeout | `*/15 17-22 * * *`, ~14 cycles a run, 25-min timeout |
+| cost of a dropped fire | **the whole day** | 15 minutes |
+
+Twenty-four short runs tile 17:00-22:59Z, which spans both close clusters
+(19:30Z and 22:00Z) with the 120-minute tracking window ahead of each. The
+`concurrency` group still prevents two collectors on one window.
+
+The samplers now run on `.github/workflows/research-sample.yml`, dispatch-only,
+with the sampler's database cached between runs so a re-dispatch RESUMES (the
+sampler skips any event-hour already in `hour_done`) and the scoring can be
+redone without re-fetching. 2026-11-20 data is lost either way: the collector
+recorded nothing that day, and the first real coverage starts whenever the new
+schedule fires.
+
+> **The sampler's own result is still not in.** 17 of 320 hours is nothing, and
+> on the 6-hour smoke test the control read 2.80 against the account's 0.72 and
+> **withheld the verdict**, which is the control working. Nothing about
+> `skip_hours_et` is established, and nothing about it changes.

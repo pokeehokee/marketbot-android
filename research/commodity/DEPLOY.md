@@ -95,3 +95,26 @@ Two things the dataset will let you check that candles could not:
 - how the **queue at the ask** evolves through the window, which is the input to a real fill model
   (the current one rests on 707 fill-checked quotes and a queue-depth relationship the data says is
   *not* established).
+
+
+## The host, settled 2026-11-20 — and why it is many short runs
+
+This document assumed a systemd user service on a machine that stays up. No such
+service was ever created, so nothing was collected at all until the collector
+moved to GitHub Actions (`.github/workflows/book-collector.yml`; the repository
+is public, so minutes are free).
+
+The first CI design copied this document's shape -- one long daily run -- and it
+**did not fire on its first day**: zero runs, while a manual dispatch of the same
+file worked. GitHub's `schedule` is best-effort and can be delayed or dropped, so
+one fire a day means one dropped fire costs the whole day, which is exactly what
+this document says cannot be recovered.
+
+It now fires **every 15 minutes from 17:00Z to 22:59Z**, each run collecting ~14
+minutes and exiting, tiling the window that holds both close clusters (19:30Z
+and 22:00Z) plus the 120 minutes of tracking ahead of each. A dropped fire costs
+15 minutes. Each run uploads its own gzipped CSV, because the runner's database
+dies with the job.
+
+A systemd service on a real machine would still be better -- it would cover the
+whole day and never drop a slot -- and these units remain the way to do that.
