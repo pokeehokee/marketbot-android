@@ -61,6 +61,8 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import csv
+import gzip
 import os
 import sqlite3
 import sys
@@ -448,6 +450,37 @@ def show_stats(db: sqlite3.Connection) -> None:
           f"avg {c[3] or 0:.1f}s")
 
 
+def export_csv(db: sqlite3.Connection, out_dir: str) -> int:
+    """Dump every table to `<out_dir>/<table>-<UTC stamp>.csv.gz`.
+
+    The collector's host is an ephemeral CI runner, so `commodity_book.db` does
+    not outlive the job; these files do. Gzipped CSV rather than the database
+    because the rows are append-only and compress about 6x, and because a text
+    format can be scored by anything.
+
+    NULL stays EMPTY, never 0 and never 1.00: a side with nothing resting is the
+    sentinel this whole collector exists to record correctly, and writing it as a
+    price is the bug that once made a stop-loss replay report a 97% trigger rate.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    stamp = time.strftime("%Y%m%dT%H%M", time.gmtime())
+    rows = 0
+    for table in ("book_top", "book_depth", "cycles"):
+        cur = db.execute(f"SELECT * FROM {table}")
+        cols = [d[0] for d in cur.description]
+        path = os.path.join(out_dir, f"{table}-{stamp}.csv.gz")
+        n = 0
+        with gzip.open(path, "wt", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(cols)
+            for r in cur:
+                w.writerow(["" if v is None else v for v in r])
+                n += 1
+        rows += n
+        print(f"  {path}  {n} rows", flush=True)
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -463,9 +496,15 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="one cycle and exit")
     ap.add_argument("--cycles", type=int, default=0, help="run this many cycles then exit")
     ap.add_argument("--stats", action="store_true", help="print what has been collected and exit")
+    ap.add_argument("--export", metavar="DIR",
+                    help="write every table to gzipped CSV in DIR and exit. The collector runs on an\nephemeral CI runner, so the database dies with the job: the CSVs are what survives.")
     a = ap.parse_args()
 
     db = open_db(a.db)
+    if a.export:
+        print(f"exporting {a.db} -> {a.export}", flush=True)
+        print(f"{export_csv(db, a.export)} rows exported", flush=True)
+        return 0
     if a.stats:
         show_stats(db)
         return 0

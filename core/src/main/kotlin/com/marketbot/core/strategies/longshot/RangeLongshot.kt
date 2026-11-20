@@ -6,6 +6,8 @@ import com.marketbot.core.store.QuoteRow
 import com.marketbot.core.strategy.Check
 import com.marketbot.core.strategy.FunnelStep
 import com.marketbot.core.strategy.KillCriteria
+import com.marketbot.core.strategy.LiveGuards
+import com.marketbot.core.strategy.Venue
 import com.marketbot.core.strategy.Mode
 import com.marketbot.core.strategy.Outcomes
 import com.marketbot.core.strategy.Param
@@ -434,6 +436,21 @@ abstract class PaperRangeLongshot(final override val id: String, final override 
         return out
     }
 
-    override suspend fun healthChecks(ctx: StrategyContext, mode: Mode): List<Check> =
-        listOf(KillCriteria.lossRatio(ctx.stores.ledger.all(id, mode), ctx.clock.now()))
+    /**
+     * The ledger's own verdict, plus -- on a LIVE book only -- the two guards that
+     * read outside it: another trader on the same account, and the app's balance
+     * writer having gone quiet. Neither can return KILL, so neither can halt a
+     * working book; both are INSUFFICIENT when they cannot read rather than PASS.
+     */
+    override suspend fun healthChecks(ctx: StrategyContext, mode: Mode): List<Check> {
+        val rows = ctx.stores.ledger.all(id, mode)
+        val out = mutableListOf(KillCriteria.lossRatio(rows, ctx.clock.now()))
+        if (mode == Mode.LIVE) {
+            if (venue == Venue.KALSHI) {
+                out += LiveGuards.noOtherTrader(ctx.kalshi, { ownsMarket("kalshi", it) }, rows)
+            }
+            out += LiveGuards.balanceWriterFresh(ctx, venue, ctx.clock.now())
+        }
+        return out
+    }
 }

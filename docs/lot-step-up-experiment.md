@@ -254,3 +254,30 @@ falls from 2.2 to 1.1 -- at the edge of the brake invariant that one market can 
 brake. Not yet established: whether this is new behaviour at lot 7 or a thin day's renewals
 re-filling. **Count it at day 3, and if it is systematic it is a defect, not a lever** -- stacking
 lots on one strike concentrates exactly the correlated risk `max_open` exists to spread.
+
+## Two of this document's assumptions are now proven, 2026-11-20
+
+Both were load-bearing for the collateral arithmetic above and neither had been
+checked. See CLAUDE.md, "Four corrections, 2026-11-20", for the full working.
+
+- **`max_open` is a TOTAL, not per-side.** `DeepItmRule.select` de-duplicates on
+  `seen.add(c.ticker)` and allocates `maxOpen - openTickers.size` free slots by
+  distinct ticker. So the structural cap is `8 x lot x ~$0.96` exactly as used
+  here: **$38.40 / $53.76 / $76.80** at lots 5 / 7 / 10. Had it counted per side,
+  every figure in this document was out by a factor of two. 158 of 389 settled
+  hours hold exactly 8 positions, so the cap does bind.
+- **One price move decides one side, in 67 of 67 losing hours** — zero had losers
+  on both sides. But the book holds **both** sides in 91% of hours (353 of 389),
+  and of the 158 hours at the `max_open` cap the splits are 4/4, 5/3 and 6/2 —
+  **never 8/0**. So `max_open` caps COLLATERAL at `8 x lot x ~$0.96`, and caps
+  the worst-hour LOSS only at `(largest one-side holding) x ~$0.93`, which is 6
+  markets at most and 5 typically. **The lot-10 worst hour is ~$56, not $76.80**,
+  and the worst hour ever realised is -$18.50. The step-up's ordering is
+  unchanged, because the binding objection was never the worst hour: `$15/$9.60`
+  is 1.6 single strikes, below the floor a brake needs. The risk of the later
+  steps was being overstated.
+- **Sweep frequency, measured against spot rather than guessed from a span:**
+  entry spot to the furthest same-side strike is median **$393**, the realised
+  1-hour move is median $150 (p90 $488), and the adverse move reached the
+  furthest strike in **28 of 389 hours — 1 in 13.9**, not the 1-in-9 previously
+  quoted.
