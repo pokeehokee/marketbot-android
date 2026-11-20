@@ -992,3 +992,35 @@ clusters (19:30Z, ~30 markets; 22:00Z, ~270) inside the 6-hour job limit, and
 uploads gzipped CSV (`--export`) because the runner's database dies with the
 job. A missed day is still unrecoverable; re-run a failed job only while a
 window is open.
+
+### The whole account, from the exchange, 2026-11-20
+
+`research/screen/account_record.py` prints this from `/portfolio/settlements`
+and nothing else. It exists because this repo has now twice reported a book's
+record from a local table and been wrong.
+
+| book | settled | contracts | P&L | per ct | lost ct | implied | ratio | fees |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| BTC deep-ITM ladder | 2,244 | 11,623 | **+$195.24** | +1.68c | 504 | 698.9 | **0.72** | $0.00 |
+| commodity longshot | 57 | 57 | -$0.66 | -1.16c | 6 | 5.3 | **1.12** | $0.00 |
+| weather (retired) | 961 | 4,212 | +$19.88 | +0.47c | 444 | 463.9 | **0.96** | $0.00 |
+| other (legacy) | 9 | 798 | -$22.05 | -2.76c | 798 | 776.7 | 1.03 | $1.05 |
+
+> **The script's first run reported ratios of 0.14, 0.23 and 0.01, and they were
+> a unit error:** it counted losing **markets** against an implied figure summed
+> over **contracts**. At lot 1 the two coincide, which is why the commodity row
+> was right and every other row was flattered by roughly the lot. The ladder's
+> real ratio is **0.72, not 0.14**. Fixed before the script was committed, and
+> the comment in it says so. Any ratio in this file should be checked for which
+> unit is on each side of the division.
+
+The ladder has added ~1,072 contracts since the 2026-11-18 review (+$186.72 on
+10,551 at +1.77c), earning +$8.52 at **+0.79c/contract** — below its +1.68c
+lifetime average, on too few losses to mean anything yet. That is the figure to
+watch through the lot-7 step, since step 1's gate is a per-contract one.
+
+The retired weather book's **0.96** is worth keeping visible: it is the
+adverse-selection number weatherbot measured on fills (a 0.73 population ratio
+arriving as 0.96 once only the lifted quotes count), and it is the reason the
+commodity book's live 1.12 against a 0.26 backtest is being watched rather than
+explained away.

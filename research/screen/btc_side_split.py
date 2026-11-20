@@ -1,8 +1,8 @@
-import sys, re, collections
-sys.path.insert(0,'.')
-import k
-f=k.f
-rows=[r for r in k.page("/portfolio/settlements","settlements",maxp=60) if k.book(r["ticker"])=="btc_ladder"]
+import collections, os, re, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kalshi_auth as k
+f=k.num
+rows=[r for r in k.page("/portfolio/settlements","settlements",max_pages=60) if k.book(r["ticker"])=="btc_ladder"]
 hrs=collections.defaultdict(lambda: collections.Counter())
 ct=collections.defaultdict(lambda: collections.Counter())
 for r in rows:

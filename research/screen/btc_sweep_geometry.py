@@ -1,7 +1,7 @@
-import sys, re, json, time, collections, urllib.request
-sys.path.insert(0,'.')
-import k
-f=k.f
+import collections, json, os, re, sys, time, urllib.request
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kalshi_auth as k
+f=k.num
 
 # --- BTC hourly candles from Coinbase (public), Sep 15 -> Nov 21
 def candles():
@@ -27,7 +27,7 @@ print(f"BTC hourly closes: {len(C)}")
 def strike(t):
     m=re.search(r'-T(\d+(?:\.\d+)?)$',t); return float(m.group(1)) if m else None
 
-rows=[r for r in k.page("/portfolio/settlements","settlements",maxp=60) if k.book(r["ticker"])=="btc_ladder"]
+rows=[r for r in k.page("/portfolio/settlements","settlements",max_pages=60) if k.book(r["ticker"])=="btc_ladder"]
 hrs=collections.defaultdict(list)
 for r in rows:
     n=f(r,"yes_count_fp")+f(r,"no_count_fp")
