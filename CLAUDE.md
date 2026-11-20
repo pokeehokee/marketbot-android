@@ -851,3 +851,109 @@ Snapshots and exports never carry keys.
 
 In this sandbox Maven Central rate-limits, so `~/.gradle/init.d/mirror.gradle` and the `robolectricRepo` property point at
 Google's Maven Central mirror. CI needs neither.
+
+## Four corrections, 2026-11-20 — three to this file's own numbers, one to a control that did not exist
+
+Asked to act on a list of recommendations and to close out the items behind
+them. Everything here is measured from `/portfolio/settlements` (3,271 records)
+or proven from the code; nothing rests on a local table.
+
+### The commodity book's live record, from the exchange
+
+This file carried two disagreeing figures for it (+$0.84 on 51 settled from
+the sync snapshot, -$0.91 on 15 from the raw order journal) and **neither was
+right**. The exchange's own settlements:
+
+| | |
+| --- | --- |
+| settled | **57** (every settlement is live; the exchange settles nothing else) |
+| contracts | 57 — all lot 1, as `defaultLotCap = 1` configures |
+| P&L | **-$0.66**, 51 wins / 6 losses |
+| fees | **$0.00** — 57 of 57 maker fills paid nothing, as the `quadratic` fee type implies |
+| per contract | **-1.16c** |
+| losses vs implied | **6 vs 5.3, ratio 1.12** |
+
+The disagreement is now explained: **the snapshot's "51 settled" is the WIN
+count.** Any figure read off it was a different quantity wearing the same word.
+
+`Expectation(0.0422)` — the contested-subset backtest, +4.22c at ratio 0.26 —
+is **not changed by this**, and it must not be. Six losses is the same
+non-sample this file rejects for the KXLOW six dates, the first Polymarket
+pull and the BTC paper book; the bar is 30 losses and ratio <= 0.90, and at
+~1.5 losses a day that is about two more weeks. What IS now true and was not
+recorded: the live book is running at **1.12, not 0.26**, i.e. slightly worse
+than its own prices rather than four times better. That is the number to watch,
+and it is the one the stage gate will read.
+
+### `max_open` is a total, not per-side — proven, not inferred
+
+The 2026-11-18 lot-step-up arithmetic assumed it. `DeepItmRule.select` settles
+it: candidates are de-duplicated with `seen.add(c.ticker)` ("one side per
+ticker") and the free slots are `maxOpen - openTickers.size`, counting distinct
+TICKERS. So `max_open: 8` is 8 distinct strikes in total, one side each, and
+the structural per-hour cap stands exactly as written — `8 x lot x ~$0.96`, i.e.
+**$38.40 at lot 5, $53.76 at 7, $76.80 at 10**. Had it been per-side every one
+of those numbers was out by 2x, in a risk document. The settlements agree the
+cap binds: **158 of 389 hours hold exactly 8 positions.**
+
+### The one-sided sweep is now 67 for 67 — and a full sweep has never happened
+
+The worst-hour argument rested on a single observed hour. Across every losing
+BTC hour on record: **67 of 67 had all their losers on ONE side of spot. Zero
+mixed.** One price move decides one side, so the hours behave exactly as the
+structural argument says, and that part of the claim is no longer one
+observation.
+
+The claim it does NOT support is the magnitude. The worst hours lose **2 to 4
+of 7-8 positions, never all 8**: realised worst hours are -$18.50, -$17.35,
+-$16.73, with 3, 4 and 4 losers. **$76.80 at lot 10 is a bound, not an
+expectation** — reached only by a move that sweeps the whole one-sided book,
+which has not occurred in 389 hours. Lot 10 still cannot be configured under a
+$15 stop (it is 1.6 single strikes), so the ordering of the step-up is
+unchanged.
+
+### The sweep-distance proxy was wrong, in the unsafe direction
+
+"1 hour in 9" used **half the median strike span ($450)** as a stand-in for how
+far spot must travel to sweep one side, because the real distance was never
+measured. Measured now, from the strikes actually held: the **same-side span is
+median $300, p90 $400, max $1000**, and the losing hours' loser-strike spans run
+$100-$500. The book sits in a narrower window than the proxy assumed, so sweeps
+are **more** reachable than the figure implied, not less. The 1-in-9 number
+should be treated as a floor until recomputed against spot-at-entry rather than
+against a span.
+
+### Two controls that nothing called
+
+`reconcileKalshi` was reachable only from the retired weather strategy, and
+`KillCriteria.staleWrites` was reachable from **nothing at all** — both shipped
+in the 2026-11-19 hardening work whose own documentation says an orphaned
+control is worse than none, because the docs then read as though the ground is
+covered. They are now wired to both live-capable books through
+`LiveGuards.noOtherTrader` and `LiveGuards.balanceWriterFresh`, live mode only,
+and neither can return KILL, so neither can halt a working book. Both are
+INSUFFICIENT when they cannot read — a missing credential or a failed fetch must
+never look like a clean account.
+
+The guard worth naming: `Engine.recordLiveBalances` wraps its fetch in
+`runCatching { }.getOrNull()?.let`, so a venue that stops answering **writes
+nothing and raises nothing**. The notification keeps showing the last balance it
+read and `Narration` computes a 24h change from frozen history, while every
+other control reads the ledger, which a balance outage does not touch. That is
+the 3 AM silent failure, and it now has a check against a 15-minute cadence.
+
+`LiveGuardWiringTest` asserts REACHABILITY, not correctness — the functions were
+already correct, which is exactly why no test caught this. Deleting a call site
+fails three tests with "reconcile guard not reachable".
+
+### The book collector had no host, so nothing was ever recorded
+
+`research/commodity/DEPLOY.md` describes a systemd user service; no such service
+exists and **`commodity_book.db` does not exist anywhere.** The sub-60-minute
+lead curve was "waiting on a week of data" that was never being collected.
+The repo is public, so Actions minutes are free: `.github/workflows/book-collector.yml`
+runs one job from 17:25Z for ~295 cycles, which covers **both** daily close
+clusters (19:30Z, ~30 markets; 22:00Z, ~270) inside the 6-hour job limit, and
+uploads gzipped CSV (`--export`) because the runner's database dies with the
+job. A missed day is still unrecoverable; re-run a failed job only while a
+window is open.

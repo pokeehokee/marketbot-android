@@ -272,3 +272,79 @@ object PnlReconcile {
         return PnlReconciliation(now.toString(), compared, mismatches, missing)
     }
 }
+
+/**
+ * The two guards that read the EXCHANGE and the app's own writers rather than
+ * the ledger alone, adapted to [Check] so a strategy's health panel and the
+ * engine's kill path can reach them.
+ *
+ * Both existed as pure functions before they existed as controls, which is the
+ * failure `docs/hardening.md` is about: `reconcileKalshi` was called only from
+ * the retired weather strategy, and [KillCriteria.staleWrites] was called by
+ * nothing at all. A control nothing invokes is indistinguishable from no
+ * control, and worse, because the docs read as though the ground is covered.
+ *
+ * Verdicts here keep one distinction the callers depend on: **"I could not
+ * check" is INSUFFICIENT, never PASS and never FAIL.** A missing credential or
+ * a failed read must not look like a clean account, and must not halt a book
+ * that is working.
+ */
+object LiveGuards {
+    /** The engine's balance writer, the one whose silence freezes every figure the app shows. */
+    const val BALANCE_WRITER = "balance snapshots"
+
+    /** How often [com.marketbot.core.engine.Engine.recordLiveBalances] is supposed to write. */
+    val BALANCE_CADENCE: Duration = Duration.ofMinutes(15)
+
+    /**
+     * Is the balance writer still writing?
+     *
+     * `recordLiveBalances` wraps its fetch in `runCatching { }.getOrNull()?.let`,
+     * so a venue that stops answering writes NOTHING and raises NOTHING: the
+     * notification keeps showing the last balance it read, and `Narration`
+     * computes a 24h change from frozen history. Nothing else notices, because
+     * every other control reads the ledger, which a balance outage does not touch.
+     */
+    suspend fun balanceWriterFresh(ctx: StrategyContext, venue: Venue, now: Instant): Check {
+        val read = runCatching { ctx.stores.equity.history(venue.name.lowercase(), Mode.LIVE, now.minus(Duration.ofDays(7))) }
+        read.exceptionOrNull()?.let {
+            return Check("Every writer still writing", Check.Verdict.INSUFFICIENT,
+                "the equity store could not be read: ${it.message ?: it.javaClass.simpleName}")
+        }
+        return KillCriteria.staleWrites(
+            newest = mapOf(BALANCE_WRITER to read.getOrNull()?.maxByOrNull { it.at }?.at),
+            expected = mapOf(BALANCE_WRITER to BALANCE_CADENCE),
+            now = now,
+        )
+    }
+
+    /**
+     * Does the exchange hold a resting order or position in this strategy's
+     * markets that the app's ledger does not know?
+     *
+     * That means a second trader on the same account -- the old desktop run, a
+     * restored backup, a second phone -- quoting the same markets. The desktop's
+     * file lock only ever covered one machine. `inScope` is the strategy's own
+     * `ownsMarket`, so one book never reports another book's orders.
+     */
+    suspend fun noOtherTrader(
+        client: KalshiClient,
+        inScope: (String) -> Boolean,
+        liveRows: List<QuoteRow>,
+    ): Check {
+        val name = "No other trader on this account"
+        if (!client.hasCredentials) {
+            return Check(name, Check.Verdict.INSUFFICIENT, "no Kalshi credentials, so the account cannot be read")
+        }
+        val r = reconcileKalshi(
+            client, inScope,
+            knownOrderIds = liveRows.mapNotNull { it.orderId }.toSet(),
+            knownTickers = liveRows.map { it.ticker }.toSet(),
+        )
+        return when {
+            r.error != null -> Check(name, Check.Verdict.INSUFFICIENT, r.message)
+            r.clean -> Check(name, Check.Verdict.PASS, r.message)
+            else -> Check(name, Check.Verdict.FAIL, r.message)
+        }
+    }
+}

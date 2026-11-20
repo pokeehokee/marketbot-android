@@ -246,3 +246,29 @@ matches the exchange. Once, on a calendar.
   this app, and they share a Kalshi account. The separation of series is
   convention. An assertion that a strategy only touches its own series would
   make it structural.
+
+## Resolved 2026-11-20: the two controls this document left orphaned
+
+Section 3 argued that a control orphaned by a refactor is worse than none,
+because the documentation then reads as though the ground is covered. This
+document then shipped exactly that twice over: `reconcileKalshi` reachable only
+from the retired weather strategy, and `KillCriteria.staleWrites` reachable from
+nothing at all.
+
+Both are now wired to the two live-capable books via `LiveGuards.noOtherTrader`
+and `LiveGuards.balanceWriterFresh` (live mode only; neither can return KILL, so
+neither can halt a working book; both INSUFFICIENT rather than PASS when they
+cannot read). `LiveGuardWiringTest` asserts **reachability** — removing a call
+site fails with "reconcile guard not reachable" — because correctness tests
+could not catch this: the functions were already correct.
+
+The per-table staleness section is likewise no longer hypothetical for the one
+writer that matters: `Engine.recordLiveBalances` swallows a failed fetch with
+`runCatching { }.getOrNull()?.let`, writing nothing and raising nothing, so a
+venue going quiet freezes every balance figure in the app in silence. That is
+now checked against its 15-minute cadence.
+
+Still undone from this document: per-table staleness for the ledger and event
+writers (a quiet book is not a fault, so "expected cadence" needs defining per
+writer before a check means anything), and `exchange/user_data_timestamp` as a
+cross-check on the positions read.

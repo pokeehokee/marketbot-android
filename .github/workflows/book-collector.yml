@@ -1,0 +1,68 @@
+name: Commodity order-book collector
+
+# Kalshi serves 1-minute candles but NOT historical order books, so the lead
+# question below 60 minutes ("does quoting closer to close pay more?") can only
+# be answered on books recorded as they happen. research/commodity/DEPLOY.md
+# assumed a machine that stays up; there wasn't one, so nothing was ever
+# recorded. This is that machine.
+#
+# Commodity closes cluster twice a day -- 19:30Z (~30 markets) and 22:00Z (~270)
+# -- and the collector tracks a market only inside 120 minutes of its close. One
+# job starting at 17:25Z therefore covers BOTH clusters in ~4.9 h, inside the
+# 6 h job limit, on a public repo where minutes are free.
+#
+# A missed day cannot be recovered. If a run fails, re-run it only while a
+# window is still open; afterwards the books are gone.
+on:
+  schedule:
+    - cron: "25 17 * * *"
+  workflow_dispatch:
+    inputs:
+      cycles:
+        description: "Cycles to run (60 s each). 295 covers both close clusters."
+        default: "295"
+      interval:
+        description: "Seconds between cycles."
+        default: "60"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Never two collectors on one window: duplicate rows are harmless (the inserts
+  # are idempotent) but duplicate jobs waste the window and confuse the cycle log.
+  group: book-collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # 4.9 h of cycles plus slack for a late cron start; GitHub's own ceiling is 6 h.
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record books through both close clusters
+        run: |
+          python3 research/commodity/book_collector.py \
+            --cycles "${{ github.event.inputs.cycles || '295' }}" \
+            --interval "${{ github.event.inputs.interval || '60' }}"
+
+      # Always export: a run cancelled or timed out mid-window still holds real
+      # books, and the runner's disk is about to be destroyed either way.
+      - name: Export what was recorded
+        if: always()
+        run: |
+          python3 research/commodity/book_collector.py --stats | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 research/commodity/book_collector.py --export exported
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commodity-books-${{ github.run_id }}
+          path: exported/
+          # The measurement needs a week or two; 90 days is plenty and keeps the
+          # repo free of a database that grows ~100 MB a month.
+          retention-days: 90
+          if-no-files-found: error

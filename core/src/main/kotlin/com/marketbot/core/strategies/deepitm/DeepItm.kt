@@ -150,6 +150,8 @@ abstract class DeepItmStrategy(
                 (if (mode == Mode.LIVE) listOf(
                     com.marketbot.core.strategy.KillCriteria.ungradedPositions(rows, ctx.clock.now()),
                     venuePositionCheck(ctx, rows),
+                    com.marketbot.core.strategy.LiveGuards.noOtherTrader(ctx.kalshi, { ownsMarket("kalshi", it) }, rows),
+                    com.marketbot.core.strategy.LiveGuards.balanceWriterFresh(ctx, venue, ctx.clock.now()),
                 ) else emptyList())
         }
 
