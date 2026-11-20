@@ -906,22 +906,57 @@ observation.
 
 The claim it does NOT support is the magnitude. The worst hours lose **2 to 4
 of 7-8 positions, never all 8**: realised worst hours are -$18.50, -$17.35,
--$16.73, with 3, 4 and 4 losers. **$76.80 at lot 10 is a bound, not an
-expectation** — reached only by a move that sweeps the whole one-sided book,
-which has not occurred in 389 hours. Lot 10 still cannot be configured under a
-$15 stop (it is 1.6 single strikes), so the ordering of the step-up is
-unchanged.
+-$16.73, with 3, 4 and 4 losers. The next section says why that is structural
+rather than lucky, and what it does to the worst-hour figures.
 
-### The sweep-distance proxy was wrong, in the unsafe direction
+### The sweep geometry, measured properly — and the book straddles spot
 
 "1 hour in 9" used **half the median strike span ($450)** as a stand-in for how
-far spot must travel to sweep one side, because the real distance was never
-measured. Measured now, from the strikes actually held: the **same-side span is
-median $300, p90 $400, max $1000**, and the losing hours' loser-strike spans run
-$100-$500. The book sits in a narrower window than the proxy assumed, so sweeps
-are **more** reachable than the figure implied, not less. The 1-in-9 number
-should be treated as a floor until recomputed against spot-at-entry rather than
-against a span.
+far spot must travel to sweep one side. My first attempt to fix that measured
+the **span** between held strikes (median $300) and concluded from it that
+sweeps were MORE reachable than stated. That was the same mistake again: the
+span between our strikes is not the distance from spot to the furthest one.
+
+Measured against BTC spot an hour before each close (Coinbase hourly closes,
+389 hours):
+
+| | |
+| --- | --- |
+| entry spot -> furthest same-side strike | **median $393** (p10 $159, p90 $839) |
+| realised 1-hour move | median $150, p90 $488, max $1,379 |
+| hours where the adverse move reached the furthest strike | **28 of 389 = 1 in 13.9** |
+
+So the $450 proxy was approximately right ($393), and **1-in-9 overstated the
+sweep frequency**: the measured rate is 1 in 13.9. Both of this file's
+geometry guesses erred toward MORE risk than exists, not less.
+
+**And a full 8-strike sweep is structurally impossible as the book is built.**
+91% of hours (353 of 389) hold **both** sides at once — a YES strike below spot
+and a NO strike above spot are both deep in the money — and of the 158 hours
+that reach the `max_open` cap, the splits are 4/4 (67), 5/3 (82) and 6/2 (9).
+**Never 8/0, in 389 hours.** One price move therefore takes one side while the
+other side wins, which is exactly the observed pattern of losing 2-4 positions
+of 7-8 and why the worst realised hours are only -$18.50, -$17.35 and -$16.73.
+
+The consequence for the step-up arithmetic: `max_open` caps **collateral** at
+`8 x lot x ~$0.96` as written, but it does **not** cap the worst-hour **loss**
+there. The loss ceiling is `(largest one-side holding) x ~$0.93`, and the
+largest one-side holding ever observed is 6 markets:
+
+| lot | collateral cap (8 strikes) | worst-hour loss, 6 of 8 on one side | typical, 5 of 8 |
+| --- | --- | --- | --- |
+| 5 | $38.40 | ~$23 (observed max one side: 25 ct, $23.25) | ~$19 |
+| 7 | $53.76 | ~$33 | ~$27 |
+| 10 | $76.80 | **~$56** | ~$47 |
+
+The **$76.80 worst-hour figure previously used for lot 10 cannot occur**; the
+real exposure is about $56. This does not change the step-up's ordering, because
+the binding objection to lot 10 was never the worst hour: `$15 / $9.60` is 1.6
+single strikes, below the two-to-three-typical-losses floor a brake needs, so
+lot 10 still cannot be configured until lot 7 has earned a stop raise on
+observed benefit. It does mean the risk of the later steps was being
+**overstated**, and anyone reading the old table was reading a case the book
+cannot reach.
 
 ### Two controls that nothing called
 

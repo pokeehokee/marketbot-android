@@ -267,8 +267,17 @@ checked. See CLAUDE.md, "Four corrections, 2026-11-20", for the full working.
   every figure in this document was out by a factor of two. 158 of 389 settled
   hours hold exactly 8 positions, so the cap does bind.
 - **One price move decides one side, in 67 of 67 losing hours** — zero had losers
-  on both sides. But **no hour has ever lost all 8**: the worst realised are
-  -$18.50, -$17.35 and -$16.73 on 3, 4 and 4 losers out of 7-8. The lot-10
-  worst-hour figure is therefore a **bound that has not been approached**, and
-  the step-up's ordering (lot 7 earns the stop raise, or lot 10 never happens)
-  is unchanged — `$15 / $9.60` is still 1.6 single strikes.
+  on both sides. But the book holds **both** sides in 91% of hours (353 of 389),
+  and of the 158 hours at the `max_open` cap the splits are 4/4, 5/3 and 6/2 —
+  **never 8/0**. So `max_open` caps COLLATERAL at `8 x lot x ~$0.96`, and caps
+  the worst-hour LOSS only at `(largest one-side holding) x ~$0.93`, which is 6
+  markets at most and 5 typically. **The lot-10 worst hour is ~$56, not $76.80**,
+  and the worst hour ever realised is -$18.50. The step-up's ordering is
+  unchanged, because the binding objection was never the worst hour: `$15/$9.60`
+  is 1.6 single strikes, below the floor a brake needs. The risk of the later
+  steps was being overstated.
+- **Sweep frequency, measured against spot rather than guessed from a span:**
+  entry spot to the furthest same-side strike is median **$393**, the realised
+  1-hour move is median $150 (p90 $488), and the adverse move reached the
+  furthest strike in **28 of 389 hours — 1 in 13.9**, not the 1-in-9 previously
+  quoted.
