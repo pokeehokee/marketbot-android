@@ -1035,10 +1035,16 @@ record from a local table and been wrong.
 
 | book | settled | contracts | P&L | per ct | lost ct | implied | ratio | fees |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| BTC deep-ITM ladder | 2,244 | 11,623 | **+$195.24** | +1.68c | 504 | 698.9 | **0.72** | $0.00 |
+| BTC deep-ITM ladder | 2,282 | 11,903 | **+$193.21** | +1.62c | 518 | 710.8 | **0.73** | $0.00 |
 | commodity longshot | 57 | 57 | -$0.66 | -1.16c | 6 | 5.3 | **1.12** | $0.00 |
 | weather (retired) | 961 | 4,212 | +$19.88 | +0.47c | 444 | 463.9 | **0.96** | $0.00 |
-| other (legacy) | 9 | 798 | -$22.05 | -2.76c | 798 | 776.7 | 1.03 | $1.05 |
+| manual 15-minute crypto | 10 | 811 | **+$0.26** | +0.03c | 763 | 756.2 | 1.01 | $1.11 |
+| **total** | **3,310** | **16,983** | **+$212.69** | | | | | |
+
+> **The "other (legacy)" row this replaces read -$22.05 and was wrong**, as was
+> everything derived from it. It is not legacy and not a bot: it is the
+> operator's own manual 15-minute crypto trades, and it is roughly break-even.
+> See the 2026-11-20 evening correction below.
 
 > **The script's first run reported ratios of 0.14, 0.23 and 0.01, and they were
 > a unit error:** it counted losing **markets** against an implied figure summed
@@ -1058,3 +1064,132 @@ adverse-selection number weatherbot measured on fills (a 0.73 population ratio
 arriving as 0.96 once only the lifted quotes count), and it is the reason the
 commodity book's live 1.12 against a 0.26 backtest is being watched rather than
 explained away.
+
+
+## Two hosts that were not hosts, 2026-11-20 evening
+
+Both of the day's long-running jobs were put somewhere that cannot keep them,
+and both failures are the lesson this file already carried for weatherbot's pm2
+daemon -- re-learned twice in one day.
+
+**A Claude session's container is not a host.** The skipped-hours sampler
+(`research/crypto/skipped_hours.py`, ~90 minutes for 320 event-hours) was
+launched detached with `nohup` on the assumption it would outlive the turn. It
+died at **17 of 320 event-hours**: `nohup` survives a parent shell, not the
+container being reclaimed. Nothing in a session container should be relied on
+past the turn that starts it.
+
+**And GitHub's `schedule` is not a host for a job that cannot miss a day.** The
+book collector was given one daily fire at 17:25Z, and on its first day it
+**never ran -- zero runs**, while a manual `workflow_dispatch` of the identical
+file worked immediately. The workflow was registered and `active`; the schedule
+simply did not fire. GitHub documents `schedule` as best-effort ("can be delayed
+during periods of high load"), so a design that spends its whole day on one fire
+loses the whole day when that fire is dropped -- for a collector whose own
+documentation says **a missed day cannot be recovered.**
+
+Fixed by changing the shape rather than the file:
+
+| | was | is |
+| --- | --- | --- |
+| book collector | one fire, 17:25Z, ~295 cycles, 330-min timeout | `*/15 17-22 * * *`, ~14 cycles a run, 25-min timeout |
+| cost of a dropped fire | **the whole day** | 15 minutes |
+
+Twenty-four short runs tile 17:00-22:59Z, which spans both close clusters
+(19:30Z and 22:00Z) with the 120-minute tracking window ahead of each. The
+`concurrency` group still prevents two collectors on one window.
+
+The samplers now run on `.github/workflows/research-sample.yml`, dispatch-only,
+with the sampler's database cached between runs so a re-dispatch RESUMES (the
+sampler skips any event-hour already in `hour_done`) and the scoring can be
+redone without re-fetching. 2026-11-20 data is lost either way: the collector
+recorded nothing that day, and the first real coverage starts whenever the new
+schedule fires.
+
+> **The sampler's own result is still not in.** 17 of 320 hours is nothing, and
+> on the 6-hour smoke test the control read 2.80 against the account's 0.72 and
+> **withheld the verdict**, which is the control working. Nothing about
+> `skip_hours_et` is established, and nothing about it changes.
+
+
+## The P&L derivation was wrong twice in one day, 2026-11-20 evening
+
+The operator asked a plain question -- "I've lost money the last two days, is it
+something we changed?" -- and the first two answers were both wrong, in opposite
+directions, from the same documented trap: **`side` is the outcome ACQUIRED, not
+the trade direction.** This file quotes that rule. It did not stop either error.
+
+### 1. The settlement row double-counts a position closed before expiry
+
+`revenue - cost - fee` is correct only while the position is still on at expiry.
+A round trip books the EXIT as a second purchase:
+
+```
+KXBTC15M-26NOV190930-30
+  yes_count_fp 16.39   yes_total_cost_dollars 2.798860   <- the buys
+  no_count_fp  16.39   no_total_cost_dollars  8.686600   <- the SELLS
+  revenue 0                                              <- nothing held at expiry
+```
+
+Read that way: **-$11.90**. From the fills -- bought $2.80, sold $8.69, fees
+$0.42 -- it is **+$5.47**. An error of **$17.37 on one market**, landing on a day
+the operator was asking about, and it turned a winning scalp into the single
+worst line of the week.
+
+### 2. Grading everything from fills is far worse
+
+The obvious repair printed **+$11,027.80 on the BTC ladder at +179c per
+contract** -- on an account holding about $100, against a theoretical maximum of
+100c. It read `action: "sell"` as closing a position. The ladder's fills:
+
+| action, outcome_side, book_side | n |
+| --- | --- |
+| `('buy', 'yes', 'bid')` | 1,281 |
+| **`('sell', 'no', 'ask')`** | **1,207 -- also position-OPENING** |
+
+Buying NO at 0.04 and selling YES at 0.96 are the same primitive, and the
+exchange records the NO purchase as a SELL. So 1,207 openings were read as
+disposals. **No code may infer "closed" from `action`.**
+
+### What it does now, and the two checks that were missing
+
+The exchange's settlement arithmetic stands -- it is the exchange's accounting
+rather than a reconstruction, which is what "never grade P&L from local size and
+price" always meant. Fills are used for exactly one thing: the markets that were
+genuinely flat at expiry, detected as `yes_count_fp > 0 AND no_count_fp > 0`,
+which is **2 of 3,310** settlements, both manual. Fees are counted once --
+settlement `fee_cost` and the sum of fill fees agree on **3,248 of 3,248**
+markets that have both.
+
+- **A sanity check that refuses to print.** Any total beyond $2,000, or any book
+  outside +/-100c per contract, fails the run. Its absence is the only reason
+  +$11,027 was ever shown to anyone.
+- **The old control was vacuous.** It compared the new derivation against the old
+  one only on markets where the two are identical by construction, so it passed
+  1,262 of 1,262 while the live path was out by five orders of magnitude. A
+  control that cannot fail is not a control -- the same shape as the inner
+  clipping guard dropped from `skipped_hours.py` earlier the same day.
+
+### The answer to the question that prompted it
+
+| | 11-19 | 11-20 | two days |
+| --- | --- | --- | --- |
+| BTC ladder | -$5.51 | +$1.82 | **-$3.69** |
+| commodity | -$0.31 | -$1.53 | -$1.84 |
+| manual 15-minute crypto | +$2.83 | -$2.87 | -$0.04 |
+| **total** | **-$2.99** | **-$2.58** | **-$5.57** |
+
+About **$5.57 over two days, not the $23 first reported**: a mildly bad stretch
+on the bots, with the manual trades a wash. Nothing to do with the lot-7 step,
+which is +$8.18 over 1,392 contracts at ratio 0.87.
+
+The manual 15-minute crypto book is **+$0.26 lifetime over 10 markets, 8 of them
+losing** -- eight ~$1 longshot losses paid for by two scalps closed before
+expiry. The "10 of 10 losses" reported earlier was false. The cheap-tail finding
+(-0.83c/contract as a taker) still rests on its own 3,571-quote sample, but the
+live record was cited as corroboration and does not provide it.
+
+Tests: `research/screen/test_account_record.py` (27) freezes the real trade's
+figures, that a round trip counts its contracts once and implies no loss, that a
+NO fill is priced off the NO side, cash direction, fees once, and that the sanity
+ceiling would have caught the +$11,027.

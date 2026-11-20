@@ -1,0 +1,81 @@
+name: Research sampler (on demand)
+
+# A long read-only measurement needs a machine that stays up, and a Claude
+# session's container is not one: the skipped-hours sampler was launched detached
+# with nohup and died at 17 of 320 event-hours when the container was reclaimed.
+# That is the same lesson this repo already recorded for weatherbot's pm2 daemon
+# and for the book collector, re-learned the hard way.
+#
+# So the samplers run here. Dispatch only -- these are one-off measurements, not
+# a feed -- and each run uploads its database so a later run can resume from it
+# and the scoring can be redone without re-fetching.
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Which sampler to run"
+        type: choice
+        options:
+          - research/crypto/skipped_hours.py
+        default: research/crypto/skipped_hours.py
+      days:
+        description: "How many days back to sample"
+        default: "30"
+      max_hours:
+        description: "Event-hour budget (the run stops here)"
+        default: "320"
+
+permissions:
+  contents: read
+
+concurrency:
+  # Two samplers on one database would interleave their writes. The inserts are
+  # idempotent, so this is about wasting the budget, not corruption.
+  group: research-sample
+  cancel-in-progress: false
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    # GitHub's own ceiling is 6 h; the sampler stops itself at --max-hours.
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+
+      # Resume rather than start over: the sampler skips any event-hour already
+      # in hour_done, so a previous run's database turns a re-dispatch into a
+      # continuation. Absent (the first run), it starts empty.
+      - name: Restore the sampler's database if a previous run left one
+        uses: actions/cache/restore@v4
+        with:
+          path: research/crypto/skipped_hours.db
+          key: research-sample-${{ github.run_id }}
+          restore-keys: research-sample-
+
+      - name: Sample
+        run: python3 -I "${{ github.event.inputs.script }}" --days "${{ github.event.inputs.days }}" --max-hours "${{ github.event.inputs.max_hours }}"
+
+      # Always: a run that times out mid-sample still holds real priced hours,
+      # and the runner's disk is about to be destroyed either way.
+      - name: Score, into the run summary
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python3 -I "${{ github.event.inputs.script }}" --score | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save the database for the next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: research/crypto/skipped_hours.db
+          key: research-sample-${{ github.run_id }}
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-sample-${{ github.run_id }}
+          path: research/crypto/skipped_hours.db
+          retention-days: 30
+          if-no-files-found: error
