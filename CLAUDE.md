@@ -1289,3 +1289,59 @@ only outside, never KILLs, carries the "not a prediction" wording, and converts
 `BtcIndex.sigma()` (per sqrt-second) to hourly by sqrt(3600).
 `LiveGuardWiringTest` asserts REACHABILITY -- removing the call site fails with
 "regime flag not reachable", verified before committing.
+
+
+## `skip_hours_et`: measured 2026-11-21, and it is a NO FINDING
+
+The 2026-11-18 review called unskipping hours 03 and 10 ET "a measurement to
+run, not a change to make", worth about 8% of throughput, on a setting whose own
+description ("session opens, where losses ran 3-7x higher") this file says is
+supported by nothing. The measurement ran on CI: 320 event-hours over 30 days,
+944 picks, the ladder's own selector replayed from public candles at a 1800s
+lead with zero lookahead (`research/crypto/skipped_hours.py`).
+
+**The control passed** -- the traded hours reproduce 0.85 against the account's
+realised 0.72, so the method does reach the hours the ladder really trades --
+and then the result refuses to say anything:
+
+| | picks | hours | losses | implied | ratio | 95% CI |
+| --- | --- | --- | --- | --- | --- | --- |
+| traded (control) | 757 | 266 | 40 | 46.9 | 0.85 | [0.56, 1.18] |
+| skipped (all four) | 187 | 54 | **5** | 11.6 | 0.43 | **[0.00, 1.08]** |
+| 03 ET | 29 | 12 | 1 | 1.8 | 0.55 | [0.00, 1.67] |
+| 10 ET | 61 | 14 | 3 | 4.0 | 0.76 | [0.00, 2.47] |
+| 21 ET | 46 | 14 | **0** | 2.8 | 0.00 | **[0.00, 0.00]** |
+| 23 ET | 51 | 14 | 1 | 3.1 | 0.33 | [0.00, 1.20] |
+
+**The skipped hours' interval contains both fair pricing (1.0) AND the traded
+hours' 0.85.** Five losses across four hours decides nothing against a 30-loss
+bar. The aggregate 0.43 is also pulled down by hour 21's **zero-loss cell with
+an interval of [0.00, 0.00]** -- the fake tightness this file records for the
+KXLOW six dates, the first Polymarket pull, the BTC paper book and the
+unquoted commodity markets. A bootstrap cannot resample a loss that is absent.
+
+And the per-hour field is a noise field, which is the deeper point: **24 cells
+carrying 45 losses between them, 1.9 per cell.** Five hours show zero losses and
+read [0.00, 0.00]; hour 13 ET reads 2.34 [0.44, 4.79] and hours 00, 08 and 20
+all exceed 1.5. Picking winners out of that is the 04-05 ET mistake with more
+decimal places.
+
+**So: nothing changes.** `skip_hours_et` stays as it is -- not because the skip
+is justified (it still is not), but because unskipping is not justified either,
+and the repo's rule is that a parameter moves on a measurement rather than on
+the absence of one. One thing the run does establish, weakly: hours 03 and 10
+carry 29 and 61 in-band picks over 12 and 14 hours, so the pool is real and the
+~8% throughput claim is not imaginary. The edge in those hours is simply
+unmeasured.
+
+What it would take to answer: roughly six times the data, i.e. a year of
+settled hours rather than a month, or pooling the four skipped hours against
+the whole traded set and accepting that as the only question with enough losses
+to decide -- which is the 0.43 [0.00, 1.08] row, and it already declines to
+answer. **This question should be treated as closed by underpowering, not
+re-asked each time someone notices 8% of throughput sitting idle.**
+
+Run: `.github/workflows/research-sample.yml`, dispatch-only, 58 minutes; the
+database is cached so a re-dispatch resumes and extends the sample rather than
+starting over. `window OK: the furthest in-band strike sits $1410 from spot,
+inside $2000` -- the fetch window did not clip the band.

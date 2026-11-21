@@ -127,3 +127,31 @@ difference between this repo's two live books and everything it has closed.
 So the measurable end is the short end, which is what `crypto_tail_sample.py`
 covers. Anyone extending this should NOT try to validate a long-horizon tail
 from settled history: there is no history to validate it with.
+
+
+## skipped_hours.py — the result, 2026-11-21: NO FINDING
+
+320 event-hours over 30 days, 944 picks, run on CI in 58 minutes.
+
+The control passed (traded hours 0.85 against the account's realised 0.72), so
+the method reaches the hours the ladder really trades. Then it declines to say
+anything: the four skipped hours read **ratio 0.43 with a 95% CI of
+[0.00, 1.08]**, which contains fair pricing AND the traded hours' 0.85, on
+**five losses**. Hours 03 and 10 — the two actually in question — read 0.55
+[0.00, 1.67] and 0.76 [0.00, 2.47].
+
+Two reasons to distrust the 0.43 beyond its interval:
+
+- **Hour 21 contributes a zero-loss cell with a CI of [0.00, 0.00]** and pulls
+  the aggregate down. A bootstrap cannot resample a loss that is not in the
+  sample; this repo records the same fake tightness for the KXLOW six dates,
+  the first Polymarket pull and the BTC paper book.
+- **24 hour-cells carry 45 losses between them, 1.9 per cell.** Five cells show
+  zero losses; hour 13 reads 2.34 [0.44, 4.79]. Selecting out of that field is
+  the 04–05 ET overfit with more decimal places.
+
+`skip_hours_et` is unchanged. The skip is still unjustified and unskipping is
+now also unjustified — treat the question as closed by underpowering rather
+than re-asked whenever someone notices 8% of throughput idle. Answering it
+needs roughly six times the data; a re-dispatch resumes from the cached
+database and extends the sample.
