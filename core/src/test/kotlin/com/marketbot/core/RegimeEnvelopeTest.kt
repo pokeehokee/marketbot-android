@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  * Volatility was measured against the ladder's 398 settled event-hours and does
  * NOT predict the edge: quartiles read +0.79c / +3.24c / +0.91c / +1.34c, which
  * is non-monotonic with the wildest quartile beating the calmest. The reason is
- * that premium per contract FALLS as vol rises (6.48c -> 5.23c) because the book
+ * that premium per contract FALLS as vol rises (6.59c -> 5.22c) because the book
  * selects on price, so the band is already a vol classifier. Anything that reads
  * this flag as "trade less when wild" is acting on a table that does not say so.
  */

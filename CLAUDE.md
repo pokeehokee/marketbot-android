@@ -1345,3 +1345,97 @@ Run: `.github/workflows/research-sample.yml`, dispatch-only, 58 minutes; the
 database is cached so a re-dispatch resumes and extends the sample rather than
 starting over. `window OK: the furthest in-band strike sits $1410 from spot,
 inside $2000` -- the fetch window did not clip the band.
+
+
+## Factor analysis of the whole deep-ITM timeline, 2026-11-21 — and a lookahead of my own
+
+Operator asked to examine every known factor against the trade timeline, find
+patterns, and set the parameters to the most profitable. **The method is the
+answer: every factor is reported for the full history AND for each half, and a
+factor whose best cell changes between halves is noise.** Picking the best cell
+from a full-sample table is how this file already records buying noise twice
+(04-05 ET: -2.27c in-sample, +5.28c out; Q2 volatility, one of four cells).
+
+2,282 settled positions, 11,903 contracts, 2026-09-21 to 11-20, split at 11-07.
+
+| factor | verdict |
+| --- | --- |
+| entry price band | **FLIPS** (H1 best 0.90-0.92, H2 best 0.92-0.94) |
+| strikes held that hour | **FLIPS** |
+| seconds to close at fill | **FLIPS** |
+| volatility quartile | **FLIPS** |
+| distance from spot | looked huge; **it was my own lookahead** |
+| side (no > yes) | holds, but +1.77c vs +1.48c and yes falls to +0.91c in H2 |
+| **stacked vs single** | **HOLDS: +1.79c r0.70 against -0.67c r1.12, both halves** |
+| day of week | Sunday **-0.05c r1.01 in both halves** (1 of 7 cells) |
+
+**No parameter changed.** Nothing here selects.
+
+### The lookahead, which nearly shipped as the first real finding in weeks
+
+Distance-from-spot first read **-4.20c at ratio 1.63**, with **87 of 98 losses**
+in the sub-0.3% bucket, negative in both halves and worsening in the second. It
+survived the split-half test. It was wrong.
+
+**Coinbase candle keys are the bucket START; the close is at `key + granularity`.**
+So `H[floor(entry/3600)]` is a price up to 3,600 s AFTER the position opened --
+**a median of 1,085 s after**, measured. A position that went on to lose had
+price already drifting toward its strike, so its post-entry spot sits closer to
+the strike and lands in the "near" bucket. **The leak WAS the signal.**
+
+| distance | leaked | corrected |
+| --- | --- | --- |
+| <0.3% | **-4.20c, r1.63, 87 losses** | **+1.56c, r0.78, 44 losses** |
+| 0.3-0.5% | +5.34c, r0.10 | +2.31c, r0.62 |
+| 0.5-0.8% | +4.78c, r0.13 | +1.35c, r0.74 |
+| 0.8%+ | +3.94c, r0.22 | +1.17c, r0.75 |
+
+Flat. And `z = ln(spot/strike)/(sigma*sqrt(ttc))` is non-monotonic with its top
+two buckets flipping sign across halves. This is the **fourth** lookahead
+recorded across these repos, and every one was caught by a person reading a
+timestamp rather than by a test -- so `research/screen/test_deep_itm_factors.py`
+now freezes the bucket-key convention, and `main()` refuses to print factors at
+all if any spot lag is negative.
+
+### Which means the 2026-11-21 volatility table was wrong too
+
+Same estimator, same bug: its newest hourly return ended AT the settling hour.
+
+| | Q1 | Q2 | Q3 | Q4 |
+| --- | --- | --- | --- | --- |
+| as published | +0.79c r0.88 | +3.24c r0.48 | +0.91c r0.84 | **-0.16c r1.03** |
+| corrected | +1.08c r0.84 | +2.95c r0.52 | +1.09c r0.82 | **+1.22c r0.77** |
+
+The published Q4 would have read as "wild hours lose". They do not. **The
+conclusion is unchanged** -- still non-monotonic, still no selector, and the
+contamination pushed against the finding rather than toward it -- but the
+numbers were wrong and `RegimeEnvelope` carried them. Constants corrected:
+min 0.000582, p05 0.001181, median 0.003831, p95 0.007442, max 0.014650. The
+max moving UP makes the flag slightly less trigger-happy, which is the right
+direction for a guard meant to fire rarely.
+
+### The one actionable result is a defect, not an edge
+
+Stacked positions -- more than one lot on a single strike, because `max_open`
+counts strikes and a filled strike gets re-quoted:
+
+| | contracts | per ct | ratio | losses |
+| --- | --- | --- | --- | --- |
+| single | 11,117 | **+1.79c** | 0.70 | 93 |
+| stacked | 785 | **-0.67c** | 1.12 | 5 |
+
+Consistent across halves (-0.94c then -0.52c). A per-strike contract cap would
+have removed **392 contracts (3.3% of throughput)** carrying **-$2.63**, so it
+ADDS about **$0.10/day** -- but that rests on 5 losses and is not the reason.
+The reason is risk: the worst uncapped strike was **15 ct = $14.40 against the
+$15 daily stop (1.0x)**, and at lot 7 **14 ct = $13.44 (1.1x)**. A single strike
+can erase the whole day's stop before the brake sees anything, and peak
+collateral $59.43 already exceeds the `8 x 7 x $0.96 = $53.76` ceiling the
+step-up arithmetic assumes. At lot 10 a stacked strike would be ~$19 against a
+$15 stop.
+
+**Deliberately NOT shipped yet.** Step 1 began 11-18 and its verdict is due
+11-28; changing contract sizing now would measure lot 7 and a cap together and
+forfeit three of the eight days already earned. Stacking has been live for 26
+days without firing. **The cap goes in at the 11-28 verdict**, and it is
+mandatory before lot 10 is considered.

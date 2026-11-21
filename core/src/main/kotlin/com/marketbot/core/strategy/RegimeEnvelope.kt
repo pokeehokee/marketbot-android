@@ -16,10 +16,17 @@ import kotlin.math.sqrt
  *
  * | vol quartile | hours | per contract | loss ratio | premium/ct |
  * | --- | --- | --- | --- | --- |
- * | Q1 calm | 99 | +0.79c | 0.88 | 6.48c |
- * | Q2      | 100 | **+3.24c** | 0.48 | 6.27c |
- * | Q3      | 99 | +0.91c | 0.84 | 5.87c |
- * | Q4 wild | 100 | +1.34c | 0.74 | 5.23c |
+ * | Q1 calm | 99 | +1.08c | 0.84 | 6.59c |
+ * | Q2      | 100 | **+2.95c** | 0.52 | 6.12c |
+ * | Q3      | 99 | +1.09c | 0.82 | 5.94c |
+ * | Q4 wild | 100 | +1.22c | 0.77 | 5.22c |
+ *
+ * CORRECTED 2026-11-21. The first version of this table used an estimator whose
+ * newest hourly return ended AT the settling hour -- Coinbase candle keys are
+ * the bucket START, so `H[hour]` closes 3,600s LATER. It read Q4 at -0.16c with
+ * a ratio of 1.03, which would have looked like "wild hours lose". They do not:
+ * strictly-prior returns put Q4 at +1.22c, ratio 0.77. The conclusion is
+ * unchanged and was conservative either way, but the numbers were wrong.
  *
  * **Non-monotonic, and the wildest quartile beats the calmest.** Q2 is one cell
  * of four and has the shape this repo rejects as overfitting -- the 04-05 ET
@@ -39,12 +46,22 @@ import kotlin.math.sqrt
  * range the flag stays quiet and makes no claim.
  */
 object RegimeEnvelope {
-    /** Trailing 12-hour realised volatility of hourly BTC log returns, as a fraction. */
-    const val MEASURED_MIN = 0.000568
-    const val MEASURED_P05 = 0.001173
-    const val MEASURED_MEDIAN = 0.003813
-    const val MEASURED_P95 = 0.007664
-    const val MEASURED_MAX = 0.014638
+    /**
+     * Trailing 12-hour realised volatility of hourly BTC log returns, as a fraction.
+     *
+     * Every return used closes STRICTLY BEFORE the hour being judged. Coinbase
+     * candle keys are the bucket START and the close is at `key + granularity`,
+     * so the newest usable bucket starts at `floor(t/3600) - 3600`. Taking
+     * `H[floor(t/3600)]` instead reads a price up to an hour into the future --
+     * which is how the first cut of this table got Q4 wrong, and how a separate
+     * factor study the same day produced a spurious -4.20c "finding" that
+     * vanished once the spot was moved before the entry.
+     */
+    const val MEASURED_MIN = 0.000582
+    const val MEASURED_P05 = 0.001181
+    const val MEASURED_MEDIAN = 0.003831
+    const val MEASURED_P95 = 0.007442
+    const val MEASURED_MAX = 0.014650
 
     /** Event-hours behind the envelope, 2026-09-13 to 2026-11-20. */
     const val MEASURED_HOURS = 398
@@ -90,7 +107,7 @@ object RegimeEnvelope {
             hourlyVol > MEASURED_MAX -> Check(NAME, Check.Verdict.FAIL,
                 "MORE volatile than anything the edge was measured in -- $where. " +
                     "This is not a prediction that the edge is gone: inside the measured range volatility does not " +
-                    "predict it at all (quartiles +0.79c / +3.24c / +0.91c / +1.34c, non-monotonic). It says the " +
+                    "predict it at all (quartiles +1.08c / +2.95c / +1.09c / +1.22c, non-monotonic). It says the " +
                     "evidence does not reach here, and the worst hours are one-sided sweeps, which need a large move.")
             hourlyVol < MEASURED_MIN -> Check(NAME, Check.Verdict.FAIL,
                 "CALMER than anything the edge was measured in -- $where. Thin conditions can mean the deep-ITM " +
