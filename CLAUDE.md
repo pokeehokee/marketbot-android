@@ -1193,3 +1193,249 @@ Tests: `research/screen/test_account_record.py` (27) freezes the real trade's
 figures, that a round trip counts its contracts once and implies no loss, that a
 NO fill is priced off the NO side, cash direction, fees once, and that the sanity
 ceiling would have caught the +$11,027.
+
+
+## Market regime, 2026-11-21 — measured, and it is not a selector
+
+Operator question: would identifying the market's state let the parameters be
+tuned per state for more profit? **No as a selector, measured. Yes as a narrow
+safety flag, which is what shipped.**
+
+### Volatility does not predict the ladder's edge
+
+The ladder's 398 settled event-hours, bucketed by trailing 12-hour realised
+volatility of hourly BTC log returns at entry, zero lookahead (Coinbase hourly
+closes):
+
+| vol quartile | hours | contracts | per contract | loss ratio | premium/ct |
+| --- | --- | --- | --- | --- | --- |
+| Q1 calm | 99 | 2,794 | +0.79c | 0.88 | 6.48c |
+| Q2 | 100 | 3,256 | **+3.24c** | 0.48 | 6.27c |
+| Q3 | 99 | 3,000 | +0.91c | 0.84 | 5.87c |
+| Q4 wild | 100 | 2,853 | +1.34c | 0.74 | 5.23c |
+
+**Non-monotonic, and the wildest quartile beats the calmest.** Q2 is one cell of
+four and has exactly the shape this file already rejects: 04-05 ET read -2.27c
+in-sample and +5.28c out, out of 18 cells examined.
+
+**The last column is the finding.** Premium per contract FALLS as volatility
+rises, 6.48c to 5.23c, because the book selects on PRICE and a 0.94 bid sits
+further from spot when vol is higher. **The price band is already a volatility
+classifier**, repriced continuously by the market -- a better one than anything
+fitted here. Same mechanism the cheap-tail study found: "the market already
+widens the ask on volatile days by about the right amount."
+
+Two structural reasons this was never going to work, beyond the table:
+
+- **There is one regime in the sample.** BTC fell from ~$72.8k to ~$63.2k across
+  the entire window. Per-regime parameters cannot be fitted on data holding one
+  regime; it would be fitting the calendar.
+- **Multiple comparisons against 518 losses.** A classifier multiplies the
+  search space against the thinnest sample in the account.
+
+The base rate for this idea here is now **0 for 9**: hour-of-day, vol quartiles
+on the tail, the loss classifier (AUC 0.709 against price alone at 0.747), the
+post-fill path model (0.898 against the current ask's 0.909), Kronos, the
+weather ensemble, queue depth, forecast distance, and this. Every one failed the
+same way -- **the price already contains the state.**
+
+### Lot 7's softness is the conditions, not the lot
+
+Worth knowing before the 2026-11-28 verdict. The lot-7 window reads +0.59c at
+ratio 0.87 against a +1.62c lifetime average, which looked like degradation:
+
+| | hours | contracts | per ct | ratio | median vol |
+| --- | --- | --- | --- | --- | --- |
+| lot 7 (11-18 ->) | 44 | 1,392 | +0.59c | **0.87** | 0.451% |
+| lot 5 (11-08..17) | 133 | 2,885 | +1.43c | 0.71 | 0.538% |
+| lot 5 (all, to 11-17) | 354 | 10,510 | +1.76c | 0.71 | 0.363% |
+
+**0.87 is unremarkable against a per-quartile spread of 0.48 to 0.88.** The
+lot-7 window simply holds almost no Q1 hours (quartile counts 1 / 12 / 13 / 18).
+No claim that lot 7 is fine -- 44 hours decides nothing, and the gate is still
+8 days and >= 30 losses -- but the softness is not evidence against the lot.
+Stated narrowly on purpose: a tighter comparison needed a vol-bucket cut chosen
+after seeing lot 7's distribution, which is a degree of freedom, so the
+defensible claim is only that 0.87 sits inside the measured range.
+
+### What shipped: a bounds check on the evidence
+
+`core/strategy/RegimeEnvelope.kt`, live mode only on the ladder, reachable
+through `healthChecks` and rendered by `HealthSection`.
+
+| | hourly realised vol |
+| --- | --- |
+| measured min | 0.057% |
+| p05 | 0.117% |
+| median | 0.381% |
+| p95 | 0.766% |
+| measured max | 1.464% |
+
+It FAILS only **outside** that range -- rare by construction, and deliberately
+so. Flagging the middle 90% would fire one hour in ten for no new information,
+which is the always-firing-guard mistake made and corrected the previous day in
+`skipped_hours.py`. It cannot return KILL: nothing here is strong enough to halt
+a working book. Unreadable volatility is INSUFFICIENT, never PASS.
+
+What it says when it fires is deliberately not a forecast: "the evidence does
+not reach here", with the non-monotonic quartile table carried in the detail so
+nobody reads it as "trade less when wild". The two directions differ in
+meaning -- above the range the concern is an unprecedented one-sided sweep;
+below it, that the deep-ITM strikes carry no flow to fill against, which is a
+fill problem rather than an edge problem.
+
+Tests: `RegimeEnvelopeTest` (9) freezes that it passes across the middle, fails
+only outside, never KILLs, carries the "not a prediction" wording, and converts
+`BtcIndex.sigma()` (per sqrt-second) to hourly by sqrt(3600).
+`LiveGuardWiringTest` asserts REACHABILITY -- removing the call site fails with
+"regime flag not reachable", verified before committing.
+
+
+## `skip_hours_et`: measured 2026-11-21, and it is a NO FINDING
+
+The 2026-11-18 review called unskipping hours 03 and 10 ET "a measurement to
+run, not a change to make", worth about 8% of throughput, on a setting whose own
+description ("session opens, where losses ran 3-7x higher") this file says is
+supported by nothing. The measurement ran on CI: 320 event-hours over 30 days,
+944 picks, the ladder's own selector replayed from public candles at a 1800s
+lead with zero lookahead (`research/crypto/skipped_hours.py`).
+
+**The control passed** -- the traded hours reproduce 0.85 against the account's
+realised 0.72, so the method does reach the hours the ladder really trades --
+and then the result refuses to say anything:
+
+| | picks | hours | losses | implied | ratio | 95% CI |
+| --- | --- | --- | --- | --- | --- | --- |
+| traded (control) | 757 | 266 | 40 | 46.9 | 0.85 | [0.56, 1.18] |
+| skipped (all four) | 187 | 54 | **5** | 11.6 | 0.43 | **[0.00, 1.08]** |
+| 03 ET | 29 | 12 | 1 | 1.8 | 0.55 | [0.00, 1.67] |
+| 10 ET | 61 | 14 | 3 | 4.0 | 0.76 | [0.00, 2.47] |
+| 21 ET | 46 | 14 | **0** | 2.8 | 0.00 | **[0.00, 0.00]** |
+| 23 ET | 51 | 14 | 1 | 3.1 | 0.33 | [0.00, 1.20] |
+
+**The skipped hours' interval contains both fair pricing (1.0) AND the traded
+hours' 0.85.** Five losses across four hours decides nothing against a 30-loss
+bar. The aggregate 0.43 is also pulled down by hour 21's **zero-loss cell with
+an interval of [0.00, 0.00]** -- the fake tightness this file records for the
+KXLOW six dates, the first Polymarket pull, the BTC paper book and the
+unquoted commodity markets. A bootstrap cannot resample a loss that is absent.
+
+And the per-hour field is a noise field, which is the deeper point: **24 cells
+carrying 45 losses between them, 1.9 per cell.** Five hours show zero losses and
+read [0.00, 0.00]; hour 13 ET reads 2.34 [0.44, 4.79] and hours 00, 08 and 20
+all exceed 1.5. Picking winners out of that is the 04-05 ET mistake with more
+decimal places.
+
+**So: nothing changes.** `skip_hours_et` stays as it is -- not because the skip
+is justified (it still is not), but because unskipping is not justified either,
+and the repo's rule is that a parameter moves on a measurement rather than on
+the absence of one. One thing the run does establish, weakly: hours 03 and 10
+carry 29 and 61 in-band picks over 12 and 14 hours, so the pool is real and the
+~8% throughput claim is not imaginary. The edge in those hours is simply
+unmeasured.
+
+What it would take to answer: roughly six times the data, i.e. a year of
+settled hours rather than a month, or pooling the four skipped hours against
+the whole traded set and accepting that as the only question with enough losses
+to decide -- which is the 0.43 [0.00, 1.08] row, and it already declines to
+answer. **This question should be treated as closed by underpowering, not
+re-asked each time someone notices 8% of throughput sitting idle.**
+
+Run: `.github/workflows/research-sample.yml`, dispatch-only, 58 minutes; the
+database is cached so a re-dispatch resumes and extends the sample rather than
+starting over. `window OK: the furthest in-band strike sits $1410 from spot,
+inside $2000` -- the fetch window did not clip the band.
+
+
+## Factor analysis of the whole deep-ITM timeline, 2026-11-21 — and a lookahead of my own
+
+Operator asked to examine every known factor against the trade timeline, find
+patterns, and set the parameters to the most profitable. **The method is the
+answer: every factor is reported for the full history AND for each half, and a
+factor whose best cell changes between halves is noise.** Picking the best cell
+from a full-sample table is how this file already records buying noise twice
+(04-05 ET: -2.27c in-sample, +5.28c out; Q2 volatility, one of four cells).
+
+2,282 settled positions, 11,903 contracts, 2026-09-21 to 11-20, split at 11-07.
+
+| factor | verdict |
+| --- | --- |
+| entry price band | **FLIPS** (H1 best 0.90-0.92, H2 best 0.92-0.94) |
+| strikes held that hour | **FLIPS** |
+| seconds to close at fill | **FLIPS** |
+| volatility quartile | **FLIPS** |
+| distance from spot | looked huge; **it was my own lookahead** |
+| side (no > yes) | holds, but +1.77c vs +1.48c and yes falls to +0.91c in H2 |
+| **stacked vs single** | **HOLDS: +1.79c r0.70 against -0.67c r1.12, both halves** |
+| day of week | Sunday **-0.05c r1.01 in both halves** (1 of 7 cells) |
+
+**No parameter changed.** Nothing here selects.
+
+### The lookahead, which nearly shipped as the first real finding in weeks
+
+Distance-from-spot first read **-4.20c at ratio 1.63**, with **87 of 98 losses**
+in the sub-0.3% bucket, negative in both halves and worsening in the second. It
+survived the split-half test. It was wrong.
+
+**Coinbase candle keys are the bucket START; the close is at `key + granularity`.**
+So `H[floor(entry/3600)]` is a price up to 3,600 s AFTER the position opened --
+**a median of 1,085 s after**, measured. A position that went on to lose had
+price already drifting toward its strike, so its post-entry spot sits closer to
+the strike and lands in the "near" bucket. **The leak WAS the signal.**
+
+| distance | leaked | corrected |
+| --- | --- | --- |
+| <0.3% | **-4.20c, r1.63, 87 losses** | **+1.56c, r0.78, 44 losses** |
+| 0.3-0.5% | +5.34c, r0.10 | +2.31c, r0.62 |
+| 0.5-0.8% | +4.78c, r0.13 | +1.35c, r0.74 |
+| 0.8%+ | +3.94c, r0.22 | +1.17c, r0.75 |
+
+Flat. And `z = ln(spot/strike)/(sigma*sqrt(ttc))` is non-monotonic with its top
+two buckets flipping sign across halves. This is the **fourth** lookahead
+recorded across these repos, and every one was caught by a person reading a
+timestamp rather than by a test -- so `research/screen/test_deep_itm_factors.py`
+now freezes the bucket-key convention, and `main()` refuses to print factors at
+all if any spot lag is negative.
+
+### Which means the 2026-11-21 volatility table was wrong too
+
+Same estimator, same bug: its newest hourly return ended AT the settling hour.
+
+| | Q1 | Q2 | Q3 | Q4 |
+| --- | --- | --- | --- | --- |
+| as published | +0.79c r0.88 | +3.24c r0.48 | +0.91c r0.84 | **-0.16c r1.03** |
+| corrected | +1.08c r0.84 | +2.95c r0.52 | +1.09c r0.82 | **+1.22c r0.77** |
+
+The published Q4 would have read as "wild hours lose". They do not. **The
+conclusion is unchanged** -- still non-monotonic, still no selector, and the
+contamination pushed against the finding rather than toward it -- but the
+numbers were wrong and `RegimeEnvelope` carried them. Constants corrected:
+min 0.000582, p05 0.001181, median 0.003831, p95 0.007442, max 0.014650. The
+max moving UP makes the flag slightly less trigger-happy, which is the right
+direction for a guard meant to fire rarely.
+
+### The one actionable result is a defect, not an edge
+
+Stacked positions -- more than one lot on a single strike, because `max_open`
+counts strikes and a filled strike gets re-quoted:
+
+| | contracts | per ct | ratio | losses |
+| --- | --- | --- | --- | --- |
+| single | 11,117 | **+1.79c** | 0.70 | 93 |
+| stacked | 785 | **-0.67c** | 1.12 | 5 |
+
+Consistent across halves (-0.94c then -0.52c). A per-strike contract cap would
+have removed **392 contracts (3.3% of throughput)** carrying **-$2.63**, so it
+ADDS about **$0.10/day** -- but that rests on 5 losses and is not the reason.
+The reason is risk: the worst uncapped strike was **15 ct = $14.40 against the
+$15 daily stop (1.0x)**, and at lot 7 **14 ct = $13.44 (1.1x)**. A single strike
+can erase the whole day's stop before the brake sees anything, and peak
+collateral $59.43 already exceeds the `8 x 7 x $0.96 = $53.76` ceiling the
+step-up arithmetic assumes. At lot 10 a stacked strike would be ~$19 against a
+$15 stop.
+
+**Deliberately NOT shipped yet.** Step 1 began 11-18 and its verdict is due
+11-28; changing contract sizing now would measure lot 7 and a cap together and
+forfeit three of the eight days already earned. Stacking has been live for 26
+days without firing. **The cap goes in at the 11-28 verdict**, and it is
+mandatory before lot 10 is considered.
