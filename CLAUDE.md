@@ -1439,3 +1439,95 @@ $15 stop.
 forfeit three of the eight days already earned. Stacking has been live for 26
 days without firing. **The cap goes in at the 11-28 verdict**, and it is
 mandatory before lot 10 is considered.
+
+
+## The fill limit held a live book for 23h 50m, 2026-11-20 — a constant that did not move with the lot
+
+Reported from the app as repeated order failures. The book was not quiet; it was
+**refusing its own orders**, and had placed and filled nothing from
+**2026-11-20T15:20:07Z to 2026-11-21T15:10:37Z — 23h 50m 31s**, measured as the
+longest gap between consecutive fills on the account (the next-longest gaps in
+the live era are the 11-07 start and a 2-day stretch in early November).
+
+Three strikes filled inside six seconds, from the exchange's own fill records:
+
+| fill time | strike | | |
+| --- | --- | --- | --- |
+| 15:20:01.141 | `…2011-T61299.99` | 7ct @ 0.04 (NO) | maker, $0 fee |
+| 15:20:01.226 | `…2011-T58999.99` | 7ct @ 0.96 (YES) | maker, $0 fee |
+| 15:20:07.077 | `…2011-T59099.99` | 7ct @ 0.96 (YES) | maker, $0 fee |
+
+**21 contracts in a rolling 15-second window against an order-group limit of 20.**
+One contract over. Kalshi cancelled the group's resting orders and refused every
+order after it.
+
+**The cause is `DEFAULT_FILL_LIMIT = 20`, whose own comment read "four 5-lots".**
+The lot went 5 → 7 on 11-18 and the limit stayed, cutting the allowance to 2.86
+strikes — so three strikes filling together tripped it. The ladder fills ~5.9
+strikes an hour and 91% of hours hold both sides of spot, so a 3-strike burst is
+the mechanism, not an anomaly. Measured on every fill the account has:
+
+| lot era | fill-windows | event-hours | max contracts in 15 s | limit 20 | limit 28 | limit 40 |
+| --- | --- | --- | --- | --- | --- | --- |
+| lot 5 (11-08..11-17) | 642 | 134 | 15 (p99 10) | never trips | never | never |
+| **lot 7 (11-18 →)** | 244 | 45 | **21** (p99 14) | **2 of 45 hours** | never | never |
+
+At lot 7 a limit of 20 trips about **once every 22 event-hours**, and each trip
+costs a day. `4 × lot` has never tripped in either era; the biggest burst on
+record in any era, lot 10 included, is 21 contracts. The account's group now
+carries **40** (`contracts_limit_fp: "40.00"`, shard 2,
+`is_auto_cancel_enabled: false`), set by the operator, which is why the identical
+21-contract burst at 2026-11-21T16:11:27Z passed. **40 is left alone**: it is
+inside the never-trips region on all 179 measured event-hours, and tightening it
+to 28 buys no measured profit — the same reasoning that left `slot_order` alone
+for twelve cents.
+
+**Why the silence lasted a day, which is the expensive part.** The trip latches
+in the state store and survives restarts; `trippedAt(shard)` makes `placeOrder`
+throw `FillLimitTripped` locally, **before any network call**, so the book
+refuses itself even after Kalshi would accept. Only a manual Reset clears it.
+One notification fired at trip time and nothing after: every other control reads
+the ledger, and a book placing no orders writes no rows, so an outage is
+indistinguishable from a quiet market. At the ladder's measured +$7.78/day that
+cost roughly **a day's earnings — larger than any ordering or band lever in this
+repo** (`slot_order` +$0.12/day, the per-strike cap +$0.10/day).
+
+Three fixes, none of them a loosening:
+
+- **`LiveGuards.fillLimitClear`**, live-mode only on the ladder, reachable through
+  `healthChecks`. FAILs while a shard is tripped, naming the shard and how long
+  the book has been held. It **cannot return KILL** — a tripped limit is Kalshi
+  holding the book, not evidence the edge is gone — and an unreadable state store
+  is INSUFFICIENT, never PASS.
+- **The same check catches the drift before it ever trips.** The limit counts
+  CONTRACTS and the book quotes LOTS, so the two part company whenever the lot
+  moves alone. With nothing tripped it asks whether `limit / lot ≥ 4` and FAILs
+  with the limit that would hold four lots. At 20/lot 7 that is a FAIL; at 20/lot
+  5 a PASS, which is why nothing caught it in the first place.
+- **The trip time is now the exchange's newest fill on that shard, not the moment
+  the app noticed.** The refusal arrives on the next order the book tries to
+  place, and the book places nothing while its slots are full: on 11-20 the
+  stamp read 16:26:35Z against a real trip of 15:20:07Z, **66 minutes late**,
+  because eight filled positions held every slot until they settled at
+  16:02–16:03. `markTripped` stores the fill time as `tripped` and the discovery
+  time as `noticed`; the read is best-effort and a failure falls back to
+  discovery, because annotating a trip must never throw inside the order path.
+  `Engine.defaultFillLimitFor(lot)` makes the coupling code rather than a comment.
+
+> **I reported this outage as ongoing and told the operator only they could clear
+> it; the book had already resumed.** The fills showed nothing newer than
+> 2026-11-20T15:20:07Z, which was true when read and stale by the time it was
+> written up — the session clock had moved further than I assumed, and the book
+> came back at 15:10:37Z. A "nothing since X" claim is a statement about the read
+> time, so it must carry one; `/portfolio/fills` is newest-first and its first
+> page answers "is it trading now" in one call.
+
+Also widened: `research/screen/kalshi_auth.py` now allows
+`/portfolio/order_groups`, a read-only GET, which is what established that the
+account's limit is 40 and that the group is not still triggered.
+
+Tests: `LiveGuardWiringTest` (21, 9 new) — reachability from the live ladder, the
+tripped-shard FAIL with its held-for duration, the fill-time-not-discovery-time
+stamp, a reset clearing both stamps, the 20/lot-7 FAIL against the 20/lot-5 PASS,
+an unreadable store as INSUFFICIENT, and that no limit value can make the check
+return KILL.

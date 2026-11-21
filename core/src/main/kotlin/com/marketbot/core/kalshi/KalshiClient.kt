@@ -253,13 +253,17 @@ class KalshiClient(
             // a new one is created; still there means the refusal is treated as a trip, because
             // creating a fresh group would route around Kalshi's own limit.
             if (group != null && "group" in text) {
-                if (KalshiWording.groupTripped(text)) { fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now()) }
+                if (KalshiWording.groupTripped(text)) {
+                    fillLimit?.markTripped(shard, clock.now(), lastFillAt = newestFillAt(shard))
+                    throw FillLimitTripped(shard, clock.now())
+                }
                 val gone = try { orderGroup(group, shard); false } catch (g: ApiException) { g.status == 404 } catch (g: IOException) { false }
                 if (gone) fillLimit?.forget(shard)
                 else {
                     fillLimit?.lastError = "Kalshi refused an order in the fill-limit group with a message the app does not recognise " +
                         "(\"${e.message}\"); treated as tripped. Check it, then Reset."
-                    fillLimit?.markTripped(shard, clock.now()); throw FillLimitTripped(shard, clock.now())
+                    fillLimit?.markTripped(shard, clock.now(), lastFillAt = newestFillAt(shard))
+                    throw FillLimitTripped(shard, clock.now())
                 }
             }
             if (KalshiWording.postOnlyCross(text))
@@ -273,6 +277,24 @@ class KalshiClient(
             throw e
         }
     }
+
+    /**
+     * When the exchange last filled anything on [shard]: the best available estimate
+     * of when its order group really tripped.
+     *
+     * The refusal that reveals a trip arrives on the next order the book tries to
+     * place, which can be an hour after the burst -- on 2026-11-20 the trip was at
+     * 15:20:07Z and the refusal at 16:26:35Z, because eight filled positions held
+     * every slot until they settled. Best-effort only: a failed read returns null
+     * and the caller falls back to the discovery time. It must never turn a trip
+     * into a thrown read error, so everything here is wrapped.
+     */
+    private suspend fun newestFillAt(shard: Int): Instant? = runCatching {
+        fills(maxPages = 1, exchangeIndex = shard)
+            .mapNotNull { it.str("created_time") }
+            .mapNotNull { t -> runCatching { Instant.parse(t) }.getOrNull() }
+            .maxOrNull()
+    }.getOrNull()
 
     /**
      * Move an order's expiry without touching price or size. Kalshi documents an
@@ -425,15 +447,37 @@ class FillLimit(private val state: com.marketbot.core.store.StateStore, private 
     suspend fun trippedAt(shard: Int): java.time.Instant? = tripped[shard]
         ?: state.get(key(shard, "tripped"))?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }?.also { tripped[shard] = it }
 
-    /** [reason] is "fills" when Kalshi tripped it, "kill" when the kill switch did (only those reset with the kill switch). */
-    suspend fun markTripped(shard: Int, at: java.time.Instant, reason: String = "fills") {
-        if (tripped.putIfAbsent(shard, at) == null) {
-            state.put(key(shard, "tripped"), at.toString()); state.put(key(shard, "reason"), reason)
+    /**
+     * [reason] is "fills" when Kalshi tripped it, "kill" when the kill switch did
+     * (only those reset with the kill switch).
+     *
+     * [at] is when the app NOTICED, which is not when Kalshi tripped: the trip is
+     * discovered on the next order the book tries to place, and the book places
+     * nothing while its slots are full. On 2026-11-20 the real trip was 15:20:07Z
+     * and the stamp read 16:26:35Z -- 66 minutes late, because eight filled
+     * positions held every slot until they settled. The stamp is therefore stored
+     * as `noticed`, and [lastFillAt] -- the newest fill the app has seen on that
+     * shard -- is stored beside it as the better estimate of the trip itself, so a
+     * later reader is not misled about how long the book has been held.
+     */
+    suspend fun markTripped(shard: Int, at: java.time.Instant, reason: String = "fills",
+                            lastFillAt: java.time.Instant? = null) {
+        if (tripped.putIfAbsent(shard, lastFillAt ?: at) == null) {
+            state.put(key(shard, "tripped"), (lastFillAt ?: at).toString())
+            state.put(key(shard, "noticed"), at.toString())
+            state.put(key(shard, "reason"), reason)
             if (reason == "fills") onTrip(shard)
         }
     }
 
+    /** When the app noticed the trip, as opposed to when it estimates the trip happened. */
+    suspend fun noticedAt(shard: Int): java.time.Instant? =
+        state.get(key(shard, "noticed"))?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+
     suspend fun reason(shard: Int): String? = state.get(key(shard, "reason"))
+
+    /** The contracts-per-15 s limit now in force (0 = off), so a control can ask whether it can trip on normal trading. */
+    suspend fun configuredLimit(): Int = limit()
 
     /** The group for [shard], created (or its limit updated) when needed; null when the limit is off. */
     suspend fun groupFor(client: KalshiClient, shard: Int): String? {
@@ -464,7 +508,8 @@ class FillLimit(private val state: com.marketbot.core.store.StateStore, private 
         groups()[shard]?.let { id ->
             try { client.resetOrderGroup(id, shard) } catch (e: ApiException) { if (e.status == 404) forget(shard) else throw e }
         }
-        tripped.remove(shard); state.put(key(shard, "tripped"), null); state.put(key(shard, "reason"), null)
+        tripped.remove(shard); state.put(key(shard, "tripped"), null)
+        state.put(key(shard, "noticed"), null); state.put(key(shard, "reason"), null)
     }
 
     suspend fun trippedShards(): Map<Int, java.time.Instant> = (0..3).mapNotNull { s -> trippedAt(s)?.let { s to it } }.toMap()

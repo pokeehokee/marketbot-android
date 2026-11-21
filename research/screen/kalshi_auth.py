@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
-ALLOWED = ("/portfolio/settlements", "/portfolio/fills", "/portfolio/positions")
+ALLOWED = ("/portfolio/settlements", "/portfolio/fills", "/portfolio/positions", "/portfolio/order_groups")
 RETRY_SLEEPS = (1, 3, 8, 20)
 
 

@@ -69,6 +69,11 @@ class LiveGuardWiringTest {
         assertTrue("Trading inside measured conditions" in n, "regime flag not reachable: $n")
     }
 
+    @Test fun `the deep-ITM book runs the fill-limit check when live`() = runTest {
+        val n = names(KalshiBtcDeepItm(), Mode.LIVE)
+        assertTrue("Kalshi is accepting this book's orders" in n, "fill-limit guard not reachable: $n")
+    }
+
     @Test fun `neither guard runs on a paper book`() = runTest {
         for (s in listOf(KalshiBtcDeepItm(), KalshiCommodityLongshot())) {
             val n = names(s, Mode.PAPER)
@@ -143,4 +148,84 @@ class LiveGuardWiringTest {
         com.marketbot.core.provenance.Sourced(100.0, com.marketbot.core.provenance.Source.KALSHI_API, "test"),
         null, null,
     )
+
+    // ---- the fill limit, the control that held a live book for 23h 50m in silence ----
+
+    private fun fl(limit: Int) = com.marketbot.core.kalshi.FillLimit(stores.state, { limit })
+
+    @Test fun `a tripped shard FAILS and says how long the book has been held`() = runTest {
+        val f = fl(40)
+        f.markTripped(2, clock.now(), lastFillAt = clock.now().minusSeconds(3600))
+        val c = LiveGuards.fillLimitClear(fake.client(true).also { it.fillLimit = f }, clock.now(), lot = 7)
+        assertEquals(Check.Verdict.FAIL, c.verdict, c.detail)
+        assertTrue("shard 2" in c.detail, c.detail)
+        assertTrue("1h 0m ago" in c.detail, "it must say how long it has been held: ${c.detail}")
+    }
+
+    /**
+     * The trip is discovered on the next order the book tries to place, and the
+     * book places nothing while its slots are full. On 2026-11-20 that put 66
+     * minutes between the real trip (15:20:07Z) and the stamp (16:26:35Z).
+     */
+    @Test fun `the trip time is the fill, not the moment it was noticed`() = runTest {
+        val f = fl(40)
+        val realTrip = Instant.parse("2026-11-20T15:20:07Z")
+        val noticed = Instant.parse("2026-11-20T16:26:35Z")
+        f.markTripped(2, noticed, lastFillAt = realTrip)
+        assertEquals(realTrip, f.trippedAt(2))
+        assertEquals(noticed, f.noticedAt(2))
+    }
+
+    @Test fun `a reset clears the noticed time too, so a later trip cannot inherit it`() = runTest {
+        val f = fl(40)
+        f.markTripped(2, clock.now(), lastFillAt = clock.now())
+        f.reset(fake.client(true), 2)
+        assertEquals(null, f.trippedAt(2))
+        assertEquals(null, f.noticedAt(2))
+    }
+
+    /**
+     * The 11-20 outage in one assertion: a limit of 20 contracts allows only two
+     * 7-lots, and this book fills several strikes off one BTC move. The control
+     * fires on ordinary trading, and then the book places nothing until a human
+     * taps Reset. Nothing caught this because the limit counts CONTRACTS and the
+     * setting that moved was the LOT.
+     */
+    @Test fun `a limit that cannot hold four lots FAILS before it ever trips`() = runTest {
+        val c = LiveGuards.fillLimitClear(fake.client(true).also { it.fillLimit = fl(20) }, clock.now(), lot = 7)
+        assertEquals(Check.Verdict.FAIL, c.verdict, c.detail)
+        assertTrue("2 strikes" in c.detail, c.detail)
+        assertTrue("28" in c.detail, "it must name the limit that would hold four lots: ${c.detail}")
+    }
+
+    @Test fun `the limit the account actually carries leaves room for four 7-lots`() = runTest {
+        val c = LiveGuards.fillLimitClear(fake.client(true).also { it.fillLimit = fl(40) }, clock.now(), lot = 7)
+        assertEquals(Check.Verdict.PASS, c.verdict, c.detail)
+        assertTrue("5 strikes" in c.detail, c.detail)
+    }
+
+    @Test fun `the old limit was coherent at the lot it was written for`() = runTest {
+        val c = LiveGuards.fillLimitClear(fake.client(true).also { it.fillLimit = fl(20) }, clock.now(), lot = 5)
+        assertEquals(Check.Verdict.PASS, c.verdict, c.detail)
+    }
+
+    @Test fun `a state store that cannot be read is INSUFFICIENT, never PASS`() = runTest {
+        val broken = com.marketbot.core.kalshi.FillLimit(
+            object : com.marketbot.core.store.StateStore {
+                override suspend fun get(key: String) = throw IllegalStateException("state store unavailable")
+                override suspend fun put(key: String, value: String?) = throw IllegalStateException("state store unavailable")
+            },
+            { 40 },
+        )
+        val c = LiveGuards.fillLimitClear(fake.client(true).also { it.fillLimit = broken }, clock.now(), lot = 7)
+        assertEquals(Check.Verdict.INSUFFICIENT, c.verdict, c.detail)
+    }
+
+    @Test fun `the fill-limit check can never kill a working book`() = runTest {
+        for (limit in listOf(0, 1, 20, 40, 400)) {
+            val f = fl(limit); f.markTripped(2, clock.now(), lastFillAt = clock.now())
+            val c = LiveGuards.fillLimitClear(fake.client(true).also { it.fillLimit = f }, clock.now(), lot = 7)
+            assertTrue(c.verdict != Check.Verdict.KILL, "limit $limit returned KILL: ${c.detail}")
+        }
+    }
 }

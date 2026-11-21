@@ -152,6 +152,7 @@ abstract class DeepItmStrategy(
                     venuePositionCheck(ctx, rows),
                     com.marketbot.core.strategy.LiveGuards.noOtherTrader(ctx.kalshi, { ownsMarket("kalshi", it) }, rows),
                     com.marketbot.core.strategy.LiveGuards.balanceWriterFresh(ctx, venue, ctx.clock.now()),
+                    com.marketbot.core.strategy.LiveGuards.fillLimitClear(ctx.kalshi, ctx.clock.now(), ctx.config.int("lot")),
                     // A bounds check on the evidence, not a signal: see RegimeEnvelope.
                     com.marketbot.core.strategy.RegimeEnvelope.check(
                         ctx.btcIndex.sigma()?.let { com.marketbot.core.strategy.RegimeEnvelope.hourlyFromIndexSigma(it) }),

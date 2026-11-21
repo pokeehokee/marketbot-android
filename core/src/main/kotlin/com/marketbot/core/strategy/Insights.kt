@@ -319,6 +319,71 @@ object LiveGuards {
     }
 
     /**
+     * Is a Kalshi shard's fill limit tripped, i.e. is this book refusing its own
+     * orders?
+     *
+     * Measured cost of not having this check: **23h 50m** of a dead live book,
+     * 2026-11-20T15:20:07Z to 2026-11-21T15:10:37Z. Three 7-lots filled inside
+     * six seconds (21 contracts against a limit of 20), Kalshi cancelled the
+     * group and the trip latched in the state store, where only a manual Reset
+     * clears it. One notification fired at trip time and then nothing: every
+     * other control reads the ledger, and a book that places no orders writes
+     * no rows, so silence looked exactly like a quiet market. At the ladder's
+     * measured +$7.78/day that outage cost about a day's earnings -- larger
+     * than any ordering or band lever in this repo.
+     *
+     * FAIL rather than KILL: a tripped limit is Kalshi holding the book, not
+     * evidence the edge is gone. An unreadable state store is INSUFFICIENT,
+     * never PASS -- "I could not check" is not "nothing is wrong".
+     */
+    /** Lots that must be able to fill together before the limit holds the book: the setting's own intent. */
+    const val LOTS_PER_FILL_LIMIT = 4
+
+    suspend fun fillLimitClear(client: KalshiClient, now: Instant, lot: Int? = null): Check {
+        val name = "Kalshi is accepting this book's orders"
+        val fl = client.fillLimit
+            ?: return Check(name, Check.Verdict.PASS, "the fill limit is off, so no order group can hold the book")
+        val tripped = runCatching { fl.trippedShards() }.getOrElse {
+            return Check(name, Check.Verdict.INSUFFICIENT,
+                "the trip state could not be read: ${it.message ?: it.javaClass.simpleName}")
+        }
+        if (tripped.isEmpty()) {
+            // Nothing is tripped, so ask the question that matters next: can it trip on
+            // ordinary trading? The limit counts CONTRACTS and the book quotes LOTS, so
+            // the two drift apart whenever the lot moves and the limit does not -- which
+            // is exactly what caused the 11-20 outage.
+            val limit = runCatching { fl.configuredLimit() }.getOrNull()
+            if (lot == null || limit == null || limit <= 0) {
+                return Check(name, Check.Verdict.PASS, "no shard's fill limit is tripped")
+            }
+            val strikes = limit / lot
+            return if (strikes < LOTS_PER_FILL_LIMIT) {
+                Check(name, Check.Verdict.FAIL,
+                    "nothing is tripped yet, but the limit of $limit contracts only allows $strikes strikes of $lot " +
+                        "to fill together, under the $LOTS_PER_FILL_LIMIT this setting is meant to allow. This book " +
+                        "fills several strikes off one price move, so it will trip on ordinary trading and then place " +
+                        "nothing until it is reset by hand. Raise the limit to ${LOTS_PER_FILL_LIMIT * lot} or lower the lot.")
+            } else {
+                Check(name, Check.Verdict.PASS,
+                    "no shard's fill limit is tripped, and $limit contracts leaves room for $strikes strikes of $lot to fill together")
+            }
+        }
+        // joinToString's lambda is not a suspend context, so the reasons are read first.
+        val parts = mutableListOf<String>()
+        for ((shard, at) in tripped) {
+            val held = Duration.between(at, now)
+            val why = runCatching { fl.reason(shard) }.getOrNull()
+            parts += "shard $shard tripped $at" +
+                (if (held.toMinutes() >= 1) " (${held.toHours()}h ${held.toMinutesPart()}m ago)" else "") +
+                (if (why == "kill") ", by the kill switch" else "")
+        }
+        val detail = parts.joinToString("; ")
+        return Check(name, Check.Verdict.FAIL,
+            "$detail. Kalshi cancelled the group's resting orders and refuses new ones, and the app refuses them " +
+                "locally too, so this book is placing nothing until it is reset under Settings.")
+    }
+
+    /**
      * Does the exchange hold a resting order or position in this strategy's
      * markets that the app's ledger does not know?
      *

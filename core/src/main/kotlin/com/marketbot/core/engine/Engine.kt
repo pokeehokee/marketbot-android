@@ -1074,8 +1074,24 @@ class Engine(
         private val CFG = MapSerializer(String.serializer(), String.serializer())
         const val FILL_LIMIT_KEY = "engine.fill_limit"
         const val CONTRACT_KEY = "engine.api_contract_last"
-        /** Contracts per rolling 15 s per Kalshi shard: four 5-lots. Above that, fills are a burst, and bursts are how losers arrive. */
+        /**
+         * Contracts per rolling 15 s per Kalshi shard. The intent is **four lots**:
+         * above that, fills are a burst, and bursts are how losers arrive (one BTC
+         * move takes one side of the ladder at once).
+         *
+         * It is a floor, not a constant, because the lot moves and this did not.
+         * Written as "four 5-lots" = 20 and left there when the ladder went to lot
+         * 7 on 2026-11-18, which silently cut the allowance to 2.86 strikes -- so
+         * three strikes filling together tripped it, and the ladder fills ~5.9
+         * strikes an hour. It fired on 11-20 and cost 23h 50m of a dead book.
+         * Measured bursts: max 15 contracts over 134 event-hours at lot 5, max 21
+         * over 45 at lot 7; 4 x lot never trips in either era.
+         */
         const val DEFAULT_FILL_LIMIT = 20
+        const val LOTS_PER_FILL_LIMIT = 4
+
+        /** The default for a book quoting [lot] contracts a strike: four lots, never below the old 20. */
+        fun defaultFillLimitFor(lot: Int) = maxOf(DEFAULT_FILL_LIMIT, LOTS_PER_FILL_LIMIT * lot)
 
         /** Strategies that re-run sooner than this keep the CPU awake; slower ones are woken by an alarm. */
         val CONTINUOUS_BELOW: java.time.Duration = java.time.Duration.ofMinutes(5)
