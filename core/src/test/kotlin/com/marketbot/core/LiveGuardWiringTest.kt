@@ -64,11 +64,17 @@ class LiveGuardWiringTest {
         assertTrue("Every writer still writing" in n, "stale-writer guard not reachable: $n")
     }
 
+    @Test fun `the deep-ITM book runs the regime bounds check when live`() = runTest {
+        val n = names(KalshiBtcDeepItm(), Mode.LIVE)
+        assertTrue("Trading inside measured conditions" in n, "regime flag not reachable: $n")
+    }
+
     @Test fun `neither guard runs on a paper book`() = runTest {
         for (s in listOf(KalshiBtcDeepItm(), KalshiCommodityLongshot())) {
             val n = names(s, Mode.PAPER)
             assertTrue("No other trader on this account" !in n, "${s.id} reads the live account in paper: $n")
             assertTrue("Every writer still writing" !in n, "${s.id} checks the live writer in paper: $n")
+            assertTrue("Trading inside measured conditions" !in n, "${s.id} checks the regime in paper: $n")
         }
     }
 

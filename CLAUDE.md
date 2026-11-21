@@ -1193,3 +1193,99 @@ Tests: `research/screen/test_account_record.py` (27) freezes the real trade's
 figures, that a round trip counts its contracts once and implies no loss, that a
 NO fill is priced off the NO side, cash direction, fees once, and that the sanity
 ceiling would have caught the +$11,027.
+
+
+## Market regime, 2026-11-21 — measured, and it is not a selector
+
+Operator question: would identifying the market's state let the parameters be
+tuned per state for more profit? **No as a selector, measured. Yes as a narrow
+safety flag, which is what shipped.**
+
+### Volatility does not predict the ladder's edge
+
+The ladder's 398 settled event-hours, bucketed by trailing 12-hour realised
+volatility of hourly BTC log returns at entry, zero lookahead (Coinbase hourly
+closes):
+
+| vol quartile | hours | contracts | per contract | loss ratio | premium/ct |
+| --- | --- | --- | --- | --- | --- |
+| Q1 calm | 99 | 2,794 | +0.79c | 0.88 | 6.48c |
+| Q2 | 100 | 3,256 | **+3.24c** | 0.48 | 6.27c |
+| Q3 | 99 | 3,000 | +0.91c | 0.84 | 5.87c |
+| Q4 wild | 100 | 2,853 | +1.34c | 0.74 | 5.23c |
+
+**Non-monotonic, and the wildest quartile beats the calmest.** Q2 is one cell of
+four and has exactly the shape this file already rejects: 04-05 ET read -2.27c
+in-sample and +5.28c out, out of 18 cells examined.
+
+**The last column is the finding.** Premium per contract FALLS as volatility
+rises, 6.48c to 5.23c, because the book selects on PRICE and a 0.94 bid sits
+further from spot when vol is higher. **The price band is already a volatility
+classifier**, repriced continuously by the market -- a better one than anything
+fitted here. Same mechanism the cheap-tail study found: "the market already
+widens the ask on volatile days by about the right amount."
+
+Two structural reasons this was never going to work, beyond the table:
+
+- **There is one regime in the sample.** BTC fell from ~$72.8k to ~$63.2k across
+  the entire window. Per-regime parameters cannot be fitted on data holding one
+  regime; it would be fitting the calendar.
+- **Multiple comparisons against 518 losses.** A classifier multiplies the
+  search space against the thinnest sample in the account.
+
+The base rate for this idea here is now **0 for 9**: hour-of-day, vol quartiles
+on the tail, the loss classifier (AUC 0.709 against price alone at 0.747), the
+post-fill path model (0.898 against the current ask's 0.909), Kronos, the
+weather ensemble, queue depth, forecast distance, and this. Every one failed the
+same way -- **the price already contains the state.**
+
+### Lot 7's softness is the conditions, not the lot
+
+Worth knowing before the 2026-11-28 verdict. The lot-7 window reads +0.59c at
+ratio 0.87 against a +1.62c lifetime average, which looked like degradation:
+
+| | hours | contracts | per ct | ratio | median vol |
+| --- | --- | --- | --- | --- | --- |
+| lot 7 (11-18 ->) | 44 | 1,392 | +0.59c | **0.87** | 0.451% |
+| lot 5 (11-08..17) | 133 | 2,885 | +1.43c | 0.71 | 0.538% |
+| lot 5 (all, to 11-17) | 354 | 10,510 | +1.76c | 0.71 | 0.363% |
+
+**0.87 is unremarkable against a per-quartile spread of 0.48 to 0.88.** The
+lot-7 window simply holds almost no Q1 hours (quartile counts 1 / 12 / 13 / 18).
+No claim that lot 7 is fine -- 44 hours decides nothing, and the gate is still
+8 days and >= 30 losses -- but the softness is not evidence against the lot.
+Stated narrowly on purpose: a tighter comparison needed a vol-bucket cut chosen
+after seeing lot 7's distribution, which is a degree of freedom, so the
+defensible claim is only that 0.87 sits inside the measured range.
+
+### What shipped: a bounds check on the evidence
+
+`core/strategy/RegimeEnvelope.kt`, live mode only on the ladder, reachable
+through `healthChecks` and rendered by `HealthSection`.
+
+| | hourly realised vol |
+| --- | --- |
+| measured min | 0.057% |
+| p05 | 0.117% |
+| median | 0.381% |
+| p95 | 0.766% |
+| measured max | 1.464% |
+
+It FAILS only **outside** that range -- rare by construction, and deliberately
+so. Flagging the middle 90% would fire one hour in ten for no new information,
+which is the always-firing-guard mistake made and corrected the previous day in
+`skipped_hours.py`. It cannot return KILL: nothing here is strong enough to halt
+a working book. Unreadable volatility is INSUFFICIENT, never PASS.
+
+What it says when it fires is deliberately not a forecast: "the evidence does
+not reach here", with the non-monotonic quartile table carried in the detail so
+nobody reads it as "trade less when wild". The two directions differ in
+meaning -- above the range the concern is an unprecedented one-sided sweep;
+below it, that the deep-ITM strikes carry no flow to fill against, which is a
+fill problem rather than an edge problem.
+
+Tests: `RegimeEnvelopeTest` (9) freezes that it passes across the middle, fails
+only outside, never KILLs, carries the "not a prediction" wording, and converts
+`BtcIndex.sigma()` (per sqrt-second) to hourly by sqrt(3600).
+`LiveGuardWiringTest` asserts REACHABILITY -- removing the call site fails with
+"regime flag not reachable", verified before committing.
